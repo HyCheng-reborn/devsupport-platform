@@ -1,0 +1,41 @@
+{
+  "k": 3,
+  "judgements": [
+    {
+      "query": {
+        "queryId": "fixture-001",
+        "question": "[虚构夹具 fixture] 首位命中 + 多相关片段全召回示例",
+        "answerability": "ANSWERABLE",
+        "relevantChunkIds": ["chunk-A", "chunk-B"]
+      },
+      "rankedResults": [
+        {"chunkId": "chunk-A", "kbId": "kb-demo-1", "score": 0.93},
+        {"chunkId": "chunk-X", "kbId": "kb-demo-1", "score": 0.71},
+        {"chunkId": "chunk-B", "kbId": "kb-demo-2", "score": null}
+      ]
+    },
+    {
+      "query": {
+        "queryId": "fixture-002",
+        "question": "[虚构夹具 fixture] 结果少于 K 且无命中示例",
+        "answerability": "ANSWERABLE",
+        "relevantChunkIds": ["chunk-Z"]
+      },
+      "rankedResults": [
+        {"chunkId": "chunk-X", "kbId": "kb-demo-1", "score": 0.40},
+        {"chunkId": "chunk-Y", "kbId": "kb-demo-2", "score": 0.35}
+      ]
+    },
+    {
+      "query": {
+        "queryId": "fixture-003",
+        "question": "[虚构夹具 fixture] 无答案题示例（被排除，不参与宏平均）",
+        "answerability": "NO_ANSWER",
+        "relevantChunkIds": []
+      },
+      "rankedResults": [
+        {"chunkId": "chunk-X", "kbId": "kb-demo-1", "score": 0.22}
+      ]
+    }
+  ]
+}
