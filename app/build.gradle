@@ -112,6 +112,35 @@ tasks.named('test') {
     jvmArgs '--enable-native-access=ALL-UNNAMED'
 }
 
+// P1-B 离线切分工具：复用生产 TextCleaningService + TokenTextSplitter，不启动 Spring 上下文
+// 工具位于 test 作用域，避免新增 main 源码
+tasks.register('evalOfflineChunk', JavaExec) {
+    group = 'evaluation'
+    description = 'Run P1-B offline chunker against eval corpus (no Spring context)'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'interview.guide.eval.OfflineChunker'
+    workingDir = rootProject.projectDir
+    jvmArgs = [
+        '-Dfile.encoding=UTF-8',
+        '-Dstdout.encoding=UTF-8',
+        '-Dstderr.encoding=UTF-8'
+    ]
+}
+
+// P1-B Tika 差异验证：证明 .md 语料跳过 Tika 是安全的
+tasks.register('evalVerifyTika', JavaExec) {
+    group = 'evaluation'
+    description = 'Verify Tika has no effect on .md corpus (compare parseContent vs cleanText)'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'interview.guide.eval.TikaDifferenceVerifier'
+    workingDir = rootProject.projectDir
+    jvmArgs = [
+        '-Dfile.encoding=UTF-8',
+        '-Dstdout.encoding=UTF-8',
+        '-Dstderr.encoding=UTF-8'
+    ]
+}
+
 // 将仓库根目录 .env 注入 bootRun，便于本地加载 AI_BAILIAN_API_KEY 等变量（Gradle 进程默认不读 .env）
 // 同时确保 JVM 使用 UTF-8 编码
 tasks.named('bootRun') {

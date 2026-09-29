@@ -1,0 +1,994 @@
+{
+  "datasetId": "devsupport",
+  "version": "v0.1",
+  "status": "draft",
+  "kind": "development-set-draft",
+  "notATestSet": true,
+  "preparedAt": "2026-09-29",
+  "snapshotCommit": "d2fd5e633248b2c008cf387ab82651a56cca8502",
+  "annotationPolicy": {
+    "expectedAnswersOnlyFromCorpus": true,
+    "noModelCommonSense": true,
+    "chunkIdMapping": "deferred - 本轮不切分、不编造 chunkId；证据以 docId + 原文引句 + 行号定位，真实切分后再建立 evidence->chunk 映射",
+    "lineNumbering": "1-based，对应 corpus/ 副本（与原文件逐字节一致）的行号",
+    "noAnswerRule": "无答案题必须说明选定语料缺少什么，并指出真实答案位于语料之外的何处（answerSourceOutsideCorpus），不得把“暂时没找到”当作无答案",
+    "supportsAnswerPoints": "每条 evidence 标注 supportsAnswerPoints（1-based 整数数组），指明该引句直接支持哪些预期答案要点。同一要点下的多条等价证据各自独立标注；不同要点必须组合的证据不可互相替代。无答案题的 nearMissEvidence 该字段为空数组。"
+  },
+  "distribution": {
+    "exact_lookup": 6,
+    "paraphrase": 6,
+    "multi_evidence": 4,
+    "no_answer": 4,
+    "total": 20
+  },
+  "evidenceTotals": {
+    "answerableEvidence": 46,
+    "nearMissEvidence": 5,
+    "total": 51
+  },
+  "queries": [
+    {
+      "queryId": "devsupport-v01-q01",
+      "question": "后端服务启动后默认监听哪个端口？",
+      "questionType": "exact_lookup",
+      "answerability": "ANSWERABLE",
+      "evidence": [
+        {
+          "docId": "ig-readme-root",
+          "quote": "后端服务启动于 `http://localhost:8080`",
+          "locator": {
+            "section": "快速开始 > 4. 启动应用",
+            "lines": [
+              371,
+              371
+            ]
+          },
+          "supportsAnswerPoints": [
+            1,
+            2
+          ]
+        }
+      ],
+      "expectedAnswerPoints": [
+        "默认端口 8080",
+        "后端地址 http://localhost:8080"
+      ]
+    },
+    {
+      "queryId": "devsupport-v01-q02",
+      "question": "只想本地开发调试、用 ./gradlew :app:bootRun 启动后端时，一键启动 PostgreSQL/Redis/RustFS 三个依赖的命令是什么？",
+      "questionType": "exact_lookup",
+      "answerability": "ANSWERABLE",
+      "evidence": [
+        {
+          "docId": "ig-readme-root",
+          "quote": "docker compose -f docker-compose.dev.yml up -d",
+          "locator": {
+            "section": "快速开始 > 3. 启动依赖服务（可选）",
+            "lines": [
+              323,
+              323
+            ]
+          },
+          "supportsAnswerPoints": [
+            1
+          ]
+        }
+      ],
+      "expectedAnswerPoints": [
+        "docker compose -f docker-compose.dev.yml up -d"
+      ]
+    },
+    {
+      "queryId": "devsupport-v01-q03",
+      "question": "JPA 的 hibernate.ddl-auto 当前项目推荐/默认配置值是什么？",
+      "questionType": "exact_lookup",
+      "answerability": "ANSWERABLE",
+      "evidence": [
+        {
+          "docId": "ig-readme-root",
+          "quote": "ddl-auto: validate  # 只校验 schema，建表和变更交给 Flyway",
+          "locator": {
+            "section": "常见问题 > Q: 数据库表创建失败/数据丢失",
+            "lines": [
+              485,
+              485
+            ]
+          },
+          "supportsAnswerPoints": [
+            1,
+            2
+          ]
+        },
+        {
+          "docId": "ig-db-migration-readme",
+          "quote": "Hibernate `ddl-auto` 使用 `validate`，只校验 schema，不负责建表或改表。",
+          "locator": {
+            "section": "Flyway 数据库迁移",
+            "lines": [
+              9,
+              9
+            ]
+          },
+          "supportsAnswerPoints": [
+            1,
+            2
+          ]
+        }
+      ],
+      "expectedAnswerPoints": [
+        "validate",
+        "只校验 schema，不建表/改表，建表与变更交给 Flyway"
+      ]
+    },
+    {
+      "queryId": "devsupport-v01-q04",
+      "question": "Spring AI pgvector 的 initialize-schema 应配置为什么值？",
+      "questionType": "exact_lookup",
+      "answerability": "ANSWERABLE",
+      "evidence": [
+        {
+          "docId": "ig-db-migration-readme",
+          "quote": "Spring AI pgvector 表结构也由 Flyway 创建，`initialize-schema` 应保持 `false`。",
+          "locator": {
+            "section": "Flyway 数据库迁移",
+            "lines": [
+              10,
+              10
+            ]
+          },
+          "supportsAnswerPoints": [
+            1
+          ]
+        },
+        {
+          "docId": "ig-readme-root",
+          "quote": "initialize-schema: false",
+          "locator": {
+            "section": "常见问题 > Q: 知识库向量化失败",
+            "lines": [
+              499,
+              499
+            ]
+          },
+          "supportsAnswerPoints": [
+            1
+          ]
+        },
+        {
+          "docId": "ig-readme-root",
+          "quote": "建议保持为 false，避免应用启动时绕过 Flyway 修改数据库 schema。",
+          "locator": {
+            "section": "常见问题 > Q: 知识库向量化失败",
+            "lines": [
+              503,
+              503
+            ]
+          },
+          "supportsAnswerPoints": [
+            2
+          ]
+        }
+      ],
+      "expectedAnswerPoints": [
+        "false",
+        "避免应用启动时绕过 Flyway 修改数据库 schema"
+      ]
+    },
+    {
+      "queryId": "devsupport-v01-q05",
+      "question": "语音识别（ASR）使用的 Qwen3 模型名称是什么？",
+      "questionType": "exact_lookup",
+      "answerability": "ANSWERABLE",
+      "evidence": [
+        {
+          "docId": "ig-setup-api-keys",
+          "quote": "**ASR 语音识别**: 将用户语音实时转换为文本（qwen3-asr-flash-realtime）",
+          "locator": {
+            "section": "阿里云百炼 AI (DashScope) > 用途",
+            "lines": [
+              11,
+              11
+            ]
+          },
+          "supportsAnswerPoints": [
+            1
+          ]
+        },
+        {
+          "docId": "ig-voice-arch",
+          "quote": "**模型**: qwen3-asr-flash-realtime",
+          "locator": {
+            "section": "服务层 > QwenAsrService",
+            "lines": [
+              186,
+              186
+            ]
+          },
+          "supportsAnswerPoints": [
+            1
+          ]
+        }
+      ],
+      "expectedAnswerPoints": [
+        "qwen3-asr-flash-realtime"
+      ]
+    },
+    {
+      "queryId": "devsupport-v01-q06",
+      "question": "应用启动时会自动检查并创建的默认对象存储 Bucket 名称是什么？",
+      "questionType": "exact_lookup",
+      "answerability": "ANSWERABLE",
+      "evidence": [
+        {
+          "docId": "ig-readme-root",
+          "quote": "应用启动时会自动检查并创建 `interview-guide` Bucket",
+          "locator": {
+            "section": "快速开始 > 3. 启动依赖服务（可选）",
+            "lines": [
+              359,
+              359
+            ]
+          },
+          "supportsAnswerPoints": [
+            1
+          ]
+        }
+      ],
+      "expectedAnswerPoints": [
+        "interview-guide"
+      ]
+    },
+    {
+      "queryId": "devsupport-v01-q07",
+      "question": "我在本机跑起后端后，浏览器打开哪个网址能看到 Swagger 接口文档？",
+      "questionType": "paraphrase",
+      "answerability": "ANSWERABLE",
+      "evidence": [
+        {
+          "docId": "ig-readme-root",
+          "quote": "[http://localhost:8080/swagger-ui.html](http://localhost:8080/swagger-ui.html)",
+          "locator": {
+            "section": "Docker 快速部署 > 3. 服务访问",
+            "lines": [
+              431,
+              431
+            ]
+          },
+          "supportsAnswerPoints": [
+            1
+          ]
+        },
+        {
+          "docId": "ig-readme-root",
+          "quote": "| **接口文档**     | [http://localhost:8080/swagger-ui.html](http://localhost:8080/swagger-ui.html) | - | - | SpringDoc/Swagger UI |",
+          "locator": {
+            "section": "常用地址",
+            "lines": [
+              431,
+              431
+            ]
+          },
+          "supportsAnswerPoints": [
+            2
+          ]
+        }
+      ],
+      "expectedAnswerPoints": [
+        "http://localhost:8080/swagger-ui.html",
+        "由 SpringDoc/Swagger UI 提供"
+      ]
+    },
+    {
+      "queryId": "devsupport-v01-q08",
+      "question": "这个项目为啥用 Redis 搞异步消息，而不是上 Kafka 这种专业消息队列？",
+      "questionType": "paraphrase",
+      "answerability": "ANSWERABLE",
+      "evidence": [
+        {
+          "docId": "ig-readme-root",
+          "quote": "基于 Redis Stream 实现简历分析、知识库向量化等场景的异步（还能解耦，分析和向量化可以使用其他编程语言来做）。不使用 [Kafka](https://javaguide.cn/high-performance/message-queue/kafka-questions-01.html) 这类成熟的消息队列，也是不想引入太多组件。",
+          "locator": {
+            "section": "技术栈 > 技术选型常见问题解答",
+            "lines": [
+              59,
+              59
+            ]
+          },
+          "supportsAnswerPoints": [
+            1,
+            2
+          ]
+        }
+      ],
+      "expectedAnswerPoints": [
+        "用 Redis Stream 实现异步并解耦",
+        "不想引入太多组件，精简架构"
+      ]
+    },
+    {
+      "queryId": "devsupport-v01-q09",
+      "question": "改了数据库表结构以后，我是不是得自己手动去执行 SQL 迁移脚本？",
+      "questionType": "paraphrase",
+      "answerability": "ANSWERABLE",
+      "evidence": [
+        {
+          "docId": "ig-readme-root",
+          "quote": "不需要。数据库 schema 已接入 Flyway，后端应用启动时会自动执行 `app/src/main/resources/db/migration/` 下的迁移，并记录到 `flyway_schema_history`。",
+          "locator": {
+            "section": "常见问题 > Q: 数据库迁移需要手动执行脚本吗？",
+            "lines": [
+              507,
+              507
+            ]
+          },
+          "supportsAnswerPoints": [
+            1,
+            2
+          ]
+        },
+        {
+          "docId": "ig-db-migration-readme",
+          "quote": "应用启动时会按版本号执行 `V*.sql` 文件，并通过 `flyway_schema_history` 记录执行历史。",
+          "locator": {
+            "section": "Flyway 数据库迁移",
+            "lines": [
+              3,
+              3
+            ]
+          },
+          "supportsAnswerPoints": [
+            2
+          ]
+        }
+      ],
+      "expectedAnswerPoints": [
+        "不需要手动执行",
+        "Flyway 在应用启动时按版本号自动执行迁移并记录到 flyway_schema_history"
+      ]
+    },
+    {
+      "queryId": "devsupport-v01-q10",
+      "question": "刚把仓库 clone 下来，怎么设置才能让本地 git 提交强制校验 commit message 规范？",
+      "questionType": "paraphrase",
+      "answerability": "ANSWERABLE",
+      "evidence": [
+        {
+          "docId": "ig-githooks-readme",
+          "quote": "首次克隆仓库后执行：",
+          "locator": {
+            "section": "Git 提交消息 Hook",
+            "lines": [
+              3,
+              3
+            ]
+          },
+          "supportsAnswerPoints": [
+            1
+          ]
+        },
+        {
+          "docId": "ig-githooks-readme",
+          "quote": "git config core.hooksPath .githooks",
+          "locator": {
+            "section": "Git 提交消息 Hook",
+            "lines": [
+              6,
+              6
+            ]
+          },
+          "supportsAnswerPoints": [
+            1
+          ]
+        }
+      ],
+      "expectedAnswerPoints": [
+        "执行 git config core.hooksPath .githooks 启用提交消息 hook"
+      ]
+    },
+    {
+      "queryId": "devsupport-v01-q11",
+      "question": "语音面试里 AI 回答默认用的是什么音色（声音）？",
+      "questionType": "paraphrase",
+      "answerability": "ANSWERABLE",
+      "evidence": [
+        {
+          "docId": "ig-voice-arch",
+          "quote": "**音色**: Cherry（温柔女声）",
+          "locator": {
+            "section": "服务层 > QwenTtsService",
+            "lines": [
+              210,
+              210
+            ]
+          },
+          "supportsAnswerPoints": [
+            1
+          ]
+        },
+        {
+          "docId": "ig-voice-arch",
+          "quote": "voice: Cherry",
+          "locator": {
+            "section": "配置说明 > 语音服务配置",
+            "lines": [
+              468,
+              468
+            ]
+          },
+          "supportsAnswerPoints": [
+            1
+          ]
+        }
+      ],
+      "expectedAnswerPoints": [
+        "Cherry（温柔女声）"
+      ]
+    },
+    {
+      "queryId": "devsupport-v01-q12",
+      "question": "简历上传后分析状态一直卡在“分析中”不动，我该往哪个方向排查？",
+      "questionType": "paraphrase",
+      "answerability": "ANSWERABLE",
+      "evidence": [
+        {
+          "docId": "ig-readme-root",
+          "quote": "检查 Redis 连接和 Stream Consumer 是否正常运行。查看后端日志确认是否有错误。",
+          "locator": {
+            "section": "常见问题 > Q: 简历分析一直显示“分析中”？",
+            "lines": [
+              542,
+              542
+            ]
+          },
+          "supportsAnswerPoints": [
+            1,
+            2,
+            3
+          ]
+        }
+      ],
+      "expectedAnswerPoints": [
+        "检查 Redis 连接",
+        "检查 Stream Consumer 是否正常运行",
+        "查看后端日志确认是否有错误"
+      ]
+    },
+    {
+      "queryId": "devsupport-v01-q13",
+      "question": "项目如何保证数据库 schema 与向量表结构一致、且重启不丢数据？请结合迁移策略与 JPA 配置说明。",
+      "questionType": "multi_evidence",
+      "answerability": "ANSWERABLE",
+      "evidence": [
+        {
+          "docId": "ig-db-migration-readme",
+          "quote": "`V1__init_schema.sql` 负责空库初始化。",
+          "locator": {
+            "section": "Flyway 数据库迁移",
+            "lines": [
+              7,
+              7
+            ]
+          },
+          "supportsAnswerPoints": [
+            1
+          ]
+        },
+        {
+          "docId": "ig-db-migration-readme",
+          "quote": "Hibernate `ddl-auto` 使用 `validate`，只校验 schema，不负责建表或改表。",
+          "locator": {
+            "section": "Flyway 数据库迁移",
+            "lines": [
+              9,
+              9
+            ]
+          },
+          "supportsAnswerPoints": [
+            2
+          ]
+        },
+        {
+          "docId": "ig-db-migration-readme",
+          "quote": "Spring AI pgvector 表结构也由 Flyway 创建，`initialize-schema` 应保持 `false`。",
+          "locator": {
+            "section": "Flyway 数据库迁移",
+            "lines": [
+              10,
+              10
+            ]
+          },
+          "supportsAnswerPoints": [
+            3
+          ]
+        },
+        {
+          "docId": "ig-readme-root",
+          "quote": "`vector_store` 表已由 Flyway 创建，Spring AI 不再自动建表。",
+          "locator": {
+            "section": "常见问题 > Q: 知识库向量化失败",
+            "lines": [
+              492,
+              492
+            ]
+          },
+          "supportsAnswerPoints": [
+            3
+          ]
+        },
+        {
+          "docId": "ig-readme-root",
+          "quote": "initialize-schema: false",
+          "locator": {
+            "section": "常见问题 > Q: 知识库向量化失败",
+            "lines": [
+              499,
+              499
+            ]
+          },
+          "supportsAnswerPoints": [
+            3
+          ]
+        },
+        {
+          "docId": "ig-readme-root",
+          "quote": "⚠️ **注意**：避免使用 `create` 模式，否则每次重启都会删除所有数据！",
+          "locator": {
+            "section": "常见问题 > Q: 数据库表创建失败/数据丢失",
+            "lines": [
+              488,
+              488
+            ]
+          },
+          "supportsAnswerPoints": [
+            4
+          ]
+        }
+      ],
+      "expectedAnswerPoints": [
+        "由 Flyway 管理 schema：V1__init_schema.sql 空库初始化 + 后续增量迁移",
+        "Hibernate ddl-auto=validate，只校验不建表/改表",
+        "pgvector initialize-schema=false，vector_store 表由 Flyway 创建",
+        "避免 create 模式，否则每次重启删除所有数据"
+      ]
+    },
+    {
+      "queryId": "devsupport-v01-q14",
+      "question": "语音面试依赖哪个外部服务、需要哪些密钥？ASR、TTS、LLM 分别用什么模型，是否共用同一个 Key？",
+      "questionType": "multi_evidence",
+      "answerability": "ANSWERABLE",
+      "evidence": [
+        {
+          "docId": "ig-readme-root",
+          "quote": "实时语音对话面试，WebSocket + 千问3 语音模型（ASR/TTS/LLM 统一 API Key）：",
+          "locator": {
+            "section": "功能特性 > 语音面试模块",
+            "lines": [
+              106,
+              106
+            ]
+          },
+          "supportsAnswerPoints": [
+            1,
+            2
+          ]
+        },
+        {
+          "docId": "ig-setup-api-keys",
+          "quote": "**统一 API Key**: 一个密钥即可使用所有功能，无需分别申请！",
+          "locator": {
+            "section": "阿里云百炼 AI (DashScope)",
+            "lines": [
+              14,
+              14
+            ]
+          },
+          "supportsAnswerPoints": [
+            1,
+            2
+          ]
+        },
+        {
+          "docId": "ig-setup-api-keys",
+          "quote": "AI_BAILIAN_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx",
+          "locator": {
+            "section": "阿里云百炼 AI (DashScope) > 配置变量",
+            "lines": [
+              25,
+              25
+            ]
+          },
+          "supportsAnswerPoints": [
+            2
+          ]
+        },
+        {
+          "docId": "ig-readme-root",
+          "quote": "最少需要填写 `AI_BAILIAN_API_KEY`，用于 DashScope 文本模型、ASR 和 TTS：",
+          "locator": {
+            "section": "快速开始 > 2. 配置环境变量",
+            "lines": [
+              295,
+              295
+            ]
+          },
+          "supportsAnswerPoints": [
+            2
+          ]
+        },
+        {
+          "docId": "ig-voice-arch",
+          "quote": "- **配置简化**: 从 9 个环境变量减少到 2 个（统一使用 `AI_BAILIAN_API_KEY`）",
+          "locator": {
+            "section": "系统概述",
+            "lines": [
+              14,
+              14
+            ]
+          },
+          "supportsAnswerPoints": [
+            2
+          ]
+        },
+        {
+          "docId": "ig-setup-api-keys",
+          "quote": "**ASR 语音识别**: 将用户语音实时转换为文本（qwen3-asr-flash-realtime）",
+          "locator": {
+            "section": "阿里云百炼 AI (DashScope) > 用途",
+            "lines": [
+              11,
+              11
+            ]
+          },
+          "supportsAnswerPoints": [
+            3
+          ]
+        },
+        {
+          "docId": "ig-voice-arch",
+          "quote": "**模型**: qwen3-tts-flash-realtime",
+          "locator": {
+            "section": "服务层 > QwenTtsService",
+            "lines": [
+              209,
+              209
+            ]
+          },
+          "supportsAnswerPoints": [
+            4
+          ]
+        },
+        {
+          "docId": "ig-voice-arch",
+          "quote": "**技术**: 阿里云DashScope (qwen3.5-flash)",
+          "locator": {
+            "section": "服务层 > DashscopeLlmService",
+            "lines": [
+              198,
+              198
+            ]
+          },
+          "supportsAnswerPoints": [
+            5
+          ]
+        }
+      ],
+      "expectedAnswerPoints": [
+        "外部服务为阿里云 DashScope（百炼）",
+        "LLM/ASR/TTS 共用一个 AI_BAILIAN_API_KEY",
+        "ASR 模型 qwen3-asr-flash-realtime",
+        "TTS 模型 qwen3-tts-flash-realtime",
+        "LLM 模型 qwen3.5-flash"
+      ]
+    },
+    {
+      "queryId": "devsupport-v01-q15",
+      "question": "知识库题库面试的“严格追问容量校验”是什么规则？当某方向/难度下追问数量不足时，后端返回哪个错误码？",
+      "questionType": "multi_evidence",
+      "answerability": "ANSWERABLE",
+      "evidence": [
+        {
+          "docId": "ig-readme-root",
+          "quote": "**严格面试容量校验**：开始面试前按方向、难度、主问题数和每题追问数实时计算可用容量；追问数量是硬约束，容量不足的选项会直接禁用，后端同时进行兜底校验。",
+          "locator": {
+            "section": "功能特性 > 知识库题库与面试模块",
+            "lines": [
+              129,
+              129
+            ]
+          },
+          "supportsAnswerPoints": [
+            1,
+            2
+          ]
+        },
+        {
+          "docId": "ig-kb-interview-capacity-tdd",
+          "quote": "追问池少于请求数量时返回 `INTERVIEW_QUESTION_INSUFFICIENT`",
+          "locator": {
+            "section": "测试规格",
+            "lines": [
+              25,
+              25
+            ]
+          },
+          "supportsAnswerPoints": [
+            3
+          ]
+        },
+        {
+          "docId": "ig-kb-interview-capacity-tdd",
+          "quote": "空白追问题干不计入严格容量",
+          "locator": {
+            "section": "测试规格",
+            "lines": [
+              26,
+              26
+            ]
+          },
+          "supportsAnswerPoints": [
+            4
+          ]
+        }
+      ],
+      "expectedAnswerPoints": [
+        "开始面试前按方向、难度、主问题数和每题追问数实时计算可用容量",
+        "追问数量是硬约束，容量不足的选项前端禁用，后端兜底校验",
+        "追问池少于请求数量时返回错误码 INTERVIEW_QUESTION_INSUFFICIENT",
+        "空白追问题干不计入严格容量"
+      ]
+    },
+    {
+      "queryId": "devsupport-v01-q16",
+      "question": "知识库题目异步生成如何保证同一知识库不会并发执行多个任务，且失败或 Worker 异常退出后能恢复？",
+      "questionType": "multi_evidence",
+      "answerability": "ANSWERABLE",
+      "evidence": [
+        {
+          "docId": "ig-readme-root",
+          "quote": "题目生成任务通过 Redis Stream 异步执行；生成不足时保留草稿",
+          "locator": {
+            "section": "功能特性 > 知识库题库与面试模块",
+            "lines": [
+              127,
+              127
+            ]
+          },
+          "supportsAnswerPoints": [
+            1
+          ]
+        },
+        {
+          "docId": "ig-kb-question-gen-async-tdd",
+          "quote": "同一知识库同时只能存在一个活动任务，重复消息和旧 Worker 不能覆盖当前任务。",
+          "locator": {
+            "section": "User journeys",
+            "lines": [
+              11,
+              11
+            ]
+          },
+          "supportsAnswerPoints": [
+            2
+          ]
+        },
+        {
+          "docId": "ig-kb-question-gen-async-tdd",
+          "quote": "活动任务拒绝重复提交，重复消息只有一个消费者能领取",
+          "locator": {
+            "section": "Test specification",
+            "lines": [
+              57,
+              57
+            ]
+          },
+          "supportsAnswerPoints": [
+            2
+          ]
+        },
+        {
+          "docId": "ig-kb-question-gen-async-tdd",
+          "quote": "任务创建和投递分离、原子领取、重试复位、过期任务恢复、旧结果丢弃及题目替换完成事务均满足测试契约。",
+          "locator": {
+            "section": "Task report > GREEN：后端可靠性",
+            "lines": [
+              35,
+              35
+            ]
+          },
+          "supportsAnswerPoints": [
+            2,
+            3,
+            4,
+            5
+          ]
+        },
+        {
+          "docId": "ig-kb-question-gen-async-tdd",
+          "quote": "消费失败后任务能够重新排队；投递失败或重试耗尽后进入安全的失败状态。",
+          "locator": {
+            "section": "User journeys",
+            "lines": [
+              12,
+              12
+            ]
+          },
+          "supportsAnswerPoints": [
+            3
+          ]
+        },
+        {
+          "docId": "ig-kb-question-gen-async-tdd",
+          "quote": "首次失败恢复 `QUEUED`，重试耗尽进入 `FAILED`",
+          "locator": {
+            "section": "Test specification",
+            "lines": [
+              58,
+              58
+            ]
+          },
+          "supportsAnswerPoints": [
+            3
+          ]
+        },
+        {
+          "docId": "ig-kb-question-gen-async-tdd",
+          "quote": "Worker 或服务异常退出后，长时间停留在 `QUEUED` / `PROCESSING` 的任务能够恢复。",
+          "locator": {
+            "section": "User journeys",
+            "lines": [
+              13,
+              13
+            ]
+          },
+          "supportsAnswerPoints": [
+            4
+          ]
+        },
+        {
+          "docId": "ig-kb-question-gen-async-tdd",
+          "quote": "Pending reclaim 与过期 `PROCESSING` 任务可恢复",
+          "locator": {
+            "section": "Test specification",
+            "lines": [
+              59,
+              59
+            ]
+          },
+          "supportsAnswerPoints": [
+            4
+          ]
+        },
+        {
+          "docId": "ig-kb-question-gen-async-tdd",
+          "quote": "taskId 变化后旧 Worker 不删除或保存题目",
+          "locator": {
+            "section": "Test specification",
+            "lines": [
+              60,
+              60
+            ]
+          },
+          "supportsAnswerPoints": [
+            5
+          ]
+        }
+      ],
+      "expectedAnswerPoints": [
+        "基于 Redis Stream 异步执行题目生成",
+        "同一知识库同时只有一个活动任务，重复消息只有一个消费者能领取（原子领取）",
+        "首次消费失败恢复 QUEUED 重新排队，重试耗尽进入 FAILED",
+        "长时间停留在 QUEUED/PROCESSING 的任务（Worker 异常退出）可被恢复",
+        "taskId 变化后旧 Worker 不删除或保存题目（旧结果丢弃）"
+      ]
+    },
+    {
+      "queryId": "devsupport-v01-q17",
+      "question": "RAG 问答助手检索时的相似度阈值（similarity threshold）默认值是多少？对应的配置项名称是什么？",
+      "questionType": "no_answer",
+      "answerability": "NO_ANSWER",
+      "nearMissEvidence": [
+        {
+          "docId": "ig-readme-root",
+          "quote": "**RAG 检索增强**：集成 pgvector，通过查询改写、相似度阈值和 TopK 策略提升 AI 问答的准确性与专业度。",
+          "locator": {
+            "section": "功能特性 > 知识库管理模块",
+            "lines": [
+              119,
+              119
+            ]
+          },
+          "supportsAnswerPoints": []
+        }
+      ],
+      "noAnswerRationale": "选定语料只在 README 定性提到存在“相似度阈值和 TopK 策略”，未给出任何阈值默认值或配置项名称，也未给出 TopK 的具体档位数值。",
+      "missingFromCorpus": "相似度阈值默认值与配置键名；动态 TopK 各档位的具体数值。",
+      "answerSourceOutsideCorpus": "实际配置在 app/src/main/resources/application.yml（如 APP_AI_RAG_TOPK_SHORT/MEDIUM/LONG 默认 20/12/8）；相似度阈值需查检索源码。二者均不在选定语料内，故本题对该语料为无答案。此标注仅为定位说明，不参与索引、查询或回答上下文。",
+      "expectedAnswerPoints": []
+    },
+    {
+      "queryId": "devsupport-v01-q18",
+      "question": "知识库文档向量化时的分块（chunk）大小是多少 token？chunk 之间是否有重叠（overlap），重叠多少？",
+      "questionType": "no_answer",
+      "answerability": "NO_ANSWER",
+      "nearMissEvidence": [
+        {
+          "docId": "ig-readme-root",
+          "quote": "**文档智能处理**：支持 PDF、DOCX、Markdown 等多种格式文档的自动上传、分块与异步向量化。",
+          "locator": {
+            "section": "功能特性 > 知识库管理模块",
+            "lines": [
+              118,
+              118
+            ]
+          },
+          "supportsAnswerPoints": []
+        }
+      ],
+      "noAnswerRationale": "选定语料仅提到“自动上传、分块与异步向量化”，未给出 chunk 大小或 overlap 的任何数值。",
+      "missingFromCorpus": "TokenTextSplitter 的 chunk size 与 overlap 具体数值。",
+      "answerSourceOutsideCorpus": "实际在 app/src/main/java/interview/guide/modules/knowledgebase/service/KnowledgeBaseVectorService.java（TokenTextSplitter 默认配置），不在选定语料内。此标注仅为定位说明，不参与索引、查询或回答上下文。",
+      "expectedAnswerPoints": []
+    },
+    {
+      "queryId": "devsupport-v01-q19",
+      "question": "完整 docker-compose.yml 部署里，MinIO 的 createbuckets 初始化服务具体执行了哪些命令、把 bucket 设为什么访问策略？",
+      "questionType": "no_answer",
+      "answerability": "NO_ANSWER",
+      "nearMissEvidence": [
+        {
+          "docId": "ig-readme-root",
+          "quote": "Docker Compose 编排了 6 个服务：PostgreSQL（pgvector）、Redis、MinIO（S3 兼容存储）、MinIO Bucket 初始化、Spring Boot 后端、React 前端（Nginx）。",
+          "locator": {
+            "section": "Docker 快速部署",
+            "lines": [
+              389,
+              389
+            ]
+          },
+          "supportsAnswerPoints": []
+        }
+      ],
+      "noAnswerRationale": "选定语料提到存在“MinIO Bucket 初始化”服务，但未包含其执行的命令内容与 bucket 访问策略设置。",
+      "missingFromCorpus": "createbuckets 服务的 entrypoint 命令（mc alias/mb/anonymous 等）与 bucket 匿名访问策略。",
+      "answerSourceOutsideCorpus": "实际在 docker-compose.yml 的 createbuckets 服务（mc mb myminio/interview-guide、mc anonymous set public），不在选定语料内。此标注仅为定位说明，不参与索引、查询或回答上下文。",
+      "expectedAnswerPoints": []
+    },
+    {
+      "queryId": "devsupport-v01-q20",
+      "question": "语音面试 WebSocket 自定义 JSON 消息协议中，AUDIO / SUBTITLE / CONTROL 各消息类型的完整字段（payload 结构）分别是什么？",
+      "questionType": "no_answer",
+      "answerability": "NO_ANSWER",
+      "nearMissEvidence": [
+        {
+          "docId": "ig-voice-arch",
+          "quote": "**协议**: 自定义JSON消息格式",
+          "locator": {
+            "section": "后端API层 > VoiceInterviewWebSocketHandler",
+            "lines": [
+              164,
+              164
+            ]
+          },
+          "supportsAnswerPoints": []
+        },
+        {
+          "docId": "ig-voice-arch",
+          "quote": "- `AUDIO`: 音频数据",
+          "locator": {
+            "section": "后端API层 > VoiceInterviewWebSocketHandler > 消息类型",
+            "lines": [
+              166,
+              166
+            ]
+          },
+          "supportsAnswerPoints": []
+        }
+      ],
+      "noAnswerRationale": "选定语料仅列出消息类型名称（AUDIO/SUBTITLE/CONTROL）与“自定义JSON消息格式”，未给出各类型的完整字段/payload 结构定义。",
+      "missingFromCorpus": "每种 WebSocket 消息类型的 payload 字段结构与示例。",
+      "answerSourceOutsideCorpus": "完整协议在源码 VoiceInterviewWebSocketHandler 及前端 WebSocket 类型定义中，不在选定语料内。此标注仅为定位说明，不参与索引、查询或回答上下文。",
+      "expectedAnswerPoints": []
+    }
+  ]
+}

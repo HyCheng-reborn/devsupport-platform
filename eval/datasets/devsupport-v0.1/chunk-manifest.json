@@ -1,0 +1,121 @@
+{
+  "datasetId": "devsupport",
+  "version": "v0.1",
+  "status": "draft",
+  "chunkerConfig": {
+    "splitterClass": "org.springframework.ai.transformer.splitter.TokenTextSplitter",
+    "constructionCode": "TokenTextSplitter.builder().build()",
+    "configId": "tts-default-cl100k-800-0",
+    "sourceLocation": "KnowledgeBaseVectorService.java:52",
+    "sourceCommit": "d2fd5e633248b2c008cf387ab82651a56cca8502"
+  },
+  "cleaningConfig": {
+    "cleanerClass": "interview.guide.infrastructure.file.TextCleaningService",
+    "methodCalled": "cleanText(String)",
+    "sourceLocation": "TextCleaningService.java:80",
+    "applied": true,
+    "layers": [
+      "Layer1-semanticDenoising: controlChars, imageFilenames, imageUrls, fileUrls, separatorLines",
+      "Layer2-formatNormalization: unifyLineEndings(\\n), stripTrailingWhitespace, compress3+Newlines, finalStrip"
+    ]
+  },
+  "parsingPolicy": {
+    "applied": true,
+    "productionClass": "interview.guide.infrastructure.file.DocumentParseService",
+    "productionMethod": "parseContent(byte[], fileName) → AutoDetectParser + BodyContentHandler(5MB) + TextCleaningService.cleanText()",
+    "tikaVerification": {
+      "verified": true,
+      "method": "TikaDifferenceVerifier.java — 逐文件对比 cleanText(rawText) 与 parseContent(rawBytes, fileName)",
+      "tool": "./gradlew :app:evalVerifyTika",
+      "exitCode": 1,
+      "result": "6/7 文件完全一致；ig-readme-root.md 存在 107 字符差异（cleanOnly=18008 vs tikaThenClean=17901）",
+      "differenceDetail": "Tika AutoDetectParser 将 .md 中的 HTML 标签（<div align=\"center\">...</div>）剥离，仅影响 ig-readme-root.md 开头的装饰性 div 包裹；语义内容不受影响",
+      "decision": "已统一走生产解析路径（Tika + clean）；TikaDifferenceVerifier 退出码 1 表示存在差异，差异仅为 HTML 装饰标签"
+    }
+  },
+  "evalChunkIdPolicy": {
+    "format": "{docId}__{configId}__{seq:04d}__{sha256(text):12}",
+    "note": "评测用稳定 ID，与生产 VectorStore 中的 Document ID（UUID）不同。生产 ID 在 vectorizeAndStore() 中由 VectorStore 实现生成。"
+  },
+  "documentStats": [
+    {
+      "docId": "ig-db-migration-readme",
+      "rawChars": 472,
+      "rawSha256": "03eec49a7ea524794d3fee19120ae33ba320778b06078f51c0004512605b6e45",
+      "cleanedChars": 458,
+      "cleanedSha256": "338a39b904c5d8dffe29a5ff57044088b1fbc5022c6e1222b6e43b58a25cf350",
+      "chunkCount": 1,
+      "rawBytes": 830,
+      "cleaningChanged": true,
+      "replacementCharsInCleaned": 0
+    },
+    {
+      "docId": "ig-githooks-readme",
+      "rawChars": 343,
+      "rawSha256": "4d7e1aa4204a895698801148d2ef6686222e5c786c78a5fe0fd4e358c2414913",
+      "cleanedChars": 318,
+      "cleanedSha256": "002cabe3796b6c9374afba4f8c4e348ea43be28e6e3d2b7af5e7073e97749ef6",
+      "chunkCount": 1,
+      "rawBytes": 509,
+      "cleaningChanged": true,
+      "replacementCharsInCleaned": 0
+    },
+    {
+      "docId": "ig-kb-interview-capacity-tdd",
+      "rawChars": 1859,
+      "rawSha256": "de3665921d64f7e959eb653e36811f6f6083712745ae2af9bff8c568203b83ed",
+      "cleanedChars": 1816,
+      "cleanedSha256": "148a7aac38760f707fdd13033829f33481104e8b3431109178786753912f8454",
+      "chunkCount": 2,
+      "rawBytes": 3221,
+      "cleaningChanged": true,
+      "replacementCharsInCleaned": 0
+    },
+    {
+      "docId": "ig-kb-question-gen-async-tdd",
+      "rawChars": 3165,
+      "rawSha256": "5ceace0f8f115141876dc5b89762b4d920d98dd584248283dabf5305d3f7f311",
+      "cleanedChars": 3087,
+      "cleanedSha256": "e68db6300cf79ee79ef6cc4581e43b6f373db6509541d56f949aadbc994ab68e",
+      "chunkCount": 3,
+      "rawBytes": 5129,
+      "cleaningChanged": true,
+      "replacementCharsInCleaned": 0
+    },
+    {
+      "docId": "ig-readme-root",
+      "rawChars": 19800,
+      "rawSha256": "699c33582d74b5f74212457c2f0d5e262b8b873c37e9e58a9245b6a53570460c",
+      "cleanedChars": 17901,
+      "cleanedSha256": "f47b6a972fb49ee0c26eee9aec314fa620a43d83aceed00022b7e631d05aa6d1",
+      "chunkCount": 12,
+      "rawBytes": 30050,
+      "cleaningChanged": true,
+      "replacementCharsInCleaned": 0
+    },
+    {
+      "docId": "ig-setup-api-keys",
+      "rawChars": 2541,
+      "rawSha256": "e0abdc3d5c504ad7548d7fa3f648dbf685bd7de791082d119d72957a16318002",
+      "cleanedChars": 2378,
+      "cleanedSha256": "e4673441a7263437bf7ffdbf65f9d63fbc26e33c09fc78b63cf73ad6f76a5dd6",
+      "chunkCount": 2,
+      "rawBytes": 3841,
+      "cleaningChanged": true,
+      "replacementCharsInCleaned": 0
+    },
+    {
+      "docId": "ig-voice-arch",
+      "rawChars": 10914,
+      "rawSha256": "3a511bc9ec766e14d68bb4c3358ab68060c11e07e4fda704282b6755c7e78d8a",
+      "cleanedChars": 10367,
+      "cleanedSha256": "e32302a7f3305b2529b145761f820c28671967dc52a40dd2af3651937cf57874",
+      "chunkCount": 7,
+      "rawBytes": 14686,
+      "cleaningChanged": true,
+      "replacementCharsInCleaned": 0
+    }
+  ],
+  "totalChunks": 28,
+  "totalReplacementChars": 0
+}

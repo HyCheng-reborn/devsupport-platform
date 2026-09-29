@@ -1,0 +1,893 @@
+{
+  "mappingMethod": "text matching with single-chunk priority",
+  "matchingStrategy": {
+    "priority": "single chunk fully contains quote",
+    "fallback": "adjacent chunk pair (only when quote spans boundary)",
+    "normalization": "CRLF→LF, strip trailing whitespace per line",
+    "note": "Evidence quotes are from original corpus; chunks are from cleaned text. Normalization handles line ending and whitespace differences."
+  },
+  "statistics": {
+    "totalEvidence": 51,
+    "mappedSingleChunk": 51,
+    "mappedCrossChunk": 0,
+    "unmapped": 0,
+    "matchTypeExact": 51,
+    "matchTypeNormalized": 0,
+    "nearMissMapped": 5
+  },
+  "mappings": [
+    {
+      "queryId": "devsupport-v01-q01",
+      "evidenceIndex": 0,
+      "docId": "ig-readme-root",
+      "quote": "后端服务启动于 `http://localhost:8080`",
+      "quoteLength": 31,
+      "supportsAnswerPoints": [
+        1,
+        2
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-readme-root__tts-default-cl100k-800-0__0007__c6d462233363"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q02",
+      "evidenceIndex": 0,
+      "docId": "ig-readme-root",
+      "quote": "docker compose -f docker-compose.dev.yml up -d",
+      "quoteLength": 46,
+      "supportsAnswerPoints": [
+        1
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-readme-root__tts-default-cl100k-800-0__0006__ba619fe9be23",
+        "ig-readme-root__tts-default-cl100k-800-0__0007__c6d462233363",
+        "ig-readme-root__tts-default-cl100k-800-0__0010__76472780832c"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_multiple_candidates",
+      "note": "Quote appears in multiple chunks; all are candidates"
+    },
+    {
+      "queryId": "devsupport-v01-q03",
+      "evidenceIndex": 0,
+      "docId": "ig-readme-root",
+      "quote": "ddl-auto: validate  # 只校验 schema，建表和变更交给 Flyway",
+      "quoteLength": 47,
+      "supportsAnswerPoints": [
+        1,
+        2
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-readme-root__tts-default-cl100k-800-0__0009__fa9f25f9e53c"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q03",
+      "evidenceIndex": 1,
+      "docId": "ig-db-migration-readme",
+      "quote": "Hibernate `ddl-auto` 使用 `validate`，只校验 schema，不负责建表或改表。",
+      "quoteLength": 55,
+      "supportsAnswerPoints": [
+        1,
+        2
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-db-migration-readme__tts-default-cl100k-800-0__0000__338a39b904c5"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q04",
+      "evidenceIndex": 0,
+      "docId": "ig-db-migration-readme",
+      "quote": "Spring AI pgvector 表结构也由 Flyway 创建，`initialize-schema` 应保持 `false`。",
+      "quoteLength": 67,
+      "supportsAnswerPoints": [
+        1
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-db-migration-readme__tts-default-cl100k-800-0__0000__338a39b904c5"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q04",
+      "evidenceIndex": 1,
+      "docId": "ig-readme-root",
+      "quote": "initialize-schema: false",
+      "quoteLength": 24,
+      "supportsAnswerPoints": [
+        1
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-readme-root__tts-default-cl100k-800-0__0009__fa9f25f9e53c"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q04",
+      "evidenceIndex": 2,
+      "docId": "ig-readme-root",
+      "quote": "建议保持为 false，避免应用启动时绕过 Flyway 修改数据库 schema。",
+      "quoteLength": 42,
+      "supportsAnswerPoints": [
+        2
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-readme-root__tts-default-cl100k-800-0__0009__fa9f25f9e53c"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q05",
+      "evidenceIndex": 0,
+      "docId": "ig-setup-api-keys",
+      "quote": "**ASR 语音识别**: 将用户语音实时转换为文本（qwen3-asr-flash-realtime）",
+      "quoteLength": 52,
+      "supportsAnswerPoints": [
+        1
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-setup-api-keys__tts-default-cl100k-800-0__0000__412b1fb66fc9"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q05",
+      "evidenceIndex": 1,
+      "docId": "ig-voice-arch",
+      "quote": "**模型**: qwen3-asr-flash-realtime",
+      "quoteLength": 32,
+      "supportsAnswerPoints": [
+        1
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-voice-arch__tts-default-cl100k-800-0__0002__7d9fe0ceb64a"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q06",
+      "evidenceIndex": 0,
+      "docId": "ig-readme-root",
+      "quote": "应用启动时会自动检查并创建 `interview-guide` Bucket",
+      "quoteLength": 38,
+      "supportsAnswerPoints": [
+        1
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-readme-root__tts-default-cl100k-800-0__0007__c6d462233363"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q07",
+      "evidenceIndex": 0,
+      "docId": "ig-readme-root",
+      "quote": "[http://localhost:8080/swagger-ui.html](http://localhost:8080/swagger-ui.html)",
+      "quoteLength": 78,
+      "supportsAnswerPoints": [
+        1
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-readme-root__tts-default-cl100k-800-0__0008__2c8da7b9b594"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q07",
+      "evidenceIndex": 1,
+      "docId": "ig-readme-root",
+      "quote": "| **接口文档**     | [http://localhost:8080/swagger-ui.html](http://localhost:8080/swagger-ui.html) | - | - | SpringDoc/Swagger UI |",
+      "quoteLength": 128,
+      "supportsAnswerPoints": [
+        2
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-readme-root__tts-default-cl100k-800-0__0008__2c8da7b9b594"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q08",
+      "evidenceIndex": 0,
+      "docId": "ig-readme-root",
+      "quote": "基于 Redis Stream 实现简历分析、知识库向量化等场景的异步（还能解耦，分析和向量化可以使用其他编程语言来做）。不使用 [Kafka](https://javaguide.cn/high-performance/message-queue/kafka-questions-01.html) 这类成熟的消息队列，也是不想引入太多组件。",
+      "quoteLength": 171,
+      "supportsAnswerPoints": [
+        1,
+        2
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-readme-root__tts-default-cl100k-800-0__0001__e689e97ff6f2"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q09",
+      "evidenceIndex": 0,
+      "docId": "ig-readme-root",
+      "quote": "不需要。数据库 schema 已接入 Flyway，后端应用启动时会自动执行 `app/src/main/resources/db/migration/` 下的迁移，并记录到 `flyway_schema_history`。",
+      "quoteLength": 112,
+      "supportsAnswerPoints": [
+        1,
+        2
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-readme-root__tts-default-cl100k-800-0__0009__fa9f25f9e53c"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q09",
+      "evidenceIndex": 1,
+      "docId": "ig-db-migration-readme",
+      "quote": "应用启动时会按版本号执行 `V*.sql` 文件，并通过 `flyway_schema_history` 记录执行历史。",
+      "quoteLength": 60,
+      "supportsAnswerPoints": [
+        2
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-db-migration-readme__tts-default-cl100k-800-0__0000__338a39b904c5"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q10",
+      "evidenceIndex": 0,
+      "docId": "ig-githooks-readme",
+      "quote": "首次克隆仓库后执行：",
+      "quoteLength": 10,
+      "supportsAnswerPoints": [
+        1
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-githooks-readme__tts-default-cl100k-800-0__0000__002cabe3796b"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q10",
+      "evidenceIndex": 1,
+      "docId": "ig-githooks-readme",
+      "quote": "git config core.hooksPath .githooks",
+      "quoteLength": 35,
+      "supportsAnswerPoints": [
+        1
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-githooks-readme__tts-default-cl100k-800-0__0000__002cabe3796b"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q11",
+      "evidenceIndex": 0,
+      "docId": "ig-voice-arch",
+      "quote": "**音色**: Cherry（温柔女声）",
+      "quoteLength": 20,
+      "supportsAnswerPoints": [
+        1
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-voice-arch__tts-default-cl100k-800-0__0002__7d9fe0ceb64a"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q11",
+      "evidenceIndex": 1,
+      "docId": "ig-voice-arch",
+      "quote": "voice: Cherry",
+      "quoteLength": 13,
+      "supportsAnswerPoints": [
+        1
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-voice-arch__tts-default-cl100k-800-0__0005__d65d06e6e302"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q12",
+      "evidenceIndex": 0,
+      "docId": "ig-readme-root",
+      "quote": "检查 Redis 连接和 Stream Consumer 是否正常运行。查看后端日志确认是否有错误。",
+      "quoteLength": 50,
+      "supportsAnswerPoints": [
+        1,
+        2,
+        3
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-readme-root__tts-default-cl100k-800-0__0010__76472780832c"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q13",
+      "evidenceIndex": 0,
+      "docId": "ig-db-migration-readme",
+      "quote": "`V1__init_schema.sql` 负责空库初始化。",
+      "quoteLength": 30,
+      "supportsAnswerPoints": [
+        1
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-db-migration-readme__tts-default-cl100k-800-0__0000__338a39b904c5"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q13",
+      "evidenceIndex": 1,
+      "docId": "ig-db-migration-readme",
+      "quote": "Hibernate `ddl-auto` 使用 `validate`，只校验 schema，不负责建表或改表。",
+      "quoteLength": 55,
+      "supportsAnswerPoints": [
+        2
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-db-migration-readme__tts-default-cl100k-800-0__0000__338a39b904c5"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q13",
+      "evidenceIndex": 2,
+      "docId": "ig-db-migration-readme",
+      "quote": "Spring AI pgvector 表结构也由 Flyway 创建，`initialize-schema` 应保持 `false`。",
+      "quoteLength": 67,
+      "supportsAnswerPoints": [
+        3
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-db-migration-readme__tts-default-cl100k-800-0__0000__338a39b904c5"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q13",
+      "evidenceIndex": 3,
+      "docId": "ig-readme-root",
+      "quote": "`vector_store` 表已由 Flyway 创建，Spring AI 不再自动建表。",
+      "quoteLength": 46,
+      "supportsAnswerPoints": [
+        3
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-readme-root__tts-default-cl100k-800-0__0009__fa9f25f9e53c"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q13",
+      "evidenceIndex": 4,
+      "docId": "ig-readme-root",
+      "quote": "initialize-schema: false",
+      "quoteLength": 24,
+      "supportsAnswerPoints": [
+        3
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-readme-root__tts-default-cl100k-800-0__0009__fa9f25f9e53c"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q13",
+      "evidenceIndex": 5,
+      "docId": "ig-readme-root",
+      "quote": "⚠️ **注意**：避免使用 `create` 模式，否则每次重启都会删除所有数据！",
+      "quoteLength": 42,
+      "supportsAnswerPoints": [
+        4
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-readme-root__tts-default-cl100k-800-0__0009__fa9f25f9e53c"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q14",
+      "evidenceIndex": 0,
+      "docId": "ig-readme-root",
+      "quote": "实时语音对话面试，WebSocket + 千问3 语音模型（ASR/TTS/LLM 统一 API Key）：",
+      "quoteLength": 54,
+      "supportsAnswerPoints": [
+        1,
+        2
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-readme-root__tts-default-cl100k-800-0__0002__15c2b46af8be"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q14",
+      "evidenceIndex": 1,
+      "docId": "ig-setup-api-keys",
+      "quote": "**统一 API Key**: 一个密钥即可使用所有功能，无需分别申请！",
+      "quoteLength": 36,
+      "supportsAnswerPoints": [
+        1,
+        2
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-setup-api-keys__tts-default-cl100k-800-0__0000__412b1fb66fc9"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q14",
+      "evidenceIndex": 2,
+      "docId": "ig-setup-api-keys",
+      "quote": "AI_BAILIAN_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx",
+      "quoteLength": 46,
+      "supportsAnswerPoints": [
+        2
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-setup-api-keys__tts-default-cl100k-800-0__0000__412b1fb66fc9"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q14",
+      "evidenceIndex": 3,
+      "docId": "ig-readme-root",
+      "quote": "最少需要填写 `AI_BAILIAN_API_KEY`，用于 DashScope 文本模型、ASR 和 TTS：",
+      "quoteLength": 56,
+      "supportsAnswerPoints": [
+        2
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-readme-root__tts-default-cl100k-800-0__0006__ba619fe9be23"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q14",
+      "evidenceIndex": 4,
+      "docId": "ig-voice-arch",
+      "quote": "- **配置简化**: 从 9 个环境变量减少到 2 个（统一使用 `AI_BAILIAN_API_KEY`）",
+      "quoteLength": 55,
+      "supportsAnswerPoints": [
+        2
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-voice-arch__tts-default-cl100k-800-0__0000__ed91cddc6ed2"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q14",
+      "evidenceIndex": 5,
+      "docId": "ig-setup-api-keys",
+      "quote": "**ASR 语音识别**: 将用户语音实时转换为文本（qwen3-asr-flash-realtime）",
+      "quoteLength": 52,
+      "supportsAnswerPoints": [
+        3
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-setup-api-keys__tts-default-cl100k-800-0__0000__412b1fb66fc9"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q14",
+      "evidenceIndex": 6,
+      "docId": "ig-voice-arch",
+      "quote": "**模型**: qwen3-tts-flash-realtime",
+      "quoteLength": 32,
+      "supportsAnswerPoints": [
+        4
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-voice-arch__tts-default-cl100k-800-0__0002__7d9fe0ceb64a"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q14",
+      "evidenceIndex": 7,
+      "docId": "ig-voice-arch",
+      "quote": "**技术**: 阿里云DashScope (qwen3.5-flash)",
+      "quoteLength": 36,
+      "supportsAnswerPoints": [
+        5
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-voice-arch__tts-default-cl100k-800-0__0002__7d9fe0ceb64a"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q15",
+      "evidenceIndex": 0,
+      "docId": "ig-readme-root",
+      "quote": "**严格面试容量校验**：开始面试前按方向、难度、主问题数和每题追问数实时计算可用容量；追问数量是硬约束，容量不足的选项会直接禁用，后端同时进行兜底校验。",
+      "quoteLength": 77,
+      "supportsAnswerPoints": [
+        1,
+        2
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-readme-root__tts-default-cl100k-800-0__0003__e79f3fc6b615"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q15",
+      "evidenceIndex": 1,
+      "docId": "ig-kb-interview-capacity-tdd",
+      "quote": "追问池少于请求数量时返回 `INTERVIEW_QUESTION_INSUFFICIENT`",
+      "quoteLength": 46,
+      "supportsAnswerPoints": [
+        3
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-kb-interview-capacity-tdd__tts-default-cl100k-800-0__0000__7d679c5ce80d"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q15",
+      "evidenceIndex": 2,
+      "docId": "ig-kb-interview-capacity-tdd",
+      "quote": "空白追问题干不计入严格容量",
+      "quoteLength": 13,
+      "supportsAnswerPoints": [
+        4
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-kb-interview-capacity-tdd__tts-default-cl100k-800-0__0000__7d679c5ce80d"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q16",
+      "evidenceIndex": 0,
+      "docId": "ig-readme-root",
+      "quote": "题目生成任务通过 Redis Stream 异步执行；生成不足时保留草稿",
+      "quoteLength": 36,
+      "supportsAnswerPoints": [
+        1
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-readme-root__tts-default-cl100k-800-0__0003__e79f3fc6b615"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q16",
+      "evidenceIndex": 1,
+      "docId": "ig-kb-question-gen-async-tdd",
+      "quote": "同一知识库同时只能存在一个活动任务，重复消息和旧 Worker 不能覆盖当前任务。",
+      "quoteLength": 41,
+      "supportsAnswerPoints": [
+        2
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0000__6dc9b1d25ebc"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q16",
+      "evidenceIndex": 2,
+      "docId": "ig-kb-question-gen-async-tdd",
+      "quote": "活动任务拒绝重复提交，重复消息只有一个消费者能领取",
+      "quoteLength": 25,
+      "supportsAnswerPoints": [
+        2
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0001__3b574264b222"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q16",
+      "evidenceIndex": 3,
+      "docId": "ig-kb-question-gen-async-tdd",
+      "quote": "任务创建和投递分离、原子领取、重试复位、过期任务恢复、旧结果丢弃及题目替换完成事务均满足测试契约。",
+      "quoteLength": 49,
+      "supportsAnswerPoints": [
+        2,
+        3,
+        4,
+        5
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0000__6dc9b1d25ebc"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q16",
+      "evidenceIndex": 4,
+      "docId": "ig-kb-question-gen-async-tdd",
+      "quote": "消费失败后任务能够重新排队；投递失败或重试耗尽后进入安全的失败状态。",
+      "quoteLength": 34,
+      "supportsAnswerPoints": [
+        3
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0000__6dc9b1d25ebc"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q16",
+      "evidenceIndex": 5,
+      "docId": "ig-kb-question-gen-async-tdd",
+      "quote": "首次失败恢复 `QUEUED`，重试耗尽进入 `FAILED`",
+      "quoteLength": 31,
+      "supportsAnswerPoints": [
+        3
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0001__3b574264b222"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q16",
+      "evidenceIndex": 6,
+      "docId": "ig-kb-question-gen-async-tdd",
+      "quote": "Worker 或服务异常退出后，长时间停留在 `QUEUED` / `PROCESSING` 的任务能够恢复。",
+      "quoteLength": 55,
+      "supportsAnswerPoints": [
+        4
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0000__6dc9b1d25ebc"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q16",
+      "evidenceIndex": 7,
+      "docId": "ig-kb-question-gen-async-tdd",
+      "quote": "Pending reclaim 与过期 `PROCESSING` 任务可恢复",
+      "quoteLength": 38,
+      "supportsAnswerPoints": [
+        4
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0001__3b574264b222"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q16",
+      "evidenceIndex": 8,
+      "docId": "ig-kb-question-gen-async-tdd",
+      "quote": "taskId 变化后旧 Worker 不删除或保存题目",
+      "quoteLength": 27,
+      "supportsAnswerPoints": [
+        5
+      ],
+      "isNearMiss": false,
+      "mappedChunkIds": [
+        "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0001__3b574264b222"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q17",
+      "evidenceIndex": 0,
+      "docId": "ig-readme-root",
+      "quote": "**RAG 检索增强**：集成 pgvector，通过查询改写、相似度阈值和 TopK 策略提升 AI 问答的准确性与专业度。",
+      "quoteLength": 63,
+      "supportsAnswerPoints": [],
+      "isNearMiss": true,
+      "mappedChunkIds": [
+        "ig-readme-root__tts-default-cl100k-800-0__0003__e79f3fc6b615"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q18",
+      "evidenceIndex": 0,
+      "docId": "ig-readme-root",
+      "quote": "**文档智能处理**：支持 PDF、DOCX、Markdown 等多种格式文档的自动上传、分块与异步向量化。",
+      "quoteLength": 54,
+      "supportsAnswerPoints": [],
+      "isNearMiss": true,
+      "mappedChunkIds": [
+        "ig-readme-root__tts-default-cl100k-800-0__0003__e79f3fc6b615"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q19",
+      "evidenceIndex": 0,
+      "docId": "ig-readme-root",
+      "quote": "Docker Compose 编排了 6 个服务：PostgreSQL（pgvector）、Redis、MinIO（S3 兼容存储）、MinIO Bucket 初始化、Spring Boot 后端、React 前端（Nginx）。",
+      "quoteLength": 115,
+      "supportsAnswerPoints": [],
+      "isNearMiss": true,
+      "mappedChunkIds": [
+        "ig-readme-root__tts-default-cl100k-800-0__0007__c6d462233363"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q20",
+      "evidenceIndex": 0,
+      "docId": "ig-voice-arch",
+      "quote": "**协议**: 自定义JSON消息格式",
+      "quoteLength": 19,
+      "supportsAnswerPoints": [],
+      "isNearMiss": true,
+      "mappedChunkIds": [
+        "ig-voice-arch__tts-default-cl100k-800-0__0002__7d9fe0ceb64a"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    },
+    {
+      "queryId": "devsupport-v01-q20",
+      "evidenceIndex": 1,
+      "docId": "ig-voice-arch",
+      "quote": "- `AUDIO`: 音频数据",
+      "quoteLength": 15,
+      "supportsAnswerPoints": [],
+      "isNearMiss": true,
+      "mappedChunkIds": [
+        "ig-voice-arch__tts-default-cl100k-800-0__0002__7d9fe0ceb64a"
+      ],
+      "crossChunk": false,
+      "matchType": "exact",
+      "status": "mapped_single"
+    }
+  ]
+}
