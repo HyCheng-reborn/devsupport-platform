@@ -1,0 +1,26 @@
+# 评测专用 Postgres 实例
+# 启动：docker compose -f docker-compose-eval.yml up -d
+# 停止：docker compose -f docker-compose-eval.yml down
+# 清除：docker compose -f docker-compose-eval.yml down -v
+
+services:
+  eval-postgres:
+    image: pgvector/pgvector:pg16
+    container_name: interview-eval-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${EVAL_POSTGRES_PASSWORD:-123456}
+      POSTGRES_DB: ${EVAL_POSTGRES_DB:-interview_guide_eval}
+    volumes:
+      - eval_postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/eval-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "${EVAL_POSTGRES_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  eval_postgres_data:

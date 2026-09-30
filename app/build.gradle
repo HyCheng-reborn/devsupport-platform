@@ -108,7 +108,9 @@ tasks.withType(JavaCompile).configureEach {
 }
 
 tasks.named('test') {
-    useJUnitPlatform()
+    useJUnitPlatform {
+        excludeTags 'real-eval'
+    }
     jvmArgs '--enable-native-access=ALL-UNNAMED'
 }
 
@@ -139,6 +141,33 @@ tasks.register('evalVerifyTika', JavaExec) {
         '-Dstdout.encoding=UTF-8',
         '-Dstderr.encoding=UTF-8'
     ]
+}
+
+// P1-C L1 真实向量检索评测（付费 API 调用，需显式启用）
+// 运行命令: ./gradlew :app:evalP1cReal -Peval.p1c.realApi=true -Peval.embedding.apiKey=xxx
+tasks.register('evalP1cReal', Test) {
+    group = 'evaluation'
+    description = 'Run P1-C L1 real vector retrieval evaluation (requires paid API key)'
+    useJUnitPlatform {
+        includeTags 'real-eval'
+    }
+    systemProperty 'eval.p1c.realApi',
+        project.findProperty('eval.p1c.realApi') ?: 'false'
+    systemProperty 'eval.embedding.apiKey',
+        project.findProperty('eval.embedding.apiKey') ?: ''
+    systemProperty 'eval.embedding.baseUrl',
+        project.findProperty('eval.embedding.baseUrl') ?: 'https://dashscope.aliyuncs.com/compatible-mode/v1'
+    systemProperty 'eval.embedding.model',
+        project.findProperty('eval.embedding.model') ?: 'text-embedding-v3'
+    systemProperty 'eval.embedding.dimensions',
+        project.findProperty('eval.embedding.dimensions') ?: '1024'
+    systemProperty 'eval.datasource.url',
+        project.findProperty('eval.datasource.url') ?: 'jdbc:postgresql://localhost:5433/interview_guide_eval'
+    systemProperty 'eval.datasource.username',
+        project.findProperty('eval.datasource.username') ?: 'eval_runner'
+    systemProperty 'eval.datasource.password',
+        project.findProperty('eval.datasource.password') ?: 'eval_runner_2026'
+    jvmArgs '--enable-native-access=ALL-UNNAMED'
 }
 
 // 将仓库根目录 .env 注入 bootRun，便于本地加载 AI_BAILIAN_API_KEY 等变量（Gradle 进程默认不读 .env）
