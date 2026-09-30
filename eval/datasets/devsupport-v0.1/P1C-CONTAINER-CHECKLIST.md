@@ -75,9 +75,9 @@ docker volume inspect --format '{{ index .Config.Labels "com.docker.compose.proj
 
 ```bash
 docker compose -f docker-compose-eval.yml --env-file .env.eval config --quiet; echo "exit=$?"
-docker compose -f docker-compose-eval.yml --env-file .env.eval config | grep -A2 "ports:"
+docker compose -f docker-compose-eval.yml --env-file .env.eval config | grep -B2 -A6 "5433"
 ```
-预期：第一条 exit=0（两个 `:?` 变量都已提供；缺失时 compose 必须拒绝渲染——那正是期望的护栏，此时记录为「护栏生效」并停止去补 `.env.eval`）。第二条出现 `127.0.0.1:5433:5432`。
+预期：第一条 exit=0（两个 `:?` 变量都已提供；缺失时 compose 必须拒绝渲染——那正是期望的护栏，此时记录为「护栏生效」并停止去补 `.env.eval`）。第二条里出现 `published: "5433"`、`target: 5432`、`host_ip: 127.0.0.1`（`config` 输出是长格式，**不要**按 `127.0.0.1:5433:5432` 这个短语法去 grep，会误判）。
 
 ## 5. C4–C6 — 容器启动与初始化脚本是否真的执行过
 
@@ -92,12 +92,15 @@ docker compose -f docker-compose-eval.yml logs eval-postgres \
   | grep -E "initdb|docker-entrypoint-initdb.d|10-eval-schema|20-eval-user|database system is ready"
 ```
 预期：日志出现 `/docker-entrypoint-initdb.d/10-eval-schema.sql` 与 `20-eval-user.sh` 的执行行。
+判据分层：日志措辞随镜像版本可能变化，因此**权威判据是 C6 的对象存在性**（两张表 + 角色都在 = 初始化确实跑过）；日志只是定位线索，二者都要记进 §12。
 失败停止：若日志显示跳过初始化（复用已有数据目录），说明卷是旧的 → 走 C6 判定；**不要**默认「表应该已经在了」就继续。
 
-```sql
--- C6 陈旧卷判定（用超级用户在容器内执行，只读）
-SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename IN ('vector_store','eval_instance_identity');
-SELECT rolname FROM pg_roles WHERE rolname='eval_runner';
+```bash
+# C6 陈旧卷判定（容器内超级用户，只读；本容器内 postgres 走 local socket 免密）
+docker compose -f docker-compose-eval.yml exec -T eval-postgres \
+  psql -U postgres -d interview_guide_eval -v ON_ERROR_STOP=1 \
+  -c "SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename IN ('vector_store','eval_instance_identity');" \
+  -c "SELECT rolname FROM pg_roles WHERE rolname='eval_runner';"
 ```
 预期：两张表都在 + `eval_runner` 存在。
 失败停止：缺任一即证明初始化未执行。此时**先人工确认卷内确无可保留数据**，再由执行者手工运行 `docker compose -f docker-compose-eval.yml down -v` 与 `up -d`（本清单不代为自动执行），并在 §12 记下确认人与时间。
@@ -144,7 +147,7 @@ INSERT INTO eval_instance_identity VALUES ('probe','x');   -- 期望 permission 
 CREATE TABLE public.probe_t (id int);                       -- 期望 permission denied（PG15+ public 不再默认授 CREATE）
 TRUNCATE vector_store;                                      -- 期望 permission denied
 ```
-失败停止：若任一条**成功**，说明权限被放大，立即停止并报告，不要继续写探针。
+失败停止：若任一条**成功**，说明权限被放大，立即停止并报告，不要继续写探针。特别注意 `CREATE TABLE` 若意外成功，会留下一张 `public.probe_t` —— **不要**用 `eval_runner` 去 DROP（那会把「权限放大」和「自行善后」两件事混在一起），只需在 §12 原样记录残留对象名，交由复核决定重建卷。
 
 ## 8. C9 — 事务内 INSERT/SELECT/UPDATE/DELETE 探针，回滚后全表仍为空
 
@@ -169,10 +172,10 @@ ROLLBACK;"
 ```bash
 PGPASSWORD='<EVAL_RUNNER_PASSWORD>' psql -h 127.0.0.1 -p 5433 -U eval_runner -d interview_guide_eval \
   -c "SELECT count(*) AS total_rows FROM vector_store;
-      SELECT count(*) AS probe_leftovers FROM vector_store WHERE content LIKE '__p1c_perm_probe%';"
+      SELECT count(*) AS probe_leftovers FROM vector_store WHERE starts_with(content, '__p1c_perm_probe');"
 ```
-预期：`total_rows=0` 且 `probe_leftovers=0`。
-失败停止：若残留 > 0（例如 `-c` 里的 `BEGIN` 被提前中断），**必须**按 `content LIKE '__p1c_perm_probe%'` 精确删除并复查，直到回到 0；不得留下探针行进入后续评测——Phase 0 的「全表为空」硬性检查会因此把整轮拒掉，而这属于环境污染，不是隔离结论。删除只允许针对该 `content` 前缀，禁止无条件 `DELETE`/`TRUNCATE` 全表。
+预期：`total_rows=0` 且 `probe_leftovers=0`。（用 `starts_with()` 而不是 `LIKE '__p1c_perm_probe%'`：`_` 在 `LIKE` 里是单字符通配符，会把匹配范围放大到非探针行。）
+失败停止：若残留 > 0（例如 `-c` 里的 `BEGIN` 被提前中断），**必须**按 `starts_with(content, '__p1c_perm_probe')` 精确删除并复查，直到回到 0；不得留下探针行进入后续评测——Phase 0 的「全表为空」硬性检查会因此把整轮拒掉，而这属于环境污染，不是隔离结论。删除只允许针对该 `content` 前缀，禁止无条件 `DELETE`/`TRUNCATE` 全表。
 
 ## 9. C10 — 1024 维列、HNSW `vector_cosine_ops` 索引、扩展版本
 
