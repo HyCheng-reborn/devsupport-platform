@@ -90,6 +90,8 @@ public class RagChatDTO {
         Long id,
         String type,  // "user" | "assistant"
         String content,
+        String sourcesJson,  // 来源信息JSON
+        String status,       // 消息完成状态
         LocalDateTime createdAt
     ) {}
 }

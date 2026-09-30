@@ -1,6 +1,7 @@
 package interview.guide.modules.knowledgebase;
 
 import interview.guide.common.result.Result;
+import interview.guide.modules.knowledgebase.model.MessageStatus;
 import interview.guide.modules.knowledgebase.model.RagChatDTO.CreateSessionRequest;
 import interview.guide.modules.knowledgebase.model.RagChatDTO.SendMessageRequest;
 import interview.guide.modules.knowledgebase.model.RagChatDTO.SessionDTO;
@@ -8,6 +9,10 @@ import interview.guide.modules.knowledgebase.model.RagChatDTO.SessionDetailDTO;
 import interview.guide.modules.knowledgebase.model.RagChatDTO.SessionListItemDTO;
 import interview.guide.modules.knowledgebase.model.RagChatDTO.UpdateKnowledgeBasesRequest;
 import interview.guide.modules.knowledgebase.model.RagChatDTO.UpdateTitleRequest;
+import interview.guide.modules.knowledgebase.model.RetrievalResult;
+import interview.guide.modules.knowledgebase.model.SourceReference;
+import interview.guide.modules.knowledgebase.repository.KnowledgeBaseRepository;
+import interview.guide.modules.knowledgebase.service.KnowledgeBaseQueryService;
 import interview.guide.modules.knowledgebase.service.RagChatSessionService;
 import jakarta.validation.Valid;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -23,6 +28,8 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+import tools.jackson.databind.ObjectMapper;
 
 import java.util.List;
 
@@ -36,6 +43,9 @@ import java.util.List;
 public class RagChatController {
 
     private final RagChatSessionService sessionService;
+    private final KnowledgeBaseQueryService queryService;
+    private final KnowledgeBaseRepository knowledgeBaseRepository;
+    private final ObjectMapper objectMapper;
 
     /**
      * 创建新会话
@@ -108,7 +118,7 @@ public class RagChatController {
      * 发送消息（流式SSE）
      * 流式响应设计：
      * 1. 先同步保存用户消息和创建 AI 消息占位
-     * 2. 返回流式响应
+     * 2. 返回流式响应 + 来源事件 + done 事件
      * 3. 流式完成后通过回调更新消息
      */
     @PostMapping(value = "/api/rag-chat/sessions/{sessionId}/messages/stream",
@@ -123,27 +133,56 @@ public class RagChatController {
         // 1. 准备消息（保存用户消息，创建 AI 消息占位）
         Long messageId = sessionService.prepareStreamMessage(sessionId, request.question());
 
-        // 2. 获取流式响应
-        StringBuilder fullContent = new StringBuilder();
+        // 2. 获取检索结果（包含流式响应和来源文档）
+        RetrievalResult result = sessionService.getStreamAnswer(sessionId, request.question());
 
-        return sessionService.getStreamAnswer(sessionId, request.question())
+        // 3. 构建来源列表
+        List<SourceReference> sources = queryService.buildSourceReferences(
+            result.sourceDocuments(), knowledgeBaseRepository);
+        String sourcesJson = null;
+        try {
+            sourcesJson = objectMapper.writeValueAsString(sources);
+        } catch (Exception e) {
+            log.warn("序列化来源信息失败: {}", e.getMessage());
+            sourcesJson = "[]";
+        }
+
+        // 4. 判断状态
+        MessageStatus status = result.sourceDocuments().isEmpty()
+            ? MessageStatus.NO_RESULTS
+            : MessageStatus.COMPLETED;
+
+        // 5. 文本流 + sources 事件 + done 事件
+        StringBuilder fullContent = new StringBuilder();
+        final String finalSourcesJson = sourcesJson;
+
+        return result.contentStream()
             .doOnNext(fullContent::append)
-            // 使用 ServerSentEvent 包装，转义换行符避免破坏 SSE 格式
             .map(chunk -> ServerSentEvent.<String>builder()
+                .event("data")
                 .data(chunk.replace("\n", "\\n").replace("\r", "\\r"))
                 .build())
+            .concatWith(Mono.just(ServerSentEvent.<String>builder()
+                .event("sources")
+                .data(finalSourcesJson)
+                .build()))
+            .concatWith(Mono.just(ServerSentEvent.<String>builder()
+                .event("done")
+                .data("")
+                .build()))
             .doOnComplete(() -> {
-                // 3. 流式完成后更新消息内容
-                sessionService.completeStreamMessage(messageId, fullContent.toString());
+                sessionService.completeStreamMessage(messageId, fullContent.toString(), status, finalSourcesJson);
                 log.info("RAG 聊天流式完成: sessionId={}, messageId={}", sessionId, messageId);
             })
             .doOnError(e -> {
-                // 错误时也保存已接收的内容
-                String content = !fullContent.isEmpty()
-                    ? fullContent.toString()
-                    : "【错误】回答生成失败：" + e.getMessage();
-                sessionService.completeStreamMessage(messageId, content);
+                sessionService.completeStreamMessage(messageId, fullContent.toString(),
+                    MessageStatus.MODEL_FAILED, finalSourcesJson);
                 log.error("RAG 聊天流式错误: sessionId={}", sessionId, e);
+            })
+            .doOnCancel(() -> {
+                sessionService.completeStreamMessage(messageId, fullContent.toString(),
+                    MessageStatus.CLIENT_DISCONNECTED, finalSourcesJson);
+                log.info("RAG 聊天流式取消: sessionId={}, messageId={}", sessionId, messageId);
             });
     }
 }

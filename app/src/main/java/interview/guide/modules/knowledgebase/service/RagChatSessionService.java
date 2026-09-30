@@ -6,12 +6,14 @@ import interview.guide.infrastructure.mapper.KnowledgeBaseMapper;
 import interview.guide.infrastructure.mapper.RagChatMapper;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseEntity;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseListItemDTO;
+import interview.guide.modules.knowledgebase.model.MessageStatus;
 import interview.guide.modules.knowledgebase.model.RagChatDTO.CreateSessionRequest;
 import interview.guide.modules.knowledgebase.model.RagChatDTO.SessionDTO;
 import interview.guide.modules.knowledgebase.model.RagChatDTO.SessionDetailDTO;
 import interview.guide.modules.knowledgebase.model.RagChatDTO.SessionListItemDTO;
 import interview.guide.modules.knowledgebase.model.RagChatMessageEntity;
 import interview.guide.modules.knowledgebase.model.RagChatSessionEntity;
+import interview.guide.modules.knowledgebase.model.RetrievalResult;
 import interview.guide.modules.knowledgebase.repository.KnowledgeBaseRepository;
 import interview.guide.modules.knowledgebase.repository.RagChatMessageRepository;
 import interview.guide.modules.knowledgebase.repository.RagChatSessionRepository;
@@ -23,7 +25,6 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import reactor.core.publisher.Flux;
 
 import java.util.HashSet;
 import java.util.List;
@@ -146,23 +147,32 @@ public class RagChatSessionService {
 
     /**
      * 流式响应完成后更新消息
+     *
+     * @param messageId 消息ID
+     * @param content AI回答内容
+     * @param status 消息完成状态
+     * @param sourcesJson 来源信息JSON（可为null）
      */
     @Transactional
-    public void completeStreamMessage(Long messageId, String content) {
+    public void completeStreamMessage(Long messageId, String content, MessageStatus status, String sourcesJson) {
         RagChatMessageEntity message = messageRepository.findById(messageId)
             .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "消息不存在"));
 
         message.setContent(content);
         message.setCompleted(true);
+        message.setStatus(status);
+        message.setSourcesJson(sourcesJson);
         messageRepository.save(message);
 
-        log.info("完成流式消息: messageId={}, contentLength={}", messageId, content.length());
+        log.info("完成流式消息: messageId={}, contentLength={}, status={}", messageId, content.length(), status);
     }
 
     /**
      * 获取流式回答（带多轮上下文）
+     *
+     * @return 检索结果（包含流式响应和来源文档）
      */
-    public Flux<String> getStreamAnswer(Long sessionId, String question) {
+    public RetrievalResult getStreamAnswer(Long sessionId, String question) {
         RagChatSessionEntity session = sessionRepository.findByIdWithKnowledgeBases(sessionId)
             .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "会话不存在"));
 

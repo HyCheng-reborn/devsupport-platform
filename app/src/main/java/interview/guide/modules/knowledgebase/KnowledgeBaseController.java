@@ -106,7 +106,8 @@ public class KnowledgeBaseController {
     public Flux<String> queryKnowledgeBaseStream(@Valid @RequestBody QueryRequest request) {
         log.debug("收到知识库流式查询请求: kbIds={}, question={}, 线程: {} (虚拟线程: {})",
             request.knowledgeBaseIds(), request.question(), Thread.currentThread(), Thread.currentThread().isVirtual());
-        return queryService.answerQuestionStream(request.knowledgeBaseIds(), request.question());
+        // 仅返回内容流，来源信息在此端点忽略
+        return queryService.answerQuestionStream(request.knowledgeBaseIds(), request.question()).contentStream();
     }
 
     // ========== 分类管理 API ==========

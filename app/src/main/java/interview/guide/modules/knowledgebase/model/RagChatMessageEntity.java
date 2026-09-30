@@ -67,6 +67,19 @@ public class RagChatMessageEntity {
      */
     private Boolean completed = true;
 
+    /**
+     * 来源信息JSON（存储检索来源引用）
+     */
+    @Column(columnDefinition = "TEXT")
+    private String sourcesJson;
+
+    /**
+     * 消息完成状态
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(length = 32)
+    private MessageStatus status = MessageStatus.COMPLETED;
+
     public enum MessageType {
         USER,      // 用户消息
         ASSISTANT  // AI 回答
