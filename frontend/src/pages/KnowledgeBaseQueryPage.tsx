@@ -4,7 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {Virtuoso, type VirtuosoHandle} from 'react-virtuoso';
 import {knowledgeBaseApi, type KnowledgeBaseItem, type SortOption} from '../api/knowledgebase';
-import {ragChatApi, type RagChatSessionListItem} from '../api/ragChat';
+import {ragChatApi, type RagChatSessionListItem, type SourceReference, type MessageStatus} from '../api/ragChat';
 import {formatDateOnly} from '../utils/date';
 import DeleteConfirmDialog from '../components/DeleteConfirmDialog';
 import CodeBlock from '../components/CodeBlock';
@@ -20,6 +20,8 @@ interface Message {
   type: 'user' | 'assistant';
   content: string;
   timestamp: Date;
+  sources?: SourceReference[];
+  status?: MessageStatus;
 }
 
 interface CategoryGroup {
@@ -189,6 +191,8 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
         type: m.type,
         content: m.content,
         timestamp: new Date(m.createdAt),
+        sources: m.sourcesJson ? (() => { try { return JSON.parse(m.sourcesJson) as SourceReference[]; } catch { return undefined; } })() : undefined,
+        status: m.status,
       })));
     } catch (err) {
       console.error('加载会话失败', err);
@@ -282,7 +286,10 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
     };
     setMessages(prev => [...prev, userMessage]);
 
+    const assistantMsgId = Date.now();
+
     const assistantMessage: Message = {
+      id: assistantMsgId,
       type: 'assistant',
       content: '',
       timestamp: new Date(),
@@ -290,6 +297,7 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
     setMessages(prev => [...prev, assistantMessage]);
 
     let fullContent = '';
+    let currentSources: SourceReference[] = [];
     const updateAssistantMessage = (content: string) => {
       setMessages(prev => {
         const newMessages = [...prev];
@@ -319,19 +327,40 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
             });
           });
         },
+        (sourcesJson: string) => {
+          try {
+            currentSources = JSON.parse(sourcesJson) as SourceReference[];
+          } catch {
+            currentSources = [];
+          }
+        },
         () => {
+          // onDone: 设置来源和状态
+          setMessages(prev => prev.map(m =>
+            m.id === assistantMsgId
+              ? { ...m, content: fullContent, sources: currentSources, status: 'COMPLETED' as MessageStatus }
+              : m
+          ));
           setLoading(false);
           loadSessions();
         },
         (error: Error) => {
           console.error('流式查询失败:', error);
-          updateAssistantMessage(fullContent || error.message || '回答失败，请重试');
+          setMessages(prev => prev.map(m =>
+            m.id === assistantMsgId
+              ? { ...m, content: fullContent || error.message, sources: currentSources, status: 'MODEL_FAILED' as MessageStatus }
+              : m
+          ));
           setLoading(false);
         }
       );
     } catch (err) {
       console.error('发起流式查询失败:', err);
-      updateAssistantMessage(err instanceof Error ? err.message : '回答失败，请重试');
+      setMessages(prev => prev.map(m =>
+        m.id === assistantMsgId
+          ? { ...m, content: err instanceof Error ? err.message : '回答失败，请重试', status: 'MODEL_FAILED' as MessageStatus }
+          : m
+      ));
       setLoading(false);
     }
   };
@@ -571,6 +600,40 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
                                   </ReactMarkdown>
                                   {loading && index === messages.length - 1 && (
                                     <span className="inline-block w-0.5 h-5 bg-primary-500 ml-1 animate-pulse" />
+                                  )}
+                                  {msg.sources && msg.sources.length > 0 && (
+                                    <div className="mt-2 border-t border-gray-200 dark:border-slate-600 pt-2">
+                                      <div className="text-xs text-gray-500 dark:text-slate-400 mb-1">引用来源：</div>
+                                      {msg.sources.slice(0, 5).map((src, i) => (
+                                        <details key={i} className="mb-1 text-xs">
+                                          <summary className="cursor-pointer text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">
+                                            {src.documentName}
+                                            {src.score != null && (
+                                              <span className="text-gray-400 ml-1">({(src.score * 100).toFixed(0)}%)</span>
+                                            )}
+                                          </summary>
+                                          <p className="mt-1 text-gray-600 dark:text-slate-400 pl-3 whitespace-pre-wrap">
+                                            {src.contentSnippet}
+                                          </p>
+                                        </details>
+                                      ))}
+                                      {msg.sources.length > 5 && (
+                                        <div className="text-xs text-gray-400 dark:text-slate-500">还有 {msg.sources.length - 5} 个来源...</div>
+                                      )}
+                                    </div>
+                                  )}
+                                  {msg.status && msg.status !== 'COMPLETED' && (
+                                    <div className="mt-1 text-xs">
+                                      {msg.status === 'NO_RESULTS' && (
+                                        <span className="text-yellow-500">未找到相关文档</span>
+                                      )}
+                                      {msg.status === 'MODEL_FAILED' && (
+                                        <span className="text-red-500">回答生成失败</span>
+                                      )}
+                                      {msg.status === 'CLIENT_DISCONNECTED' && (
+                                        <span className="text-gray-400">回答中断</span>
+                                      )}
+                                    </div>
                                   )}
                                 </div>
                               )}

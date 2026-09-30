@@ -19,10 +19,21 @@ export interface RagChatSessionListItem {
   isPinned: boolean;
 }
 
+export interface SourceReference {
+  kbId: number;
+  documentName: string;
+  contentSnippet: string;
+  score: number | null;
+}
+
+export type MessageStatus = 'COMPLETED' | 'NO_RESULTS' | 'MODEL_FAILED' | 'CLIENT_DISCONNECTED';
+
 export interface RagChatMessage {
   id: number;
   type: 'user' | 'assistant';
   content: string;
+  sourcesJson?: string;
+  status?: MessageStatus;
   createdAt: string;
 }
 
@@ -111,6 +122,7 @@ export const ragChatApi = {
     sessionId: number,
     question: string,
     onMessage: (chunk: string) => void,
+    onSources: (sourcesJson: string) => void,
     onComplete: () => void,
     onError: (error: Error) => void
   ): Promise<void> {
@@ -122,7 +134,9 @@ export const ragChatApi = {
         body: JSON.stringify({ question }),
       },
       onMessage,
-      onComplete,
+      onSources: (data) => onSources(data),
+      onDone: () => onComplete(),
+      onComplete: () => onComplete(),
       onError,
       parseMode: 'event',
       trimDataPrefixSpace: false,

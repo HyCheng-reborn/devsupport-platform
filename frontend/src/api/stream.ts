@@ -12,6 +12,8 @@ interface StreamSseOptions {
   trimDataPrefixSpace?: boolean;
   unescapeEscapedNewlines?: boolean;
   dataJoiner?: string;
+  onSources?: (data: string) => void;
+  onDone?: () => void;
 }
 
 function toApiUrl(url: string): string {
@@ -207,6 +209,15 @@ function processEventBlock(block: string, options: StreamSseOptions): void {
     const parsed = parseJsonObject(content);
     const businessError = parsed ? getBusinessEventError(parsed) : null;
     throw businessError ?? new Error(content.trim() || '请求失败');
+  }
+
+  if (eventName === 'sources') {
+    options.onSources?.(content);
+    return;
+  }
+  if (eventName === 'done') {
+    options.onDone?.();
+    return;
   }
 
   emitContent(content, options);
