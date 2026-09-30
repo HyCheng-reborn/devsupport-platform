@@ -36,13 +36,28 @@ public final class P1cEvalRunOrchestrator {
     CleanupRowCounts clean() throws Exception;
   }
 
-  /** 报告写入动作（真实实现序列化并落盘）。 */
+  /**
+   * 报告写入动作（真实实现序列化并落盘）。
+   *
+   * <p>契约：写手收到的是<b>写出前快照</b>——{@link RunResult#reportWritten()} 恒为 {@code false}、
+   * {@link RunResult#reportError()} 恒为 {@code null}，因为本次写出的结果不可能由被写出的内容自证。
+   * 写出结果只由 {@link #execute(Body)} 的返回值携带（成功为 {@code withReportWritten()}，
+   * 失败为 {@code withReportError()}）。报告序列化内容因此不得读取这两个字段，
+   * 其余字段（{@code failure} / {@code cleanup} / {@code partialResults} / {@code observations}）
+   * 在传入时均已定值。
+   */
   public interface ReportWriter {
     void write(RunResult result) throws Exception;
   }
 
   /** 实验主体：通过 {@link RunContext} 声明阶段、写入起点与部分结果。 */
   public interface Body {
+    /**
+     * @param ctx 主体必须在<b>每个阶段边界</b>调用 {@link RunContext#partialResults(Object)} 与
+     *            {@link RunContext#observe(String, Object)} 落一次快照，而不是只在全部阶段完成后
+     *            一次性设置；否则阶段中途抛异常时，编排层与报告拿到的部分结果会一直是空的，
+     *            "部分结果"契约就只存在于注释里。
+     */
     void execute(RunContext ctx) throws Exception;
   }
 
@@ -70,6 +85,10 @@ public final class P1cEvalRunOrchestrator {
       return writesStarted;
     }
 
+    /**
+     * 记录当前已取得的部分结果（后一次覆盖前一次，编排层取最后一次快照）。
+     * 主体应在每个阶段边界调用，使中途失败时报告仍带着到该阶段为止的结果。
+     */
     public void partialResults(Object results) {
       this.partialResults = results;
     }

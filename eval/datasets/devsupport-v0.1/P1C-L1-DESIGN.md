@@ -1,6 +1,6 @@
 # P1-C L1 真实向量检索评测 — 实施设计 v1.4
 
-> 状态：**设计 v1.4，待定点复核**。未实现、未运行、未调用任何付费 API。
+> 状态：**设计 v1.4 + 实现期定点修订（见 §16）已落地**。离线装配与假组件测试已编译通过并全绿；**仍未**启动 Docker、连接数据库、调用付费 Embedding API、运行 `evalP1cReal` 或执行正式 L1。
 > v1.3 → v1.4：①预算口径明确为**外层 Embedding 操作次数**，不伪称 HTTP 请求硬上限；评测专用 `OpenAIClient` 关闭 SDK 自动重试（`maxRetries(0)`）并通过 OkHttp 拦截器观测实际 HTTP 请求数，两个计数分别记入报告，两者可能不等时报告差异；②数据库身份核验增强：评测容器 `eval-init.sql` 创建标记表 `eval_instance_identity`（固定 UUID）+ 专用用户 `eval_runner`（最小权限），Java 连接验证标记 UUID 和用户身份，有效拦截常见误连（固定 UUID 是仓库常量，不能单独证明物理容器身份，运行前仍须核对连接 URL、Compose 目标和标记）；③`queryCounts` 拆分：`excludedQueries` → `retrievedQueries` / `answerableMetricQueries` / `noAnswerDiagnosticQueries` / `metricsExcludedNoAnswerQueries` / `failedRetrievalQueries`；④`dataHashes` 补齐 `chunkManifestSha256`，P1-B 冻结工件引用全部核实；⑤`initializeSchema` 改为 `false`（由 `eval-init.sql` 预建表/扩展/索引），评测用户无需 `CREATE EXTENSION` 权限；⑥`tryAcquire()` 达到上限时拒绝递增，避免报告出现未执行的 attempt。
 > v1.2 → v1.3：①调用预算移到 Embedding 发送前、区分尝试/成功/失败/重试；②连接身份核验增强（端口+主机+数据库+用户）；③装配代码修正为 `OpenAIClient` + `.openAiClient()` + `org.springframework.ai.document.MetadataMode`；④Phase 0 顺序闭合（`to_regclass` 先于 `COUNT`）；⑤入库核对改为 SHA-256 + 逐行对照 + 全表 28 行；⑥NO_ANSWER 4 题纳入检索（不计入可答题指标分母）；⑦回退检索写入明确契约（候选数、过滤、计数、隔离）；⑧报告补齐第四工件哈希、起止时间、完整请求计数、清理状态。
 > 前置依赖：P1-A（指标计算核心，已就绪）、P1-B（devsupport-v0.1 语料 + 候选 gold，已就绪）。
@@ -746,7 +746,13 @@ v1.4 锁定 `maxRetries(0)` 关闭 SDK 自动重试，但外层操作仍可能�
    ⚠️ 以上全部在任何建表、写入或付费请求之前执行
 4. 读取 P1-B chunks.jsonl，验证 chunk 数 = 28
 5. 读取 P1-B candidate-gold.json，验证总题数 = 20（ANSWERABLE = 16，NO_ANSWER = 4）
-6. 计算 P1-B 冻结工件的 SHA-256（chunks.jsonl、candidate-gold.json、corpus-manifest.json、chunk-manifest.json）
+6. 冻结工件校验（先于凭据读取、客户端构建、数据库连接与任何写入）：
+   a. 计算 chunks.jsonl、candidate-gold.json、corpus-manifest.json、chunk-manifest.json 的 SHA-256
+   b. 行尾归一化（CRLF/CR → LF）后再取 UTF-8 SHA-256，作为比对口径
+   c. 与已提交冻结清单 `p1c-frozen-artifacts.json` 的 `expectedSha256NormalizedLf` **逐项比对**
+   d. 清单是超集要求：缺少必需工件条目、重复 fileName、非法哈希都算违例，不能靠裁剪清单放行
+   e. 任一项不符 → 整轮不启动（仅计算哈希而不比对批准值不构成校验：条数不变、正文改写的漂移会静默通过）
+   f. 原始字节哈希仅作为报告参考值记录，不参与比对（`core.autocrlf=true` 下随检出环境变化）
 7. 构建 EmbeddingModel 和 PgVectorStore：
    - EmbeddingModel 使用评测专用 OpenAIClient（maxRetries(0) + HTTP 计数拦截器）
    - PgVectorStore: initializeSchema=false（表/扩展/索引由 eval-init.sql 预建）
@@ -801,7 +807,10 @@ v1.4 锁定 `maxRetries(0)` 关闭 SDK 自动重试，但外层操作仍可能�
      - chunkId = metadata.get("eval_chunk_id")
      - kbId = "900001"
      - score = document.getScore()  // 1.0 - cosine_distance
-  5. 隔离检查：若返回结果的 eval_run_id 与本次不同，立即中止并报告
+  5. 隔离检查（主检索带 kb_id 过滤，返回结果同样逐条判定，不静默过滤）：
+     - eval_run_id 缺失或与本次不同 → 中止并报告
+     - eval_chunk_id 缺失或不在冻结 28 ID 集合内 → 中止并报告（冻结 ID 准入）
+     - kb_id 越界或非字符串型 → 中止并报告
   6. 构建 QueryJudgement(evalQuery, hits)
      - ANSWERABLE 题 → 进入 Phase 3/4 指标计算
      - NO_ANSWER 题 → 仅记录 topK 原始结果和分数到报告诊断区
@@ -815,16 +824,28 @@ v1.4 锁定 `maxRetries(0)` 关闭 SDK 自动重试，但外层操作仍可能�
 |------|------|------|------|
 | 1 | `budget.tryAcquire()` | 递增 attempts | 回退也是一次 API 调用 |
 | 2 | 构建无过滤 SearchRequest：`topK(30)`，无 `filterExpression` | — | 候选数扩大到 `topK×3 = 30`，与生产 `KnowledgeBaseVectorService` 回退模式一致 |
-| 3 | `evalVectorStore.similaritySearch(fallbackRequest)` | — | 发出回退请求 |
-| 4 | 本地过滤：保留 `metadata.eval_run_id == 本次 runId` 且 `metadata.kb_id == "900001"` 的结果 | — | 剔除不属于本次 run 的结果 |
-| 5 | 若过滤后无结果或回退也失败 | — | 该题标记为 `RETRIEVAL_FAILED`，hits 为空列表 |
-| 6 | 隔离检查 | — | 若回退结果中出现非本次 runId 的文档，中止并报告 |
+| 3 | `evalVectorStore.similaritySearch(fallbackRequest)` | — | 发出回退请求；此后步骤 4-6 都在"请求失败"捕获范围之外执行 |
+| 4 | 对**原始**候选逐条归属判定（不先过滤） | — | 见下方"候选处置分类"，任何越界一律中止整轮 |
+| 5 | 冻结 ID 准入（只对确属本次运行的候选） | — | 违例抛出后不得降级为单题 `RETRIEVAL_FAILED`，直接中止整轮 |
+| 6 | 若回退请求成功但确属本次的候选为空 | — | 主链路已异常，空结果无法区分隔离问题，该题记 `RETRIEVAL_FAILED`；回退请求本身失败同样记 `RETRIEVAL_FAILED` |
+
+**回退候选处置分类**（步骤 4 的权威口径：先判定，再取舍）：
+
+| 候选类型 | 处置 | 依据 |
+|----------|------|------|
+| `eval_run_id == 本次 runId` 且 `eval_chunk_id ∈ 冻结 28 ID` 且 `kb_id == "900001"` | 保留，进入准入与指标 | 确属本次运行的本次数据 |
+| 缺失 `eval_run_id`（完全不带 eval 元数据的行） | **中止整轮** | 无法归属即隔离破坏，回退不静默过滤任何行 |
+| `eval_run_id` 为其他 runId | **中止整轮** | 本条即原"非本次 runId 不静默过滤"规则的落地 |
+| 本次 runId 但 `eval_chunk_id` 缺失或不在冻结 28 ID 内 | **中止整轮** | 冻结集合外的本次行只能来自污染或串号 |
+| 本次 runId 但 `kb_id` 越界或非字符串型 | **中止整轮** | kb 隔离破坏；JSONB 里 kb_id 必须是字符串 `"900001"` |
+| 候选列表为 `null` 或含 `null` 元素 | **中止整轮** | 无法归属 |
 
 **回退限制**：
 - 每道题最多 1 次回退（不回退再回退）
 - 回退候选数固定为 `topK × 3 = 30`
 - 回退调用与主检索共享 `EvalCallBudget` 的 50 次总预算
-- 回退结果中若发现非本次 runId 的数据，**不静默过滤**，而是中止评测并报告
+- 回退**不做静默过滤**：上表所有越界分类一律中止评测并报告，报告保留原始候选数 `fallbackRawCandidateCount` 以便核对
+- 归属判定与准入在"回退请求失败"的 `catch` 之外：请求已成功，之后的隔离违例是实验级异常，不得 `recordFailure()` 后降级成单题失败
 
 ### Phase 3：片段命中诊断指标（纯离线，沿用 P1-A）
 
@@ -856,6 +877,27 @@ v1.4 锁定 `maxRetries(0)` 关闭 SDK 自动重试，但外层操作仍可能�
 
 4 道 NO_ANSWER 题的检索结果不进入此阶段。
 ```
+
+### Phase 4 之后：整轮可用性判定（实验级 verdict）
+
+指标计算完成后、清理之前，对整轮做一次实验级判定（实现里随 Phase 3 指标一起计算，报告字段 `roundAvailability`）：
+
+```
+输入：expectedQueries=20、queriesCompleted、failedRetrievalQueries、
+      zeroResultQueries、queriesWithFallbackAttempted
+
+判定（Status = USABLE / NOT_USABLE）：
+1. 请求完成题数 < 20 → NOT_USABLE，理由记入报告
+2. failedRetrievalQueries > 0 → NOT_USABLE（"按零计入宏平均是失败题的单题口径，不是检索质量结论"）
+3. 其余情况 → USABLE
+
+NOT_USABLE 时的动作：抛出实验级异常，整轮判为失败，指标不得作为正式基线。
+```
+
+**口径边界**（避免与既有约定冲突）：
+- `OK_ZERO_RESULT` 属正常数据点（检索真的零命中），**不参与**本判定，不是失败
+- 失败题的原始记录照旧保留在报告里，宏平均照旧把失败题按零计入 — 本 verdict 只在**结论层**声明"这一轮不可解释"，不改变单题口径
+- 正式基线的前提是 20 题请求全部完成；只有 USABLE 轮的指标才被解读
 
 ### Phase 5：清理（写操作，finally）
 
@@ -991,7 +1033,19 @@ FC@K(q) = 1 if ∀i: S_i ∩ R_K ≠ ∅, else 0
     "minScore": 0.0,
     "queryRewrite": false,
     "evalKbId": 900001,
-    "reportingKValues": [1, 3, 5, 10]
+    "reportingKValues": [1, 3, 5, 10],
+    "fallbackNote": "回退对原始候选逐条归属判定；越界一律中止整轮，不做静默过滤"
+  },
+
+  "roundAvailability": {
+    "description": "本轮是否可作为正式基线（存在 RETRIEVAL_FAILED 或请求未全部完成 → NOT_USABLE，整轮判失败）",
+    "expectedQueries": 20,
+    "queriesCompleted": 20,
+    "failedRetrievalQueries": 0,
+    "zeroResultQueries": 0,
+    "queriesWithFallbackAttempted": 0,
+    "status": "USABLE",
+    "reasons": []
   },
 
   "dataHashes": {
@@ -999,7 +1053,29 @@ FC@K(q) = 1 if ∀i: S_i ∩ R_K ≠ ∅, else 0
     "candidateGoldSha256": "...",
     "corpusManifestSha256": "...",
     "chunkManifestSha256": "...",
-    "source": "runtime-sha256-of-frozen-p1b-artifacts"
+    "contentHashAlgorithm": "SHA-256",
+    "contentHashByteContract": "行尾归一化（CRLF/CR → LF）后 UTF-8 字节",
+    "source": "runtime-sha256-of-frozen-p1b-artifacts（原始字节哈希仅作参考，批准值比对见 artifactFreeze）"
+  },
+
+  "artifactFreeze": {
+    "description": "四份 P1-B 工件与已提交冻结清单的逐项哈希对照；失败发生在建客户端、连数据库与任何写入之前",
+    "freezeListFile": "eval/datasets/devsupport-v0.1/p1c-frozen-artifacts.json",
+    "hashCaliber": "行尾归一化（CRLF/CR → LF）后取 UTF-8 字节的 SHA-256 小写十六进制",
+    "comparedField": "expectedSha256NormalizedLf",
+    "requiredFileNames": ["chunks.jsonl", "candidate-gold.json", "corpus-manifest.json", "chunk-manifest.json"],
+    "checks": [
+      {
+        "fileName": "chunks.jsonl",
+        "expectedSha256NormalizedLf": "...",
+        "actualSha256NormalizedLf": "...",
+        "actualSha256RawBytes": "...",
+        "sha256RawBytesAtRecord": "...",
+        "normalizedLfMatched": true
+      }
+    ],
+    "violations": [],
+    "status": "PASS"
   },
 
   "ingestionVerification": {
@@ -1087,7 +1163,10 @@ FC@K(q) = 1 if ∀i: S_i ∩ R_K ≠ ∅, else 0
     "noAnswerDiagnosticQueries": 4,
     "metricsExcludedNoAnswerQueries": 4,
     "metricsDenominator": 16,
-    "failedRetrievalQueries": 0
+    "failedRetrievalQueries": 0,
+    "zeroResultQueries": 0,
+    "queriesWithFallbackAttempted": 0,
+    "fallbackRawCandidatesObserved": 0
   },
 
   "failureInfo": {
@@ -1174,6 +1253,12 @@ List<RetrievalHit> hits = documents.stream()
 | `app/src/test/java/interview/guide/eval/P1cAnswerPointCoverage.java` | test | APC@K、FC@K 计算 + 全局 coveredPoints / 38 |
 | `app/src/test/java/interview/guide/eval/P1cEvalReport.java` | test | P1-C 报告 record（独立外壳，含 connectionIdentity、callGuard 双口径、queryCounts 拆分、cleanupStatus、failureInfo） |
 | `app/src/test/java/interview/guide/eval/P1cEvalReportWriter.java` | test | 报告 JSON 序列化（Jackson 3） |
+| `app/src/test/java/interview/guide/eval/P1cRetrievalHandler.java` | test | 主检索 + 单次回退、四态契约；回退**原始候选**逐条归属判定与冻结 ID 准入（违例中止整轮） |
+| `app/src/test/java/interview/guide/eval/P1cEvalRunOrchestrator.java` | test | 主体 → 清理 → 报告的生命周期编排；清理/报告失败作为 suppressed 附加，不覆盖主异常 |
+| `app/src/test/java/interview/guide/eval/P1cFrozenArtifactVerifier.java` | test | 与已提交冻结清单逐项比对行尾归一化 SHA-256；纯函数 `compare()` + 清单读取 + 违例收集 |
+| `app/src/test/java/interview/guide/eval/P1cRoundAvailability.java` | test | 整轮可用性 verdict（USABLE / NOT_USABLE），存在 `RETRIEVAL_FAILED` 或请求未全完成则整轮不可用 |
+| `app/src/test/java/interview/guide/eval/P1cOfflineUnitTest.java` | test | 假组件离线用例（不含真实 DB / API，随 `:app:test` 运行） |
+| `eval/datasets/devsupport-v0.1/p1c-frozen-artifacts.json` | — | 已提交冻结清单：4 份 P1-B 工件的批准哈希（行尾归一化口径）+ 记录时原始字节哈希与行数 |
 | `app/build.gradle` | — | `test` 任务 `useJUnitPlatform { excludeTags 'real-eval' }` + `evalP1cReal` 任务 |
 | `docker-compose-eval.yml` | — | 独立评测 Postgres 容器，挂载 `eval-init.sql` |
 | `docker/postgres/eval-init.sql` | — | 评测容器初始化：向量扩展 + 标记表 + 预建 vector_store + 专用用户 `eval_runner` |
@@ -1199,6 +1284,7 @@ List<RetrievalHit> hits = documents.stream()
 | 6 | `eval_runner` 权限正确 | `psql -U postgres ... -c "SELECT rolsuper, rolcreatedb FROM pg_roles WHERE rolname='eval_runner'"` | `false, false` |
 | 7 | `.env` 中有 API Key | `grep -q AI_BAILIAN_API_KEY .env && echo "已设置" || echo "未设置"` | 输出 `已设置` |
 | 8 | P1-B 工件完整（4 个冻结文件） | `ls eval/datasets/devsupport-v0.1/chunks.jsonl candidate-gold.json corpus-manifest.json chunk-manifest.json` | 4 个文件存在 |
+| 8b | 冻结工件与批准哈希一致 | 由 Phase 0 自动执行（比对 `p1c-frozen-artifacts.json` 的 `expectedSha256NormalizedLf`）；离线可在改一个字符后运行 `./gradlew :app:test --tests 'interview.guide.eval.*'` 观察违例 | 4 项 `normalizedLfMatched=true`，违例列表为空 |
 | 9 | 普通 test 不触发评测 | `./gradlew :app:test --no-daemon` | 无 Embedding 调用 |
 | 10 | 装配代码编译通过 | `./gradlew :app:compileTestJava` | BUILD SUCCESSFUL |
 
@@ -1227,6 +1313,19 @@ List<RetrievalHit> hits = documents.stream()
 | 8 | `eval-init.sql` 中 `eval_runner` 密码策略 | 当前硬编码 `eval_runner_2026`，是否需要改为环境变量传入 |
 
 ## 16. 变更摘要
+
+### v1.4 实现期定点修订（2026-09-30，白天离线修复轮）
+
+针对 `caf05cf` 复核意见，仅改离线实现与文档，未启动容器、未连数据库、未调用付费 API，`reportVersion` 保持 `p1c-l1-v1.4`。
+
+| # | 复核问题 | 严重度 | 修订前实现 | 修订后 |
+|---|---------|--------|-----------|--------|
+| 1 | 回退结果的隔离违例被静默丢弃 | P0 | 先按 runId/kb_id/冻结 ID 过滤，再对剩下的候选做准入 → 外来行根本不进违例检查，"合法 + 非法混合"的题被记成成功；且准入异常位于"回退请求失败"的 `catch` 内，被降级为单题 `RETRIEVAL_FAILED`，与"准入违例直接中止整轮"的交付说明不符 | 对**原始**候选先逐条归属判定（§7 回退候选处置分类：缺失 runId / 其他 runId / 本次 runId 但 ID 或 kb_id 越界 / null 候选，一律中止整轮，无静默过滤），准入与归属都在请求失败捕获范围之外，不再 `recordFailure()`；新增"合法+非法混合"等 8 个假组件用例 |
+| 2 | 检索请求全部失败仍可能成功退出 | P1 | 无失败阈值，报告照常写出且实验判定为成功 | 新增 `P1cRoundAvailability`：请求完成题数 < 20 或存在 `RETRIEVAL_FAILED` → `NOT_USABLE` 并抛实验级异常，指标不得作为正式基线；失败题原始记录与"按零计入宏平均"的单题口径**保留不变**，`OK_ZERO_RESULT` 属正常数据点不参与判定 |
+| 3 | "冻结工件校验"只算哈希不比对批准值 | P1 | 仅计算 SHA-256 写入报告；内容改写但条数不变（28/20/16/4/38 全对）的漂移可通过 | 新增已提交清单 `p1c-frozen-artifacts.json`，Phase 0 逐项比对**行尾归一化**（CRLF/CR → LF）SHA-256，失败发生在凭据读取、客户端构建、数据库连接与任何写入之前；清单按超集要求校验（缺条目/重复/非法哈希均为违例）；新增"计数不变但正文改写"用例 |
+| 4 | 入库核对失败时上下文为空 | P1（口径） | `ctx.partialResults/observe` 只在全部阶段完成后设置 | 在每个阶段边界（PHASE0/写入起点/PHASE1/PHASE2/PHASE3）落快照，中途异常时报告仍携带 `artifactFreeze`/`ingestionVerification`/题目结果与请求观测 |
+| 5 | 报告写出口径不一致 | P1（口径） | `reportWriter.write(result)` 收到 `reportWritten=false` 快照，`withReportWritten()` 只在之后返回 | 明确为**写出前快照**契约并写入 javadoc + 测试；写出结果只经 `execute()` 返回值传播，`reportWritten` 不进 JSON |
+| 6 | 跨平台哈希口径风险 | — | 未记录 | 原始字节哈希仅作参考值（`core.autocrlf=true` 下随检出环境变化），批准值与比对均采用归一化口径，与 `P1cExpectedChunk` 一致 |
 
 ### v1.3 → v1.4
 

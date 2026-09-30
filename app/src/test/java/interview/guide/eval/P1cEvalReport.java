@@ -16,6 +16,19 @@ import java.util.Map;
  *
  * <p>检索状态：{@code OK_WITH_HITS} / {@code OK_ZERO_RESULT} / {@code RETRIEVAL_FAILED}
  * 三者互斥，失败题的指标按零计入宏平均但状态独立记录，不与"正常零命中"合并。
+ *
+ * <p>两个"结论层"字段与指标本身分开写出，避免读宏平均的人把流程故障当成检索质量：
+ * <ul>
+ *   <li>{@code artifactFreeze}：四份 P1-B 工件的批准哈希与实测哈希逐项对照（只看数量抓不到
+ *       等条数的内容漂移）。</li>
+ *   <li>{@code roundAvailability}：本轮是否可作为正式基线。存在 {@code RETRIEVAL_FAILED}
+ *       或题数未全部请求完成时为 {@code NOT_USABLE}，此时宏平均仍然照口径计算并保存，
+ *       但它的含义是"请求故障下的按零累加"，不是检索质量。</li>
+ * </ul>
+ *
+ * <p>报告由 {@link P1cEvalRunOrchestrator} 在清理之后写出，因此即使清理失败或实验主体抛异常，
+ * {@code cleanupStatus} / {@code failureInfo} 也已定值；{@code reportWritten} 本身不写进 JSON
+ * （写出这一动作不可能由被写出的内容自证），由编排返回值与 {@code primaryError()} 携带。
  */
 public record P1cEvalReport(
     String reportVersion,
@@ -32,9 +45,11 @@ public record P1cEvalReport(
     CallGuard callGuard,
     QueryCounts queryCounts,
     DataHashes dataHashes,
+    P1cFrozenArtifactVerifier.Verification artifactFreeze,
     IngestionVerification ingestionVerification,
 
     EvalConfig evalConfig,
+    P1cRoundAvailability roundAvailability,
     Map<String, KAggregateReport> macroMetricsByK,
     List<PerQueryResult> answerableResults,
     List<PerQueryResult> noAnswerDiagnostics,
@@ -110,7 +125,8 @@ public record P1cEvalReport(
       int metricsDenominator,
       int failedRetrievalQueries,
       int zeroResultQueries,
-      int queriesWithFallbackAttempted) {
+      int queriesWithFallbackAttempted,
+      int fallbackRawCandidatesObserved) {
   }
 
   public record DataHashes(

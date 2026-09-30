@@ -1,0 +1,41 @@
+{
+  "kind": "p1c-frozen-artifact-freeze-list",
+  "datasetId": "devsupport",
+  "version": "v0.1",
+  "purpose": "P1-C Phase 0 冻结工件校验：把四份 P1-B 工件的实测哈希与本清单逐项比对，不一致即在读取凭据、建立 Embedding 客户端、连接数据库、任何写入之前中止。",
+  "recordedAt": "2026-09-30",
+  "recordedFromCommit": "2903ec2",
+  "hashCaliber": "字节级 CRLF/CR→LF 归一化 → UTF-8 字节 → SHA-256 小写 hex（与 P1cExpectedChunk 的内容哈希同口径）",
+  "hashCaliberNote": "本机 core.autocrlf=true，checkout 会把 LF 改写成 CRLF，整文件原始字节哈希因此随平台而变；归一化哈希对同一提交内容跨平台恒等（对 chunks.jsonl / candidate-gold.json 它恰好等于仓库 blob 的哈希），而任何非行尾的字节改动仍会改变它。",
+  "comparedField": "expectedSha256NormalizedLf",
+  "referenceFieldNote": "sha256RawBytesAtRecord 是记录时（Windows 工作区，CRLF）的原始字节哈希，仅供参考与人工核对，不参与判定；manifest 两个文件当时本就是 LF，所以两列相同。",
+  "artifacts": [
+    {
+      "fileName": "chunks.jsonl",
+      "expectedSha256NormalizedLf": "d611203dabb49e54731f72568dde34027293cba00054fcaab78912ce7b32efb7",
+      "sha256RawBytesAtRecord": "3cf452e50d9065b10577eaeb38298aa503495a47a4d59c27f07a689f1bceca68",
+      "sizeBytesAtRecord": 62469,
+      "referenceRowCount": 28
+    },
+    {
+      "fileName": "candidate-gold.json",
+      "expectedSha256NormalizedLf": "edf38a55fd45448fe040112d1b19aa1c1bedc617a62e87cab28f4dcd0cf90129",
+      "sha256RawBytesAtRecord": "8b1d75a8c9485260ffa83db9d4e1afe1f94ac37b150e1b419aacb9cc6ac4cdf0",
+      "sizeBytesAtRecord": 63163,
+      "referenceEntryCount": 20
+    },
+    {
+      "fileName": "corpus-manifest.json",
+      "expectedSha256NormalizedLf": "57692501db5b971d35f7292c06ba78fa6c97d0e51b434dc57c051d9324517fa6",
+      "sha256RawBytesAtRecord": "57692501db5b971d35f7292c06ba78fa6c97d0e51b434dc57c051d9324517fa6",
+      "sizeBytesAtRecord": 7588
+    },
+    {
+      "fileName": "chunk-manifest.json",
+      "expectedSha256NormalizedLf": "dc180111e40ad55327f2944e6326e092040bbce4e5b171847765ea086cd4cca8",
+      "sha256RawBytesAtRecord": "dc180111e40ad55327f2944e6326e092040bbce4e5b171847765ea086cd4cca8",
+      "sizeBytesAtRecord": 5002
+    }
+  ],
+  "notes": "本清单是新增文件，不改动任何已冻结的 P1-B 工件。校验粒度是整份文件的字节内容：28/20/16/4/38 之类的数量契约由各读取阶段单独保证，两者互不替代——只看数量抓不到等条数的内容漂移，所以批准值必须是哈希。"
+}

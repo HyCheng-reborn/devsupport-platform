@@ -60,9 +60,15 @@ import tools.jackson.databind.json.JsonMapper;
  * {@link P1cIngestionVerifier}（严格入库核对）、{@link P1cRetrievalHandler}（检索状态与回退准入）、
  * {@link P1cMultiKMetrics}（多 K 宏/微指标）、{@link P1cEvalRunOrchestrator}（统一失败与清理）。
  *
- * <p>阶段顺序：Phase 0 环境与身份校验（无写副作用、无付费请求）→ Phase 1 入库 + 逐行核对
- * （此处标记写入起点）→ Phase 2 检索 20 题 → Phase 3/4 多 K 指标 → 清理 → 报告。
- * 清理与报告写出由 orchestrator 统一保证（清理先于报告），各阶段不散写 finally。
+ * <p>阶段顺序：Phase 0 环境与身份校验（无写副作用、无付费请求；工件哈希与已提交冻结清单逐项比对，
+ * 且该校验先于读取凭据、构建客户端、连接数据库）→ Phase 1 入库 + 逐行核对
+ * （此处标记写入起点）→ Phase 2 检索 20 题 → Phase 3/4 多 K 指标 + 整轮可用性判定 → 清理 → 报告。
+ * 清理与报告写出由 orchestrator 统一保证（清理先于报告），各阶段不散写 finally；
+ * 每个阶段边界都会落一次部分结果与请求观测快照，中途失败时报告仍带着到该阶段为止的内容。
+ *
+ * <p>整轮可用性：存在 {@code RETRIEVAL_FAILED} 或题数未全部请求完成时，Phase 3 之后抛实验级异常
+ * （{@link P1cRoundAvailability}）。失败题的原始记录与按零计入的多 K 指标仍写进报告，
+ * 但这一轮不会被当成"跑成功了的基线"。
  *
  * <p>前置条件：
  * <ul>
@@ -99,6 +105,8 @@ public class P1cRealRetrievalEvalTest {
   private static final String KB_ID = P1cEvalResultValidator.EXPECTED_KB_ID;
   private static final String KB_FILTER = "kb_id in ['" + KB_ID + "']";
   private static final String REPORT_VERSION = "p1c-l1-v1.4";
+  private static final Set<String> FROZEN_ARTIFACT_FILES = Set.of(
+      "chunks.jsonl", "candidate-gold.json", "corpus-manifest.json", "chunk-manifest.json");
 
   @Test
   void realRetrievalEval() throws Throwable {
@@ -154,6 +162,7 @@ public class P1cRealRetrievalEvalTest {
     int dimensions;
 
     P1cEvalReport.ConnectionIdentity connectionIdentity;
+    P1cFrozenArtifactVerifier.Verification artifactFreeze;
     P1cEvalReport.IngestionVerification ingestion;
     Integer dbVectorDimension;
     String dbIndexDef;
@@ -166,26 +175,50 @@ public class P1cRealRetrievalEvalTest {
     int failedRetrievalQueries;
     int zeroResultQueries;
     int fallbackQueries;
+    int fallbackRawCandidates;
+    P1cRoundAvailability roundAvailability;
 
     void runPhases(RunContext ctx) throws Exception {
       ctx.phase("PHASE0_ENV");
       phase0Environment();
+      snapshot(ctx);
 
       ctx.phase("PHASE1_INGEST");
       // 从这一刻起可能已产生写副作用：orchestrator 必须尝试按 runId 清理
       ctx.startWrites();
+      snapshot(ctx);
       phase1IngestAndVerify();
+      snapshot(ctx);
 
       ctx.phase("PHASE2_RETRIEVAL");
       phase2Retrieve();
+      snapshot(ctx);
 
       ctx.phase("PHASE3_METRICS");
       phase3Metrics();
+      snapshot(ctx);
+    }
 
-      ctx.partialResults(List.copyOf(answerableResults));
+    /**
+     * 每个阶段边界都落一次部分结果与请求观测快照（后一次覆盖前一次）。
+     * 入库核对失败时 {@link #ingestion} 已定值但检索还没跑，此时报告仍能拿到该阶段为止的结果，
+     * 而不是一个空上下文。
+     */
+    private void snapshot(RunContext ctx) {
+      Map<String, Object> partial = new LinkedHashMap<>();
+      partial.put("phase", ctx.phase());
+      partial.put("artifactFreeze", artifactFreeze);
+      partial.put("ingestionVerification", ingestion);
+      partial.put("answerableResults", List.copyOf(answerableResults));
+      partial.put("noAnswerDiagnostics", List.copyOf(noAnswerDiagnostics));
+      ctx.partialResults(partial);
       ctx.observe("outerOperations", new LinkedHashMap<>(stageCounts));
       ctx.observe("budgetAttempts", budget.getAttempts());
       ctx.observe("httpRequestsObserved", httpCounter.get());
+      ctx.observe("failedRetrievalQueries", failedRetrievalQueries);
+      ctx.observe("zeroResultQueries", zeroResultQueries);
+      ctx.observe("fallbackQueries", fallbackQueries);
+      ctx.observe("fallbackRawCandidates", fallbackRawCandidates);
     }
 
     // ───── Phase 0：环境与身份校验（无写操作、无付费请求）─────
@@ -203,6 +236,20 @@ public class P1cRealRetrievalEvalTest {
           throw new IllegalStateException("P1-B 冻结工件缺失: " + p.toAbsolutePath());
         }
       }
+
+      // 冻结工件校验：与已提交清单里的批准哈希逐项比对。
+      // 位置是硬约束——必须在读取凭据、构建 Embedding 客户端、连接数据库、任何写入之前完成，
+      // 否则一份被改写而条数不变的工件会先被付费 Embedding 向量化再发现。
+      artifactFreeze = P1cFrozenArtifactVerifier.verifyAgainstFreezeList(
+          datasetDir, FROZEN_ARTIFACT_FILES);
+      if (!artifactFreeze.passed()) {
+        throw new IllegalStateException("P1-B 冻结工件校验失败（" + artifactFreeze.violations().size()
+            + " 项违例，本轮不启动）:\n  - "
+            + String.join("\n  - ", artifactFreeze.violations()));
+      }
+      log.info("Phase 0: 冻结工件逐项比对通过: {} 个工件, 口径={}",
+          artifactFreeze.checks().size(), artifactFreeze.hashCaliber());
+
       chunksSha256 = sha256File(chunksPath);
       candidateGoldSha256 = sha256File(candidateGoldPath);
       corpusManifestSha256 = sha256File(corpusManifestPath);
@@ -401,6 +448,7 @@ public class P1cRealRetrievalEvalTest {
         if (outcome.fallbackAttempted()) {
           fallbackQueries++;
         }
+        fallbackRawCandidates += outcome.fallbackRawCandidateCount();
         if (outcome.failed()) {
           failedRetrievalQueries++;
           log.error("检索失败（该题按零计入宏平均，状态独立记为 RETRIEVAL_FAILED，"
@@ -481,8 +529,18 @@ public class P1cRealRetrievalEvalTest {
         }
       }
       aggregatesByK = P1cEvalReport.reportAggregates(aggregated, answerablePerK.size());
-      log.info("Phase 3/4 完成: 宏平均分母={} 道可答题, 微平均分母={} 个答案要点",
-          answerablePerK.size(), EXPECTED_ANSWER_POINTS);
+      roundAvailability = P1cRoundAvailability.evaluate(EXPECTED_QUERY_COUNT,
+          answerableResults.size() + noAnswerDiagnostics.size(), failedRetrievalQueries,
+          zeroResultQueries, fallbackQueries);
+      log.info("Phase 3/4 完成: 宏平均分母={} 道可答题, 微平均分母={} 个答案要点, 整轮可用性={}",
+          answerablePerK.size(), EXPECTED_ANSWER_POINTS, roundAvailability.status());
+
+      // 实验级判定：单题按零口径不能顺手变成"整轮成功"。
+      // 这里抛出后 orchestrator 仍会先清理再写报告，报告里保留失败题记录与已算出的多 K 指标。
+      if (!roundAvailability.usable()) {
+        throw new IllegalStateException("P1-C 本轮不可用，指标不得作为正式基线: "
+            + String.join("; ", roundAvailability.reasons()));
+      }
     }
 
     // ───── Phase 5：由 orchestrator 调用（按 runId 清理并回读残留）─────
@@ -528,6 +586,11 @@ public class P1cRealRetrievalEvalTest {
       outer.put("hardLimit", st.budget.getHardLimit());
     }
 
+    P1cRoundAvailability availability = st.roundAvailability != null ? st.roundAvailability
+        : P1cRoundAvailability.evaluate(EXPECTED_QUERY_COUNT,
+            st.answerableResults.size() + st.noAnswerDiagnostics.size(),
+            st.failedRetrievalQueries, st.zeroResultQueries, st.fallbackQueries);
+
     P1cEvalReport report = new P1cEvalReport(
         REPORT_VERSION, st.evalRunId,
         fmt.format(st.startTime.atOffset(ZoneOffset.UTC)),
@@ -553,17 +616,23 @@ public class P1cRealRetrievalEvalTest {
             st.answerableResults.size() + st.noAnswerDiagnostics.size(),
             st.answerableResults.size(), st.noAnswerDiagnostics.size(),
             st.noAnswerDiagnostics.size(), st.answerablePerK.size(),
-            st.failedRetrievalQueries, st.zeroResultQueries, st.fallbackQueries),
+            st.failedRetrievalQueries, st.zeroResultQueries, st.fallbackQueries,
+            st.fallbackRawCandidates),
         new P1cEvalReport.DataHashes(st.chunksSha256, st.candidateGoldSha256,
             st.corpusManifestSha256, st.chunkManifestSha256, "SHA-256",
             "换行归一化(CRLF/CR→LF) → UTF-8 字节 → SHA-256 小写 hex；"
             + "写入侧取自 chunks.jsonl 解码文本，核对侧取自 vector_store.content 列，同一函数",
-            "sha256-of-p1b-frozen-artifacts"),
+            "整文件原始字节 SHA-256（随 checkout 行尾策略而变，仅作参考记录；"
+            + "批准值比对见 artifactFreeze，那里用行尾归一化哈希）"),
+        st.artifactFreeze,
         st.ingestion,
         new P1cEvalReport.EvalConfig(TOP_K, 0.0, false, KB_ID,
             P1cMultiKMetrics.DEFAULT_KS, FALLBACK_TOP_K,
-            "主检索异常时每题至多 1 次回退：无过滤 topK=30 → 本地按 eval_run_id / kb_id / 冻结 28 ID 过滤；"
-            + "过滤后为空仍判 RETRIEVAL_FAILED"),
+            "主检索异常时每题至多 1 次回退：无过滤 topK=30 → 对原始候选逐条归属判定。"
+            + "只有本次 runId 且 chunkId 落在冻结 28 集合、kb_id 值与存储类型都合规的候选才计入；"
+            + "其余候选（其他 runId、缺失 runId、本次 runId 但 ID/kb_id 越界、null 候选）一律中止整轮，"
+            + "不做静默过滤。回退候选集为空仍判 RETRIEVAL_FAILED"),
+        availability,
         st.aggregatesByK,
         List.copyOf(st.answerableResults),
         List.copyOf(st.noAnswerDiagnostics),

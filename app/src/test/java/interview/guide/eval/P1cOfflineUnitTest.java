@@ -10,6 +10,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -258,13 +260,20 @@ class P1cOfflineUnitTest {
           Map.of("queryAttempts", 20, "fallbackAttempts", 1, "totalAttempts", 23, "hardLimit", 50),
           new P1cEvalReport.HttpObservation(23, "interceptor", "note"),
           "before-send", "WITHIN_LIMIT", "外层操作≠HTTP 上限");
-      var counts = new P1cEvalReport.QueryCounts(20, 20, 16, 4, 4, 16, 1, 2, 1);
+      var counts = new P1cEvalReport.QueryCounts(20, 20, 16, 4, 4, 16, 1, 2, 1, 30);
       var hashes = new P1cEvalReport.DataHashes(
           "a", "b", "c", "d", "SHA-256", "normalize→UTF-8→sha256", "runtime");
+      var freeze = new P1cFrozenArtifactVerifier.Verification(
+          P1cFrozenArtifactVerifier.FREEZE_LIST_FILE_NAME, P1cFrozenArtifactVerifier.HASH_CALIBER,
+          P1cFrozenArtifactVerifier.COMPARED_FIELD, List.of("chunks.jsonl"),
+          List.of(new P1cFrozenArtifactVerifier.Check(
+              "chunks.jsonl", "e", "e", "r", "raw", true)),
+          List.of(), "PASS");
       var ingestion = new P1cEvalReport.IngestionVerification(
           28, 28, 28, 28, 0, 1024, List.of(), "PASS");
       var evalConfig = new P1cEvalReport.EvalConfig(
           10, 0.0, false, "900001", P1cMultiKMetrics.DEFAULT_KS, 30, "回退契约");
+      var availability = P1cRoundAvailability.evaluate(20, 20, 1, 2, 1);
       var perK = Map.of("k=1", new P1cEvalReport.PerKMetrics(1.0, 1.0, 0.5, false, 1, 2));
       var agg = Map.of("k=1", new P1cEvalReport.KAggregateReport(
           1, 16, 0.5, 0.4, 0.3, 0.2, 12, 38, 12 / 38.0, "macro≠micro"));
@@ -278,7 +287,8 @@ class P1cOfflineUnitTest {
       var report = new P1cEvalReport(
           "p1c-l1-v1.4", "run-1", "2026-09-29T00:00:00Z", "2026-09-29T00:01:00Z",
           "real-embedding", "p1c-l1-vector-retrieval", "disclaimer",
-          identity, embedding, vs, guard, counts, hashes, ingestion, evalConfig, agg,
+          identity, embedding, vs, guard, counts, hashes, freeze, ingestion, evalConfig,
+          availability, agg,
           List.of(query), List.of(diagnostic),
           new P1cEvalReport.CleanupStatus("CLEANED", true, 28, 0, null, "note"),
           new P1cEvalReport.FailureInfo("PHASE2_RETRIEVAL", "IllegalStateException", "boom", "note"));
@@ -286,7 +296,13 @@ class P1cOfflineUnitTest {
       assertThat(report.callGuard().outerOperations()).containsEntry("fallbackAttempts", 1);
       assertThat(report.queryCounts().failedRetrievalQueries()).isEqualTo(1);
       assertThat(report.queryCounts().zeroResultQueries()).isEqualTo(2);
+      assertThat(report.queryCounts().fallbackRawCandidatesObserved()).isEqualTo(30);
       assertThat(report.ingestionVerification().status()).isEqualTo("PASS");
+      assertThat(report.artifactFreeze().status()).isEqualTo("PASS");
+      assertThat(report.artifactFreeze().comparedField()).isEqualTo("expectedSha256NormalizedLf");
+      assertThat(report.roundAvailability().usable()).isFalse();
+      assertThat(report.roundAvailability().status())
+          .isEqualTo(P1cRoundAvailability.Status.NOT_USABLE);
       assertThat(report.macroMetricsByK().get("k=1").totalAnswerPoints()).isEqualTo(38);
       assertThat(report.answerableResults()).singleElement()
           .satisfies(q -> assertThat(q.retrievalStatus()).isEqualTo("OK_WITH_HITS"));
@@ -297,7 +313,9 @@ class P1cOfflineUnitTest {
       String json = tools.jackson.databind.json.JsonMapper.builder().build()
           .writerWithDefaultPrettyPrinter().writeValueAsString(report).replaceAll("\\s+", "");
       assertThat(json).contains("\"k=1\"", "\"retrievalStatus\":\"OK_WITH_HITS\"",
-          "\"cleanupStatus\"").doesNotContain("sk-");
+          "\"cleanupStatus\"", "\"artifactFreeze\"", "\"roundAvailability\"",
+          "\"NOT_USABLE\"", "\"expectedSha256NormalizedLf\"")
+          .doesNotContain("sk-");
     }
   }
 
@@ -522,27 +540,6 @@ class P1cOfflineUnitTest {
       var entries = root.get("entries");
       assertThat(entries.isArray()).isTrue();
       assertThat(entries.size()).as("candidate-gold.json entries 数量").isEqualTo(20);
-    }
-
-    /**
-     * 从 {@code user.dir}（{@code :app:test} 的 workingDir）出发定位仓库内数据集；
-     * 若上层 Gradle 已注入 {@code eval.datasetDir}，优先使用它。
-     */
-    private Path locateRepoDatasetDir() {
-      String prop = System.getProperty("eval.datasetDir");
-      if (prop != null && !prop.isBlank() && Files.isDirectory(Path.of(prop))) {
-        return Path.of(prop);
-      }
-      Path fromApp = Path.of("..").resolve("eval/datasets/devsupport-v0.1").normalize();
-      if (Files.isDirectory(fromApp)) {
-        return fromApp;
-      }
-      Path fromRoot = Path.of("eval/datasets/devsupport-v0.1").normalize();
-      if (Files.isDirectory(fromRoot)) {
-        return fromRoot;
-      }
-      throw new IllegalStateException("无法定位 P1-B 数据集目录（user.dir="
-          + System.getProperty("user.dir") + "）");
     }
   }
 
@@ -807,35 +804,138 @@ class P1cOfflineUnitTest {
     }
 
     @Test
-    @DisplayName("主检索异常→回退 topK=30 无过滤并本地隔离过滤")
-    void retrieve_mainThrows_fallbackFiltersForeignRows() {
+    @DisplayName("主检索异常→回退 topK=30，原始候选逐条归属合规后计入")
+    void retrieve_mainThrows_fallbackKeepsOwnCandidates() {
       FakeSearch search = new FakeSearch();
       search.mainError = new IllegalStateException("SQL 超时");
-      search.fallbackResult = List.of(
-          hit("chunk-a"),
-          new Hit("chunk-b", 0.8, "other-run", KB, true),
-          new Hit("chunk-b", 0.8, RUN, "12345", true));
+      search.fallbackResult = List.of(hit("chunk-a"), hit("chunk-b"));
+      P1cEvalCallBudget budget = new P1cEvalCallBudget(50);
 
-      var outcome = handler(new P1cEvalCallBudget(50), search).retrieve("q");
+      var outcome = handler(budget, search).retrieve("q");
 
       assertThat(outcome.status()).isEqualTo(P1cRetrievalHandler.Status.OK_WITH_HITS);
       assertThat(outcome.fallbackAttempted()).isTrue();
       assertThat(search.calls).containsExactly("main:10", "fallback:30");
-      assertThat(outcome.hits()).extracting(Hit::evalChunkId).containsExactly("chunk-a");
+      assertThat(outcome.hits()).extracting(Hit::evalChunkId).containsExactly("chunk-a", "chunk-b");
+      // 写出原始候选条数，才能证明判定是在回退返回的全部候选上做的
+      assertThat(outcome.fallbackRawCandidateCount()).isEqualTo(2);
+      assertThat(budget.getAttempts()).isEqualTo(2);
+      assertThat(budget.getSuccesses()).isEqualTo(1);
+      assertThat(budget.getFailures()).isEqualTo(1);
     }
 
     @Test
-    @DisplayName("回退过滤后为空：判 RETRIEVAL_FAILED，绝不降级成正常零命中")
-    void retrieve_fallbackEmptyAfterFilter_isFailure() {
+    @DisplayName("回退混合合法与外来候选：外来行不再被静默过滤，整轮中止")
+    void retrieve_fallbackMixedLegitAndForeign_abortsRun() {
       FakeSearch search = new FakeSearch();
       search.mainError = new IllegalStateException("SQL 超时");
-      search.fallbackResult = List.of(new Hit("chunk-a", 0.8, "other-run", KB, true));
+      // rank=1 完全合规；旧实现先过滤掉 rank=2/3，再只对剩下的候选做准入，
+      // 于是这道题会被记成 OK_WITH_HITS，隔离破坏看不见
+      search.fallbackResult = List.of(
+          hit("chunk-a"),
+          new Hit("chunk-b", 0.8, "other-run", KB, true),
+          new Hit("chunk-a", 0.7, RUN, "12345", true));
+      P1cEvalCallBudget budget = new P1cEvalCallBudget(50);
+
+      assertThatThrownBy(() -> handler(budget, search).retrieve("q"))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("回退候选隔离违例")
+          .hasMessageContaining("rank=2")
+          .hasMessageContaining("非本次 runId")
+          .hasMessageContaining("other-run");
+      // 抛出而不是返回：违例没有被降级成单题 RETRIEVAL_FAILED
+      assertThat(budget.getSuccesses()).isEqualTo(1);
+      assertThat(budget.getFailures()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("回退混合：本次 runId 但 chunkId 越界，中止整轮（旧实现会当成不合规行丢掉）")
+    void retrieve_fallbackOurRunIdNonFrozenChunkId_abortsRun() {
+      FakeSearch search = new FakeSearch();
+      search.mainError = new IllegalStateException("SQL 超时");
+      search.fallbackResult = List.of(hit("chunk-a"), new Hit("chunk-ghost", 0.8, RUN, KB, true));
+
+      assertThatThrownBy(() -> handler(new P1cEvalCallBudget(50), search).retrieve("q"))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("rank=2")
+          .hasMessageContaining("不在冻结 2 ID 集合内")
+          .hasMessageContaining("chunk-ghost");
+    }
+
+    @Test
+    @DisplayName("回退候选缺失 eval_run_id：无法归属即中止，不能当成别人的行过滤掉")
+    void retrieve_fallbackUnattributableCandidate_abortsRun() {
+      FakeSearch search = new FakeSearch();
+      search.mainError = new IllegalStateException("SQL 超时");
+      search.fallbackResult = List.of(new Hit("chunk-a", 0.8, null, KB, true));
+
+      assertThatThrownBy(() -> handler(new P1cEvalCallBudget(50), search).retrieve("q"))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("缺失 eval_run_id");
+    }
+
+    @Test
+    @DisplayName("回退里本次 runId 的行 kb_id 值越界或非字符串型：中止整轮")
+    void retrieve_fallbackOurRowBadKbId_abortsRun() {
+      FakeSearch badValue = new FakeSearch();
+      badValue.mainError = new IllegalStateException("SQL 超时");
+      badValue.fallbackResult = List.of(new Hit("chunk-a", 0.8, RUN, "12345", true));
+      assertThatThrownBy(() -> handler(new P1cEvalCallBudget(50), badValue).retrieve("q"))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("kb_id 越界");
+
+      FakeSearch badType = new FakeSearch();
+      badType.mainError = new IllegalStateException("SQL 超时");
+      badType.fallbackResult = List.of(new Hit("chunk-a", 0.8, RUN, KB, false));
+      assertThatThrownBy(() -> handler(new P1cEvalCallBudget(50), badType).retrieve("q"))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("非字符串型");
+    }
+
+    @Test
+    @DisplayName("回退候选列表为 null 或含 null 元素：作为隔离违例中止，不当成请求失败")
+    void retrieve_fallbackNullCandidates_abortsRun() {
+      FakeSearch nullList = new FakeSearch();
+      nullList.mainError = new IllegalStateException("SQL 超时");
+      nullList.fallbackResult = null;
+      assertThatThrownBy(() -> handler(new P1cEvalCallBudget(50), nullList).retrieve("q"))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("null 候选列表");
+
+      FakeSearch nullElement = new FakeSearch();
+      nullElement.mainError = new IllegalStateException("SQL 超时");
+      nullElement.fallbackResult = Arrays.asList(hit("chunk-a"), null);
+      assertThatThrownBy(() -> handler(new P1cEvalCallBudget(50), nullElement).retrieve("q"))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("rank=2")
+          .hasMessageContaining("候选为 null");
+    }
+
+    @Test
+    @DisplayName("回退里本次 runId 的行缺失 eval_chunk_id：中止整轮")
+    void retrieve_fallbackOurRowMissingChunkId_abortsRun() {
+      FakeSearch search = new FakeSearch();
+      search.mainError = new IllegalStateException("SQL 超时");
+      search.fallbackResult = List.of(new Hit(null, 0.8, RUN, KB, true));
+
+      assertThatThrownBy(() -> handler(new P1cEvalCallBudget(50), search).retrieve("q"))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("缺失 eval_chunk_id");
+    }
+
+    @Test
+    @DisplayName("回退返回空候选集：判 RETRIEVAL_FAILED，绝不降级成正常零命中")
+    void retrieve_fallbackEmptyCandidates_isFailure() {
+      FakeSearch search = new FakeSearch();
+      search.mainError = new IllegalStateException("SQL 超时");
+      search.fallbackResult = List.of();
 
       var outcome = handler(new P1cEvalCallBudget(50), search).retrieve("q");
 
       assertThat(outcome.status()).isEqualTo(P1cRetrievalHandler.Status.RETRIEVAL_FAILED);
       assertThat(outcome.hits()).isEmpty();
-      assertThat(outcome.fallbackError()).contains("本地过滤后无命中");
+      assertThat(outcome.fallbackError()).contains("候选集为空");
+      assertThat(outcome.fallbackRawCandidateCount()).isZero();
     }
 
     @Test
@@ -1179,5 +1279,278 @@ class P1cOfflineUnitTest {
       assertThat(result.reportUsable()).isTrue();
       assertThat(orchestrator.primaryError()).isNull();
     }
+
+    @Test
+    @DisplayName("写手收到写出前快照：reportWritten=false，写出结果只由返回值携带")
+    void execute_writerSeesPreWriteSnapshot() {
+      Recorder rec = new Recorder();
+      var orchestrator = new P1cEvalRunOrchestrator(rec.cleanup(), rec.writer());
+
+      var result = orchestrator.execute(ctx -> ctx.startWrites());
+
+      // 报告内容不得依赖这两个字段自证：传入时恒为 false/null，结果只在返回值里
+      assertThat(rec.seenByWriter.reportWritten()).isFalse();
+      assertThat(rec.seenByWriter.reportError()).isNull();
+      assertThat(rec.seenByWriter.cleanup().status())
+          .isEqualTo(P1cEvalRunOrchestrator.CleanupStatus.CLEANED);
+      assertThat(result.reportWritten()).isTrue();
+      assertThat(result.failure()).isNull();
+    }
+
+    @Test
+    @DisplayName("按阶段快照：中途失败时写手拿到最后一个阶段边界的内容")
+    void execute_phaseSnapshotsReachWriter() {
+      Recorder rec = new Recorder();
+      var orchestrator = new P1cEvalRunOrchestrator(rec.cleanup(), rec.writer());
+
+      var result = orchestrator.execute(ctx -> {
+        ctx.phase("PHASE0_ENV");
+        ctx.startWrites();
+        // Phase 0 边界：还没有任何结果
+        ctx.partialResults(Map.of("phase", "PHASE0_ENV"));
+        ctx.observe("budgetAttempts", 0);
+
+        ctx.phase("PHASE1_INGEST");
+        // Phase 1 边界：入库核对结论已定值，检索尚未开始
+        ctx.partialResults(Map.of("phase", "PHASE1_INGEST", "violations", 3));
+        ctx.observe("budgetAttempts", 4);
+        throw new IllegalStateException("严格入库核对失败");
+      });
+
+      assertThat(result.observations()).containsEntry("budgetAttempts", 4);
+      assertThat(asMap(rec.seenByWriter.partialResults())).containsEntry("phase", "PHASE1_INGEST");
+      assertThat(asMap(result.partialResults())).containsEntry("violations", 3);
+      assertThat(result.failure().phase()).isEqualTo("PHASE1_INGEST");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> asMap(Object partialResults) {
+      return (Map<String, Object>) partialResults;
+    }
+  }
+
+  @Nested
+  @DisplayName("P1cFrozenArtifactVerifier 批准哈希逐项比对（离线）")
+  class FrozenArtifactVerifierTest {
+
+    private static final Set<String> REQUIRED = Set.of(
+        "chunks.jsonl", "candidate-gold.json", "corpus-manifest.json", "chunk-manifest.json");
+
+    @Test
+    @DisplayName("仓库内已提交冻结清单与已提交工件逐项一致")
+    void verifyAgainstFreezeList_committedListMatchesCommittedArtifacts() throws Exception {
+      var verification = P1cFrozenArtifactVerifier.verifyAgainstFreezeList(
+          locateRepoDatasetDir(), REQUIRED);
+
+      assertThat(verification.passed()).as("违例: %s", verification.violations()).isTrue();
+      assertThat(verification.status()).isEqualTo("PASS");
+      assertThat(verification.checks()).hasSize(4);
+      assertThat(verification.checks()).allMatch(
+          P1cFrozenArtifactVerifier.Check::normalizedLfMatched);
+      assertThat(verification.requiredFileNames()).containsExactlyInAnyOrderElementsOf(REQUIRED);
+      // 比对字段是归一化哈希：原始字节哈希会随 checkout 行尾策略而变，不能当批准值
+      assertThat(verification.comparedField()).isEqualTo("expectedSha256NormalizedLf");
+    }
+
+    @Test
+    @DisplayName("内容被改写但条数不变：数量契约照过，哈希比对必须抓到")
+    void verifyAgainstFreezeList_sameCountDifferentText_isViolation(@TempDir Path tmp)
+        throws Exception {
+      String original = "{\"answerPoints\": 38}\nline2\n";
+      // 同样 2 行、同样 1 处 JSON 字段，只把一个数字改掉——28/20/38 之类的数量校验发现不了
+      String tampered = "{\"answerPoints\": 37}\nline2\n";
+      Files.writeString(tmp.resolve("chunks.jsonl"), tampered, StandardCharsets.UTF_8);
+      Files.writeString(tmp.resolve("candidate-gold.json"), "x\n", StandardCharsets.UTF_8);
+      Files.writeString(tmp.resolve("corpus-manifest.json"), "y\n", StandardCharsets.UTF_8);
+      Files.writeString(tmp.resolve("chunk-manifest.json"), "z\n", StandardCharsets.UTF_8);
+      Files.writeString(tmp.resolve(P1cFrozenArtifactVerifier.FREEZE_LIST_FILE_NAME),
+          freezeList(List.of(
+              entry("chunks.jsonl", P1cFrozenArtifactVerifier.sha256NormalizedLf(
+                  original.getBytes(StandardCharsets.UTF_8))),
+              entry("candidate-gold.json", hash("x\n")),
+              entry("corpus-manifest.json", hash("y\n")),
+              entry("chunk-manifest.json", hash("z\n")))),
+          StandardCharsets.UTF_8);
+
+      var verification = P1cFrozenArtifactVerifier.verifyAgainstFreezeList(tmp, REQUIRED);
+
+      assertThat(verification.passed()).isFalse();
+      assertThat(verification.status()).isEqualTo("FAIL");
+      assertThat(verification.violations()).singleElement()
+          .asString().contains("内容漂移").contains("chunks.jsonl")
+          .contains("条数/行数不变也会在此暴露");
+      assertThat(verification.checks())
+          .filteredOn(c -> c.fileName().equals("chunks.jsonl"))
+          .singleElement()
+          .satisfies(c -> assertThat(c.normalizedLfMatched()).isFalse());
+    }
+
+    @Test
+    @DisplayName("行尾归一化：CRLF / CR / LF 三种 checkout 得到同一个批准哈希")
+    void sha256NormalizedLf_lineEndingsAreEquivalent() {
+      String lf = "a\nb\nc\n";
+      byte[] lfBytes = lf.getBytes(StandardCharsets.UTF_8);
+      byte[] crlf = lf.replace("\n", "\r\n").getBytes(StandardCharsets.UTF_8);
+      byte[] cr = lf.replace("\n", "\r").getBytes(StandardCharsets.UTF_8);
+
+      String expected = P1cFrozenArtifactVerifier.sha256NormalizedLf(lfBytes);
+      assertThat(P1cFrozenArtifactVerifier.sha256NormalizedLf(crlf)).isEqualTo(expected);
+      assertThat(P1cFrozenArtifactVerifier.sha256NormalizedLf(cr)).isEqualTo(expected);
+      // 原始字节哈希确实会因行尾而变——所以它只能作参考，不能当判定依据
+      assertThat(P1cFrozenArtifactVerifier.sha256Hex(crlf))
+          .isNotEqualTo(P1cFrozenArtifactVerifier.sha256Hex(lfBytes));
+    }
+
+    @Test
+    @DisplayName("冻结清单本身坏了要失败：缺条目/重复/空清单/期望值非法")
+    void compare_guardAgainstBrokenFreezeList() {
+      Map<String, String> actual = new LinkedHashMap<>();
+      actual.put("chunks.jsonl", hash("a\n"));
+      actual.put("candidate-gold.json", hash("b\n"));
+      actual.put("corpus-manifest.json", hash("c\n"));
+      actual.put("chunk-manifest.json", hash("d\n"));
+
+      assertThat(P1cFrozenArtifactVerifier.compare(List.of(), actual, REQUIRED))
+          .anyMatch(v -> v.contains("artifacts 为空"));
+
+      // 裁剪清单少报一个工件，不能因此放行
+      var threeOfFour = List.of(
+          new P1cFrozenArtifactVerifier.ExpectedArtifact(
+              "chunks.jsonl", hash("a\n"), hash("a\n")),
+          new P1cFrozenArtifactVerifier.ExpectedArtifact(
+              "candidate-gold.json", hash("b\n"), hash("b\n")),
+          new P1cFrozenArtifactVerifier.ExpectedArtifact(
+              "corpus-manifest.json", hash("c\n"), hash("c\n")));
+      assertThat(P1cFrozenArtifactVerifier.compare(threeOfFour, actual, REQUIRED))
+          .anyMatch(v -> v.contains("缺少必需工件条目") && v.contains("chunk-manifest.json"));
+
+      var duplicated = List.of(
+          new P1cFrozenArtifactVerifier.ExpectedArtifact(
+              "chunks.jsonl", hash("a\n"), hash("a\n")),
+          new P1cFrozenArtifactVerifier.ExpectedArtifact(
+              "chunks.jsonl", hash("a\n"), hash("a\n")));
+      assertThat(P1cFrozenArtifactVerifier.compare(duplicated, actual, REQUIRED))
+          .anyMatch(v -> v.contains("重复 fileName"));
+
+      var badHash = List.of(
+          new P1cFrozenArtifactVerifier.ExpectedArtifact("chunks.jsonl", "not-a-hash", null));
+      assertThat(P1cFrozenArtifactVerifier.compare(badHash, actual, REQUIRED))
+          .anyMatch(v -> v.contains("期望哈希非法"));
+    }
+
+    @Test
+    @DisplayName("冻结清单缺失：在连接数据库之前就以实验级异常拒绝启动")
+    void verifyAgainstFreezeList_missingFreezeList_throws(@TempDir Path tmp) {
+      assertThatThrownBy(() -> P1cFrozenArtifactVerifier.verifyAgainstFreezeList(tmp, REQUIRED))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("冻结工件清单缺失");
+    }
+
+    @Test
+    @DisplayName("kind 不符：不接受拿别的清单来充当批准值")
+    void readFreezeList_wrongKind_throws(@TempDir Path tmp) throws Exception {
+      Path list = tmp.resolve(P1cFrozenArtifactVerifier.FREEZE_LIST_FILE_NAME);
+      Files.writeString(list, "{\"kind\":\"something-else\",\"artifacts\":[]}",
+          StandardCharsets.UTF_8);
+
+      assertThatThrownBy(() -> P1cFrozenArtifactVerifier.readFreezeList(list))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("kind 不符");
+    }
+
+    private static String hash(String text) {
+      return P1cFrozenArtifactVerifier.sha256NormalizedLf(text.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static String entry(String fileName, String sha256) {
+      return "{\"fileName\":\"" + fileName + "\",\"expectedSha256NormalizedLf\":\"" + sha256
+          + "\",\"sha256RawBytesAtRecord\":\"" + sha256 + "\"}";
+    }
+
+    private static String freezeList(List<String> entries) {
+      return "{\"kind\":\"" + P1cFrozenArtifactVerifier.EXPECTED_KIND
+          + "\",\"artifacts\":[" + String.join(",", entries) + "]}";
+    }
+  }
+
+  @Nested
+  @DisplayName("P1cRoundAvailability 整轮可用性判定")
+  class RoundAvailabilityTest {
+
+    @Test
+    @DisplayName("20 题全部请求完成且无失败：USABLE，零命中不影响可用性")
+    void evaluate_allRequestsCompleted_usableDespiteZeroResults() {
+      var availability = P1cRoundAvailability.evaluate(20, 20, 0, 5, 1);
+
+      assertThat(availability.usable()).isTrue();
+      assertThat(availability.status()).isEqualTo(P1cRoundAvailability.Status.USABLE);
+      assertThat(availability.reasons()).isEmpty();
+      // 零命中是正常数据点，不能被并回"请求失败"
+      assertThat(availability.note()).contains("OK_ZERO_RESULT(5 题)").contains("不参与本判定");
+    }
+
+    @Test
+    @DisplayName("存在 RETRIEVAL_FAILED：整轮 NOT_USABLE，即使宏平均已经算出来")
+    void evaluate_anyRetrievalFailed_notUsable() {
+      var availability = P1cRoundAvailability.evaluate(20, 20, 1, 0, 1);
+
+      assertThat(availability.usable()).isFalse();
+      assertThat(availability.status()).isEqualTo(P1cRoundAvailability.Status.NOT_USABLE);
+      assertThat(availability.reasons()).singleElement()
+          .asString().contains("1 题 RETRIEVAL_FAILED").contains("整轮指标不可用");
+    }
+
+    @Test
+    @DisplayName("全部 20 题请求失败：仍然 NOT_USABLE（旧实现会成功退出）")
+    void evaluate_allRequestsFailed_notUsable() {
+      var availability = P1cRoundAvailability.evaluate(20, 20, 20, 0, 20);
+
+      assertThat(availability.usable()).isFalse();
+      assertThat(availability.failedRetrievalQueries()).isEqualTo(20);
+      assertThat(availability.reasons()).singleElement().asString()
+          .contains("20 题 RETRIEVAL_FAILED");
+    }
+
+    @Test
+    @DisplayName("题数没跑完：NOT_USABLE，且与请求失败两条理由并存")
+    void evaluate_incompleteRequests_notUsable() {
+      var availability = P1cRoundAvailability.evaluate(20, 17, 2, 0, 0);
+
+      assertThat(availability.usable()).isFalse();
+      assertThat(availability.reasons()).hasSize(2);
+      assertThat(availability.reasons().get(0)).contains("17/20");
+    }
+
+    @Test
+    @DisplayName("判定只改结论不改口径：失败题记录与零分统计仍在字段里")
+    void evaluate_keepsCountersForReport() {
+      var availability = P1cRoundAvailability.evaluate(20, 20, 3, 2, 4);
+
+      assertThat(availability.queriesCompleted()).isEqualTo(20);
+      assertThat(availability.zeroResultQueries()).isEqualTo(2);
+      assertThat(availability.queriesWithFallbackAttempted()).isEqualTo(4);
+      assertThat(availability.note()).contains("原始记录");
+    }
+  }
+
+  /**
+   * 定位仓库内已提交的 P1-B 数据集目录；离线用例只读它，绝不写入。
+   * 上层 Gradle 已注入 {@code eval.datasetDir} 时优先使用它。
+   */
+  private static Path locateRepoDatasetDir() {
+    String prop = System.getProperty("eval.datasetDir");
+    if (prop != null && !prop.isBlank() && Files.isDirectory(Path.of(prop))) {
+      return Path.of(prop);
+    }
+    Path fromApp = Path.of("..").resolve("eval/datasets/devsupport-v0.1").normalize();
+    if (Files.isDirectory(fromApp)) {
+      return fromApp;
+    }
+    Path fromRoot = Path.of("eval/datasets/devsupport-v0.1").normalize();
+    if (Files.isDirectory(fromRoot)) {
+      return fromRoot;
+    }
+    throw new IllegalStateException("无法定位 P1-B 数据集目录（user.dir="
+        + System.getProperty("user.dir") + "）");
   }
 }
