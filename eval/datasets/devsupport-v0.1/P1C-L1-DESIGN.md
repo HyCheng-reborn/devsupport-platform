@@ -331,15 +331,20 @@ if (existingRows > 0) {
 4. 人工确认后，执行清理：
    ```bash
    # 方案 A：重建容器（最彻底，但 down -v 会不可逆删除卷——只允许人工确认卷内无需保留内容后手工执行）
-   docker compose -f docker-compose-eval.yml down -v
-   docker compose -f docker-compose-eval.yml up -d
+   docker compose -f docker-compose-eval.yml --env-file .env.eval down -v
+   docker compose -f docker-compose-eval.yml --env-file .env.eval up -d
 
    # 方案 B：按残留 runId 精确删除（保留容器与表结构），与交付代码 Phase 5 的清理口径一致
-   docker exec -T interview-eval-postgres \
-       psql -h 127.0.0.1 -p 5432 -U eval_runner -d interview_guide_eval \
-       -c "DELETE FROM vector_store WHERE metadata->>'eval_run_id' = '<残留 runId>';"
+   # 形态以 P1C-CONTAINER-CHECKLIST.md §1 为准：-i 转发 stdin（docker exec 没有 -T 旗标），
+   # 口令由容器内 sh 从容器自身环境展开，SQL 走 here-doc（DELETE 语句里的单引号与外层单引号不能共存于 -c）
+   docker exec -i interview-eval-postgres sh -c \
+       'PGPASSWORD="$EVAL_RUNNER_PASSWORD"; export PGPASSWORD; exec psql -h 127.0.0.1 -p 5432 -U eval_runner -d interview_guide_eval -X -q -v ON_ERROR_STOP=1 -f -' \
+       <<'SQL'
+DELETE FROM vector_store WHERE metadata->>'eval_run_id' = '<残留 runId>';
+SELECT 'remaining_for_run_id=' || COUNT(*) FROM vector_store WHERE metadata->>'eval_run_id' = '<残留 runId>';
+SQL
    ```
-   不使用无条件 `DELETE FROM vector_store;`：交付代码的清理始终带 `eval_run_id` 谓词，全表删除会把「污染清理」与「环境污染取证」混为一谈。宿主机无 `psql`，两种方案都要经容器执行。
+   不使用无条件 `DELETE FROM vector_store;`：交付代码的清理始终带 `eval_run_id` 谓词，全表删除会把「污染清理」与「环境污染取证」混为一谈。宿主机无 `psql`，两种方案都要经容器执行；`down -v` 属不可逆操作，只作为人工确认后的手工动作（确认人、时间与理由记入验证清单 §12）。
 
 **不自动清理的原因**：残留数据可能是上一次评测的中间结果，自动删除会掩盖问题。强制人工确认保证可追溯。
 
@@ -1301,18 +1306,18 @@ List<RetrievalHit> hits = documents.stream()
 | # | 检查项 | 命令 / 方式（宿主机无 `psql`，SQL 一律经容器执行） | 期望 |
 |---|--------|-------------|------|
 | 1 | 评测 Postgres 容器运行 | `docker compose -f docker-compose-eval.yml --env-file .env.eval ps` | State = healthy |
-| 2 | 评测数据库可连接（专用用户，容器内 TCP） | `docker exec -T -e PGPASSWORD="$PGPASSWORD" interview-eval-postgres psql -h 127.0.0.1 -p 5432 -U eval_runner -d interview_guide_eval -X -c "SELECT 1"` | 连接成功，返回 1 |
+| 2 | 评测数据库可连接（专用用户，容器内 TCP） | `docker exec -i interview-eval-postgres sh -c 'PGPASSWORD="$EVAL_RUNNER_PASSWORD"; export PGPASSWORD; exec psql -h 127.0.0.1 -p 5432 -U eval_runner -d interview_guide_eval -X -q -f -'`，SQL（`SELECT 1;`）经顶格 `SQL` 定界的 here-doc 从 stdin 送入（形态以清单 §1 为准；`-i` 转发 stdin，`docker exec` 无 `-T`） | 连接成功，返回 1 |
 | 3 | 标记表存在且 UUID 正确 | 同上包装，`-c "SELECT marker_value FROM eval_instance_identity WHERE marker_key='instance_uuid'"` | `f47ac10b-58cc-4372-a567-0e0283c5d9e7` |
 | 4 | vector 扩展已安装 | 同上包装，`-c "SELECT extname FROM pg_extension WHERE extname='vector'"` | 一行 `vector` |
 | 5 | vector_store 表已存在且为空 | 同上包装，`-c "SELECT COUNT(*) FROM vector_store"` | `0`（`eval-init.sql` 预建表） |
-| 6 | `eval_runner` 权限正确 | `docker exec -T interview-eval-postgres psql -U postgres -d interview_guide_eval -X -c "SELECT rolsuper, rolcreatedb FROM pg_roles WHERE rolname='eval_runner'"` | `f \| f` |
+| 6 | `eval_runner` 权限正确 | `docker exec interview-eval-postgres psql -U postgres -d interview_guide_eval -X -c "SELECT rolsuper, rolcreatedb FROM pg_roles WHERE rolname='eval_runner'"`（裸 `docker exec`：不读 stdin；`docker exec` 没有 `-T` 旗标） | `f \| f` |
 | 7 | `.env` 中有 API Key | `grep -q AI_BAILIAN_API_KEY .env && echo "已设置" || echo "未设置"` | 输出 `已设置` |
 | 8 | P1-B 工件完整（4 个冻结文件） | `cd` 到仓库根后 `ls eval/datasets/devsupport-v0.1/{chunks.jsonl,candidate-gold.json,corpus-manifest.json,chunk-manifest.json}` | 4 个文件存在（原示例只给第一个文件带了目录前缀，复制执行会误报缺失，已更正） |
 | 8b | 冻结工件与批准哈希一致 | 由 Phase 0 自动执行（比对 `p1c-frozen-artifacts.json` 的 `expectedSha256NormalizedLf`）；离线可在改一个字符后运行 `./gradlew :app:test --tests 'interview.guide.eval.*'` 观察违例 | 4 项 `normalizedLfMatched=true`，违例列表为空 |
 | 9 | 普通 test 不触发评测 | `GRADLE_USER_HOME=/c/temp/gradle-tmp ./gradlew :app:test --no-daemon` | 无 Embedding 调用 |
 | 10 | 装配代码编译通过 | `GRADLE_USER_HOME=/c/temp/gradle-tmp ./gradlew :app:compileTestJava` | BUILD SUCCESSFUL |
 
-**本表 2–6 项的执行环境（2026-09-30 实测）**：目标机是 Windows + Git Bash，**宿主机没有 `psql`**（`command -v psql` → NOT FOUND，`jq` 同样缺失），所以这些检查一律通过 `docker exec -T interview-eval-postgres psql ...` 在容器内执行；表中 `$PGPASSWORD` 由清单 §1 的 `echo` + `read -rs P1C_PW && export PGPASSWORD="$P1C_PW"` 在会话内取值一次（口令不出现在命令行、shell 历史或记录表里），收尾 `unset PGPASSWORD P1C_PW`。以 `eval_runner` 做凭据核验时必须走容器内 TCP（`-h 127.0.0.1 -p 5432`），因为 unix socket 的认证方式可能是 `trust`，socket 登录成功**不能**证明 `.env.eval` 里的口令与卷内角色口令一致。第 6 项用 `-U postgres` 走容器内 unix socket（仅读系统目录，不做凭据结论）。完整命令与判据见 `P1C-CONTAINER-CHECKLIST.md` §1 与 C6/C7/C8。
+**本表 2–6 项的执行环境（2026-09-30 与容器验证清单同口径）**：目标机是 Windows + Git Bash，**宿主机没有 `psql`**（`command -v psql` → NOT FOUND，`jq` 同样缺失），所以这些检查一律经 `docker exec` 在容器内执行。命令形态以 `P1C-CONTAINER-CHECKLIST.md` §1 为准：凡以 `eval_runner` 读 SQL 的命令用 `docker exec -i interview-eval-postgres sh -c 'PGPASSWORD="$EVAL_RUNNER_PASSWORD"; export PGPASSWORD; exec psql -h 127.0.0.1 -p 5432 -U eval_runner -d interview_guide_eval -X -q … -f -'`——外层单引号让宿主机不展开口令，口令只由容器内 `sh` 从容器自身环境（`up` 窗口内由 compose 注入）取值，SQL 走引号 here-doc + `-f -`，`-i` 是转发 stdin 的前提（旧版的宿主机静默录入 + `export`、收尾 `unset` 与 `-e` 口令透传**均已作废**：宿主机根本不持有口令；表中 3–5 项写 `-c "…"` 只是简写，照抄时按清单 §1 的 here-doc 形态执行，外层单引号与 SQL 内单引号不能共存于 `-c`）。超管项（第 6 项）不读 stdin，用**裸 `docker exec`**。**实测事实：`docker exec` 没有 `-T` 旗标**（目标机 Docker 29.7.2：`docker exec --help` 无此项，带 `-T` 报 `unknown shorthand flag: 'T' in -T`、exit 125），只有 `docker compose exec` 有 `-T/--no-tty`——上一版本表与说明里的 `-T` 已全部移除。以 `eval_runner` 做凭据核验时必须走容器内 TCP（`-h 127.0.0.1 -p 5432`），因为 unix socket 的认证方式可能是 `trust`，socket 登录成功**不能**证明 `.env.eval` 里的口令与卷内角色口令一致。第 6 项用 `-U postgres` 走容器内 unix socket（仅读系统目录，不做凭据结论）。完整命令、quoting 细则与判据见 `P1C-CONTAINER-CHECKLIST.md` §1、C5.1 与 C6/C7/C8，**以清单为准**。
 
 ## 14. 失败时清理规则
 
@@ -1323,7 +1328,7 @@ List<RetrievalHit> hits = documents.stream()
 | Phase 2 检索中异常退出 | finally 块尝试 DELETE；若 finally 也未执行，下次 Phase 0 检测残留 | 评测代码 + 人工 |
 | finally 块自身失败 | 记录日志（runId、残留行数），不抛异常 | 评测代码 |
 | 下次运行发现残留 | Phase 0 拒绝启动，报告清理命令 | 评测代码 |
-| 人工清理 | `docker compose -f docker-compose-eval.yml down -v && up -d` | 人工 |
+| 人工清理 | `docker compose -f docker-compose-eval.yml --env-file .env.eval down -v` 后 `… --env-file .env.eval up -d`（`down -v` 不可逆删卷，只在人工确认后手工执行；每个 compose 子命令都要带 `--env-file`，否则 `${…:?}` 插值会直接报错） | 人工 |
 
 ## 15. 仍需人工确认的事项
 
@@ -1351,7 +1356,9 @@ List<RetrievalHit> hits = documents.stream()
 | 3 | §2 的 compose 示例是早期版本（超管口令变量名与交付不同且带六位弱默认值、未绑定 `127.0.0.1`、只挂 `init.sql`） | 用交付文件实际内容替换，并列出差异；§3 超级用户报错文案按交付代码改为指向 `eval-user.sh` |
 | 4 | §15 #8 仍把口令策略列为「待人工确认」 | 标为已解决并写清各层强制点；同时把真正的遗留风险改记为「旧卷复用不轮换口令」，指向验证清单 C6/C7 |
 | 5 | §3 init 只在空卷执行的说明不足；§12 文件清单把用户创建归给 `eval-init.sql`；§13 第 8 项 `ls` 缺目录前缀；§14 方案 B 是无条件全表 DELETE | 分别更正为：新卷/旧卷两命题与证据分离、文件清单补 `eval-user.sh` 与 `.env.eval.example` 并声明 init.sql 不含用户/授权、`ls` 用花括号展开、方案 B 按 `eval_run_id` 谓词删除。§13 末尾补记目标机实测环境（宿主无 `psql`/`jq`，psql 一律容器内执行且凭据核验走容器内 TCP） |
-| 6 | §13 的 2–6 项命令仍是「宿主机直接 `psql -h localhost -p 5433`」形态，在目标机上必然 `command not found`；第 1/9/10 项缺 `--env-file` 与 `GRADLE_USER_HOME` | 表格命令改为可直接复制执行：第 1 项补 `--env-file .env.eval`，2–6 项包装成 `docker exec -T interview-eval-postgres psql …`（凭据核验用容器内 TCP，`-U postgres` 只用于读系统目录），9/10 项补 `GRADLE_USER_HOME=/c/temp/gradle-tmp`；表头与说明同步。修订后的命令经 `bash -n` 语法核验（0 失败），期望值也按容器输出改写（`0` 而不是「0 行」、`f \| f` 而不是 `false, false`） |
+| 6 | §13 的 2–6 项命令仍是「宿主机直接 `psql -h localhost -p 5433`」形态，在目标机上必然 `command not found`；第 1/9/10 项缺 `--env-file` 与 `GRADLE_USER_HOME` | 表格命令改为可直接复制执行：第 1 项补 `--env-file .env.eval`，2–6 项包装成 `docker exec -T interview-eval-postgres psql …`（凭据核验用容器内 TCP，`-U postgres` 只用于读系统目录），9/10 项补 `GRADLE_USER_HOME=/c/temp/gradle-tmp`；表头与说明同步。修订后的命令经 `bash -n` 语法核验（0 失败），期望值也按容器输出改写（`0` 而不是「0 行」、`f \| f` 而不是 `false, false`）。**（本行的 `-T` 包装是当时的旧写法，已被下面 #7 取代——真机实测 `docker exec` 无 `-T`，误用 exit 125）** |
+| 7 | 2026-09-30：§13 第 2 项仍带旧形态（`-T` 旗标 + `-e` 宿主机口令透传，口令值会进入 `docker` 进程 argv），表下说明仍教宿主机静默录入 + `export`/`unset` 的取值方式，与容器验证清单当前口径（宿主机不持口令、`docker exec -i` + 容器内 `sh -c` 展开 + here-doc `-f -`、超管 `-c` 用裸 `docker exec`、实测 `docker exec` 无 `-T` 而 `docker compose exec` 有 `-T/--no-tty`）不一致 | 命令形态与口令取值方式同步到清单口径：第 2 项改为 `docker exec -i … sh -c 'PGPASSWORD="$EVAL_RUNNER_PASSWORD"; … exec psql … -f -'` + 顶格 here-doc；第 6 项（超管、不读 stdin）改裸 `docker exec`；表下段落删除宿主机录入/`unset` 流程，补「`docker exec` 无 `-T`」实测注记与「3–5 项 `-c` 为简写、照抄按清单 §1 here-doc 形态」的说明，保留并强化「以 `P1C-CONTAINER-CHECKLIST.md` 为准」指针；表格列结构与期望值未动。未重新引入任何口令字面量；`metadata` 列保持 `json` 未重述 |
+| 8 | 2026-09-30：#7 只覆盖了 §13，扫描当前 HEAD 发现**本文档 §14「失败时清理规则」仍是旧形态**——方案 A 两条 compose 命令缺 `--env-file .env.eval`（`${…:?}` 插值会直接失败）、方案 B 代码块带 `docker exec -T` 且用 `-e` 把宿主机口令变量透进 `docker` argv、并用 `-c "DELETE …"` 传 SQL；而那是**失败应急时最会被照抄执行**的一处。表格「人工清理」行同样缺 `--env-file` | §14 与清单 §1 同口径：方案 A 两条补 `--env-file .env.eval`；方案 B 改 `docker exec -i interview-eval-postgres sh -c 'PGPASSWORD="$EVAL_RUNNER_PASSWORD"; … exec psql -h 127.0.0.1 -p 5432 -U eval_runner -d interview_guide_eval -X -q -v ON_ERROR_STOP=1 -f -'` + 顶格 here-doc，删除按 `metadata->>'eval_run_id'` 谓词并附 `remaining_for_run_id=` 行数复核；「人工清理」行补 `--env-file` 并写明原因。`down -v` 保持为**人工确认后的手工动作**（不可逆、卷内数据不保留），并在正文要求把确认结果记进清单 §12。未引入口令字面量。**并新增机器断言防漂移**：清单 §0 增加 5 条，扫描范围限定为本文档的 bash 围栏代码块 + §13 表格行（不含本 §16 的历史描述），逐条盯住「无 `docker exec -T` 旧形态 / 无 `-e` 口令透传 / 无宿主机静默录入与收尾 unset / compose 命令均带 `--env-file` / §14 方案 B 为 here-doc + 容器内展开」；本文档 §14 那 1 个 bash 围栏经 `bash -n` 0 处语法错误、here-doc 开闭配对 1/1 |
 
 ### v1.4 实现期定点修订（2026-09-30，白天离线修复轮）
 

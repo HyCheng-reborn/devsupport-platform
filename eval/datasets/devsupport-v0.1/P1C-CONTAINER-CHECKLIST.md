@@ -6,7 +6,7 @@
 
 ## 0. 本轮（白天）已做的静态核对
 
-纯本地、零成本、可复跑。本轮定点修订（§14 的 #6、#7、#8）后重跑了下方代码块：**33 项断言全部 PASS，exit=0**（其中 15 项是 compose/init/user.sh/Java/Gradle 的配置与门禁断言，18 项是文档一致性与清单形态断言——上一轮是 25 项/10 项，把清单形态换成「口令只在容器内展开」后形态断言相应增加，#8 又补了两条：读 stdin 的 `docker exec` 必须带 `-i`、三条负向探针都要有会话存活行，故为 16→18）。下面的条目还额外记录了几项**不在代码块里**的核对（生产 Compose 无 `eval` 引用、`.gitignore`、口令字面量扫描、离线测试），逐条列明依据。
+纯本地、零成本、可复跑。本轮定点修订（§14 的 #9、#10、#11；此前的 #6、#7、#8 见同表）后重跑了下方代码块：**39 项断言全部 PASS，exit=0**（其中 15 项是 compose/init/user.sh/Java/Gradle 的配置与门禁断言，19 项是清单自身的文档一致性与形态断言，**5 项是 #11 新增的「设计文档可复制面」断言**——19 项这一路的变化：上一轮是 25 项/10 项，把清单形态换成「口令只在容器内展开」后形态断言相应增加，#8 又补了两条：读 stdin 的 `docker exec` 必须带 `-i`、三条负向探针都要有会话存活行，故为 16→18；#9 再补一条「正文 `docker exec` 命令行零 `-T`」——目标机实测 `docker exec` 无此旗标，见 §1「实测事实」——故为 18→19；#11 把同一套口径从清单扩到 `P1C-L1-DESIGN.md`，所以总数 34→39）。**同一轮还修了这段脚本自身的退出码语义**：`ok` 原先只 `print`，有 FAIL 也照样 exit 0，所以「重跑 exit=0」过去并不证明断言通过；现在失败项会被收集并在块末以 exit 1 退出并逐条列出（实测：注入一条假断言 → exit 1；把该行换掉模拟旧形状 → 1 FAIL 仍 exit 0），因此今晚复跑时 **exit 0 与 39 PASS 两个条件都要满足**，见 §14.1 的 R4 行。下面的条目还额外记录了几项**不在代码块里**的核对（生产 Compose 无 `eval` 引用、`.gitignore`、口令字面量扫描、离线测试），逐条列明依据。
 
 - `docker-compose-eval.yml`：`127.0.0.1:${EVAL_POSTGRES_PORT:-5433}:5432`（显式回环绑定）、`image: pgvector/pgvector:pg16`、独立 `container_name: interview-eval-postgres`、挂载 `10-eval-schema.sql` + `20-eval-user.sh`、两个密码均为 `${...:?}` 强制（无默认弱口令）、无 `network_mode: host`。
 - `docker/postgres/eval-init.sql`：`CREATE EXTENSION IF NOT EXISTS vector`、`embedding vector(1024)`、`USING hnsw (embedding vector_cosine_ops)`、标记值与 Java 常量逐字一致、文件内不含任何用户/权限/口令语句、无 `DROP`/`TRUNCATE`。
@@ -14,8 +14,8 @@
 - 装配与门禁：`initializeSchema(false)`、`current_user` 必须为 `eval_runner`、默认连接串 `jdbc:postgresql://127.0.0.1:5433/interview_guide_eval`、检查 `rolsuper`、检查全表为空；`:app:test` 排除 `real-eval`，`evalP1cReal` 的 `eval.p1c.realApi` 默认 `'false'`。
 - 隔离与密钥：`docker-compose.yml` / `docker-compose.dev.yml` 中**不含**任何 `eval` 引用（生产栈不会挂载评测初始化脚本）；`.gitignore` 第 12–13 行忽略 `.env` 与 `.env.eval`，`git ls-files` 只有 `.env.eval.example`；对 eval 相关文件做口令字面量扫描命中 0。
 - 离线测试：`GRADLE_USER_HOME=/c/temp/gradle-tmp ./gradlew :app:test --tests 'interview.guide.eval.*' --no-daemon --rerun` exit 0（114 通过 / 0 失败 / 0 错误 / 0 跳过）。本轮**未改任何代码**，所以这条记录的是 `f6aa629` 的状态，本轮没有重跑（边界：只做文档修订）。
-- **清单命令形态的可执行性核验（本轮实测，零容器）**：把本清单所有 bash 代码块逐个喂给 `bash -n`（语法检查，不执行；必须用 Git Bash 的 `C:\Program Files\Git\bin\bash.exe`，裸调 `bash` 会解析到 `C:\WINDOWS\System32\bash.exe` 那个 WSL 启动器而把每个块都判成失败）——**24 个块，0 处语法错误**（上一轮 18 个，#6/#7 那两次定点后为 23 个，#8 再加 C5.1 形态冒烟自检一块）；C3.2、C2-post 的两条与 C2-pre-vol 的两条 `python` 过滤器，用**合成的假 JSON / 假命令输出**（各埋一个哨兵：标签字段 `SECRET`、哨兵口令值）实跑，exit 0、输出形状正确、哨兵值一个都没出现在输出里 → 证明过滤器只打印 ports / labels / mounts / 两个卷标签；§1 的存在性探针与正文全部 **14** 条 here-doc 命令，用「假 `docker` 函数 + 假 `psql` 脚本」做了离线干跑（细节见 §14.1）：宿主机侧 argv 里只出现变量名的字面文本、哨兵口令没有进入假 `docker` 的 argv、`env_present len=` 与 `env_ABSENT` 两个分支都能出。**本轮把干跑的模型改严了一档**：假 `docker` 现在按「参数里有没有 `-i`」决定是转发还是丢弃 stdin——上一轮那个无条件把 here-doc 交给假 `psql` 的模型恰好验的是自己设计的假设，而不是 CLI 的真实语义，这正是 #8 ① 没被上一轮发现的原因。对照实跑（同一条 C5.1 命令，只差 `-i`）：带 `-i` 时假 `psql` 收到 39 字节 SQL 并输出 `stdin_ok user=eval_runner`、exit 0；去掉 `-i` 只留 `-T` 时假 `psql` 收到 **0 字节、stdout 一个字符都没有、退出码仍然是 0**——缺陷 1 的「静默假 PASS」症状就此复现，也正是今晚 C5.1 分支 ② 要拦的那个形状；`date '+%Y-%m-%dT%H:%M:%S%z'` 与 C1 的 `netstat -ano | grep ":5433" | grep LISTEN`（exit 1 = 无匹配 = 端口空闲）本轮各重跑一次；上一轮因静态核验发现的两处缺陷里，「宿主机静默读取把提示语写进变量名」那条属 ksh/zsh 专有语法、Git Bash 会报错，本轮随宿主机录入被整体删除而不再适用，另一条（C7 曾引用不存在的列 `client_host`，正解 `client_addr`）仍是正文用词依据。这些是「命令能否跑」层面的实测，不涉及任何数据库行为结论。
-- **目标机工具可用性（本轮实测，决定本清单的命令形态）**：`docker` CLI 存在（`C:\Program Files\Docker\Docker\resources\bin\docker`），`python` = `C:\Python313\python`，`openssl` 与 `netstat` 可用；**宿主机没有 `psql`，也没有 `jq`**；`docker info` 当前返回 `failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine`（Docker Desktop 未运行，本轮按边界要求**没有**启动它）。推论：清单里所有 SQL 一律经 `docker exec` 在**容器内**执行，JSON 过滤一律用 `python`；今晚开工前需要用户自行把 Docker Desktop 起起来，这属于前置条件而不是 FAIL。
+- **清单命令形态的可执行性核验（本轮实测，零容器）**：把本清单所有 bash 代码块逐个喂给 `bash -n`（语法检查，不执行；必须用 Git Bash 的 `C:\Program Files\Git\bin\bash.exe`，裸调 `bash` 会解析到 `C:\WINDOWS\System32\bash.exe` 那个 WSL 启动器而把每个块都判成失败）——**24 个块，0 处语法错误**（上一轮 18 个，#6/#7 那两次定点后为 23 个，#8 再加 C5.1 形态冒烟自检一块）；C3.2、C2-post 的两条与 C2-pre-vol 的两条 `python` 过滤器，用**合成的假 JSON / 假命令输出**（各埋一个哨兵：标签字段 `SECRET`、哨兵口令值）实跑，exit 0、输出形状正确、哨兵值一个都没出现在输出里 → 证明过滤器只打印 ports / labels / mounts / 两个卷标签；§1 的存在性探针与正文全部 **14** 条 here-doc 命令，用「假 `docker` 函数 + 假 `psql` 脚本」做了离线干跑（细节见 §14.1）：宿主机侧 argv 里只出现变量名的字面文本、哨兵口令没有进入假 `docker` 的 argv、`env_present len=` 与 `env_ABSENT` 两个分支都能出。**本轮把干跑的模型改严了一档**：假 `docker` 现在按「参数里有没有 `-i`」决定是转发还是丢弃 stdin——上一轮那个无条件把 here-doc 交给假 `psql` 的模型恰好验的是自己设计的假设，而不是 CLI 的真实语义，这正是 #8 ① 没被上一轮发现的原因。对照实跑（同一条 C5.1 命令，只差 `-i`）：带 `-i` 时假 `psql` 收到 39 字节 SQL 并输出 `stdin_ok user=eval_runner`、exit 0；去掉 `-i` 只留 `-T` 时假 `psql` 收到 **0 字节、stdout 一个字符都没有、退出码仍然是 0**——缺陷 1 的「静默假 PASS」症状就此复现，也正是今晚 C5.1 分支 ② 要拦的那个形状（注：这组对照跑的是**假 `docker` 模型**，它把 `-T` 建模成「关 TTY、不转发 stdin」；本轮真机实测发现真 CLI 的 `docker exec` 根本没有 `-T`，任何带 `-T` 的形态在解析层就 exit 125、到不了假 psql 那一步——见 §1「实测事实」与 §14 #9；对照中「去掉 `-i` → stdin 为空」那一半仍是留给今晚 C5.1 证伪的推理）；`date '+%Y-%m-%dT%H:%M:%S%z'` 与 C1 的 `netstat -ano | grep ":5433" | grep LISTEN`（exit 1 = 无匹配 = 端口空闲）本轮各重跑一次；上一轮因静态核验发现的两处缺陷里，「宿主机静默读取把提示语写进变量名」那条属 ksh/zsh 专有语法、Git Bash 会报错，本轮随宿主机录入被整体删除而不再适用，另一条（C7 曾引用不存在的列 `client_host`，正解 `client_addr`）仍是正文用词依据。**#11 把同样的语法核验扩到设计文档**：`P1C-L1-DESIGN.md` 的 bash 围栏共 **1** 个块（§14 失败清理，含 here-doc），逐个喂 `bash -n` **0 处语法错误**，here-doc 开闭配对 1/1。这些是「命令能否跑」层面的实测，不涉及任何数据库行为结论。
+- **目标机工具可用性（本轮实测，决定本清单的命令形态）**：`docker` CLI 存在（`C:\Program Files\Docker\Docker\resources\bin\docker`），`docker --version` = `Docker version 29.7.2, build a7dcaa6`（exit 0；其 `docker exec` 子命令**无 `-T` 旗标**，细节见 §1「实测事实」）；`python` = `C:\Python313\python`，`openssl` 与 `netstat` 可用；**宿主机没有 `psql`，也没有 `jq`**；`docker info` 当前返回 `failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine`（Docker Desktop 未运行，本轮按边界要求**没有**启动它）。推论：清单里所有 SQL 一律经 `docker exec` 在**容器内**执行，JSON 过滤一律用 `python`；今晚开工前需要用户自行把 Docker Desktop 起起来，这属于前置条件而不是 FAIL。
 
 静态核对只能证明「配置自洽」，不能证明容器实际行为、镜像内 pgvector 版本、权限实际生效。以下 C1–C11 就是为了补这一段。
 
@@ -27,7 +27,11 @@ import re,io
 read=lambda p: io.open(p,encoding='utf-8').read()
 c=read('docker-compose-eval.yml'); s=read('docker/postgres/eval-init.sql')
 sh=read('docker/postgres/eval-user.sh'); j=read('app/src/test/java/interview/guide/eval/P1cRealRetrievalEvalTest.java')
-g=read('app/build.gradle'); ok=lambda cond,msg: print(('PASS  ' if cond else 'FAIL  ')+msg)
+g=read('app/build.gradle'); BAD=[]; N=[0]
+def ok(cond,msg):
+    N[0]+=1
+    if not cond: BAD.append(msg)
+    print(('PASS  ' if cond else 'FAIL  ')+msg)
 U='f47ac10b-58cc-4372-a567-0e0283c5d9e7'
 ok('127.0.0.1:${EVAL_POSTGRES_PORT:-5433}:5432' in c,'compose 回环绑定 5433')
 ok('image: pgvector/pgvector:pg16' in c,'compose pgvector 镜像')
@@ -69,15 +73,39 @@ ok('{{json .Config.Env}}' in kk and 'printenv' in kk,'两条读取容器环境�
 ok('C2-pre-vol' in kk and 'CAND_COUNT' in kk and 'VOL_LABEL_MISSING' in kk,'C2 补了不依赖容器存在的卷侧归属')
 ok(all(s in kk for s in ('| ① |','| ② |','| ③ |','| ④ |')),'C2-pre-vol 四状态判定表行齐')
 ok('完全一致' in kk and '立即停止，不 `up`' in kk,'状态 ② 逐字比对卷名 / 状态 ④ 不 up 均已写明')
-# 本轮 #8 定点：-T 不转发 stdin，读 stdin 的 docker exec 必须带 -i；三条负向探针都要有会话存活行
+# 本轮 #8/#9 定点：读 stdin 的 docker exec 必须带 -i；正文 docker exec 命令行一律零 -T（目标机实测 docker exec 无此旗标，见 §1「实测事实」）；三条负向探针都要有会话存活行
 _kl=kk.splitlines()
 bad_i=[l.strip()[:70] for i,l in enumerate(_kl)
        if l.lstrip().startswith('docker exec')
        and any('-f -' in x for x in _kl[i:i+4])
        and not re.search(r'exec\s+(?:-\S+\s+)*-i(?=\s|$)',l)]
 ok(not bad_i,'读 stdin(here-doc + -f -) 的 docker exec 均带 -i，违例=%s'%(bad_i or '无'))
+# #9 定点：命令行锚定在「行首 docker exec」（bash 块里的命令才会顶格），引号内提及与 compose exec -T 不计
+bad_T=[l.strip()[:70] for l in _kl
+       if re.match(r'docker exec\s', l)
+       and any(re.fullmatch(r'-\w*T\w*', t) for t in l.split())]
+ok(not bad_T,'正文 docker exec 命令行零 -T（旧写法今晚 exit 125），违例=%s'%(bad_T or '无'))
 ok(kk.count("SELECT 'session_alive user='")>=3,'三条负向探针各自带会话存活行 %d/3'
    % kk.count("SELECT 'session_alive user='"))
+# #10 定点：设计文档里「可复制执行」的位置必须与清单同口径。
+# 扫描范围 = 设计文档的 bash 代码块 + §13 检查清单表格（真正会被人复制执行的两处），
+# 不含 §16 变更记录（那里是「旧写法」的历史描述，允许出现被引用）。
+# 注：这里刻意用 chr(96)*3 拼出三个反引号——直接写进代码块会截断本块自身的提取正则。
+B=chr(96)*3
+_db="".join(re.findall(B+"bash"+chr(10)+"(.*?)"+B, d, flags=re.S))
+_s13=d.split('## 13. 运行前检查清单')[-1].split('## 14.')[0] if '## 13. 运行前检查清单' in d else ''
+_copy=_db+"\n"+"\n".join(l for l in _s13.splitlines() if l.startswith('|'))
+ok('docker exec -T' not in _copy and '-i -T' not in _copy,'设计文档可复制位置无 docker exec 带 -T 的旧形态')
+ok(('-e PGPASS' 'WORD') not in _copy and ('PGPASSWORD="$PG' 'PASSWORD"') not in _copy,'设计文档可复制位置不再把宿主机口令透进 docker argv')
+ok('read -r' 's' not in _copy and 'P1C_PW' not in _copy,'设计文档可复制位置无宿主机静默录入与收尾 unset 取值')
+bad_d=[l.strip()[:60] for l in _copy.splitlines() if 'docker compose -f docker-compose-eval.yml' in l and '--env-file' not in l and '--no-interpolate' not in l and 'down -v' not in l and not l.lstrip().startswith('#')]
+ok(not bad_d,'设计文档可复制位置的 compose 命令均带 --env-file，违规=%s'%(bad_d or '无'))
+ok("<<"+B[0]*0+"'SQL'" in _db and "exec psql -h 127.0.0.1 -p 5432 -U eval_runner" in _db,'设计文档 §14 方案 B 已改为 here-doc + 容器内展开形态')
+# 本轮定点：ok 原先只 print，任何 FAIL 都不会影响退出码——「重跑 exit=0」因此不是通过判据。
+# 现在把失败项收集起来并以非 0 退出，使 tonight 的执行者可以只看退出码，也可只看 PASS/FAIL 行。
+print('ASSERT_TOTAL %d, FAILING %d' % (N[0], len(BAD)))
+for m in BAD: print('  failing:', m)
+raise SystemExit(1 if BAD else 0)
 PY
 ```
 
@@ -85,30 +113,29 @@ PY
 
 - **只允许**显式 `-f docker-compose-eval.yml`。在仓库根目录裸跑 `docker compose up/down` 会命中生产 `docker-compose.yml`（服务名 `postgres`、端口 5432、库 `interview_guide`），这正是要防的误用。
 - **每个 `docker compose` 子命令都要带 `--env-file .env.eval`**（`ps` / `logs` / `exec` / `stop` / `down` 都算）：compose 解析配置时会插值 `${EVAL_DB_PASSWORD:?…}`，缺 env 文件的命令可能直接报「Required environment …」而被误读成容器异常（是否对每个子命令都插值随 compose 版本而异，属推导；统一带上是最稳的写法，成本为零）。本清单上一版有多处示例漏了这个参数，本轮已全部补齐。唯一例外是 `config --no-interpolate`（故意不解析变量，因此不需要 `.env.eval`）。
-- **宿主机没有 `psql` 与 `jq`**（本轮实测），所以 SQL 一律经 `docker exec` 在**容器内**执行 `psql`，JSON 过滤一律用 `python`。**读 here-doc 的命令一律 `docker exec -i -T`（`-i` 是转发 stdin 的前提，见下方「统一执行形态」）；不读 stdin 的命令保持 `docker exec -T`**——具体是 §1 的 `env_present len=` 存在性探针（内联 `sh -c '…'`，无 `-f -`）、C6.0/C6.1/C8a 的 `psql -U postgres … -c "SELECT …"`（容器内 unix socket 免密、超管声明式查询）、C6.0 兜底的 `cat /var/lib/postgresql/data/pg_hba.conf`，这四类给 `-i` 也没有任何作用。以 `eval_runner` 做核验时必须走容器内 TCP（`-h 127.0.0.1 -p 5432`），理由见 C6.0 与 C7。
+- **宿主机没有 `psql` 与 `jq`**（本轮实测），所以 SQL 一律经 `docker exec` 在**容器内**执行 `psql`，JSON 过滤一律用 `python`。**读 here-doc 的命令一律 `docker exec -i`（`-i` 是转发 stdin 的前提，见下方「统一执行形态」）；不读 stdin 的命令用裸 `docker exec`（不带 `-i`，也没有 `-T` 可带）**——具体是 §1 的 `env_present len=` 存在性探针（内联 `sh -c '…'`，无 `-f -`）、C6.0/C6.1/C8a 的 `psql -U postgres … -c "SELECT …"`（容器内 unix socket 免密、超管声明式查询）、C6.0 兜底的 `cat /var/lib/postgresql/data/pg_hba.conf`，这四类没有 stdin 可转发，给 `-i` 也没有任何作用。**`docker exec` 没有 `-T` 旗标**（本轮目标机实测，见下方「实测事实」）：上一版正文里的 `-T` 已全部从命令行移除——今晚若残留，会在 CLI 解析层直接失败（exit 125），根本到不了容器。只有 `docker compose exec` 有 `-T/--no-tty`，所以 C4 的 `docker compose … exec -T eval-postgres pg_isready …` 保持原样、合法。以 `eval_runner` 做核验时必须走容器内 TCP（`-h 127.0.0.1 -p 5432`），理由见 C6.0 与 C7。
 - **凭据注入方式（本轮定点：宿主机根本不持有口令）**：口令只存在于本机 `.env.eval`，由 compose 在 `up` 时注入容器的 `EVAL_RUNNER_PASSWORD`。上一版清单里 `docker exec` 用 `-e` 把**宿主机 shell 的口令变量**透给容器，宿主机会先把该变量展开成真实口令，于是口令出现在 `docker` 进程的 argv 里（任务管理器 / `ps` / 进程列表可见），这正是本轮要消除的泄漏面；§1 里那套「宿主机静默读取（`read` 加不回显选项）+ `export`」的口令录入也随之整体删除。现在改成让容器内的 `/bin/sh` 去展开它自己环境里的那个变量——宿主机命令行里只出现**变量名的字面文本**，从头到尾没有口令值。会话开头只做一次存在性探针（只打印长度，不打印值）：
 
 ```bash
-docker exec -T interview-eval-postgres sh -c 'if [ -n "$EVAL_RUNNER_PASSWORD" ]; then echo "env_present len=${#EVAL_RUNNER_PASSWORD}"; else echo env_ABSENT; fi'
+docker exec interview-eval-postgres sh -c 'if [ -n "$EVAL_RUNNER_PASSWORD" ]; then echo "env_present len=${#EVAL_RUNNER_PASSWORD}"; else echo env_ABSENT; fi'
 ```
 
   预期形如 `env_present len=32`（长度不是内容，可以记入 §12）；若输出 `env_ABSENT`，说明 `up` 时没带上 `.env.eval` → **停止并记录**，禁止退回「把口令写进命令行」的写法。C11 里对应地不再 `unset` 任何口令变量（宿主机从来没有设过），改为记录「本清单全程未在宿主机 argv / shell 历史 / 记录表里出现口令值」。
 - **`eval_runner` 的统一执行形态（本轮定点；下面每条以 `eval_runner` 跑 SQL 的命令都照这个形态写，含 C6/C7/C8b/C9/C10/C11）**：
 
 ```bash
-docker exec -i -T interview-eval-postgres sh -c \
+docker exec -i interview-eval-postgres sh -c \
   'PGPASSWORD="$EVAL_RUNNER_PASSWORD"; export PGPASSWORD; exec psql -h 127.0.0.1 -p 5432 -U eval_runner -d interview_guide_eval -X -q -v ON_ERROR_STOP=1 -f -' \
   <<'SQL'
 SELECT 'client_login_ok user='||current_user||' db='||current_database();
 SQL
 ```
 
-  要点：外层 `sh -c` 的参数**必须用单引号**，这样 `$EVAL_RUNNER_PASSWORD` 不在宿主机展开；SQL 一律走 here-doc + `-f -`，**不要**改成用 `-c` 传 SQL——外层若用双引号宿主机就会展开变量，外层保持单引号时 `-c` 里的 SQL 又必然带单引号（字符串字面量），与外层单引号直接冲突，这是必须避免的 quoting 陷阱；`exec` 让 psql 顶替 sh 进程，少留一层进程；here-doc 的结束标记 `SQL` 必须**顶格**（§0 的断言会检查开闭配对）。各条原本选的 `ON_ERROR_STOP=0/1` 按原语义保留，不要统一成同一个值。需要 `postgres` 超管的项（C6.0 查 `pg_hba_file_rules`、C8a 声明式权限）本来就是容器内 unix socket 免密登录，保持 `docker exec -T interview-eval-postgres psql -U postgres …` 形态不动。
-- **`-i` 是这条形态的前置条件，不是可选项（本轮定点，见 §14 #8）**：Docker CLI 文档对 `-i/--interactive` 的描述是 “**Keep STDIN open even if not attached**”，据此**不加 `-i` 时 here-doc 根本不会到达容器进程**；`-T` 只关闭伪 TTY 分配，**与 stdin 无关**，`-i -T` 才是「无 TTY 但转发 stdin」的组合。后果（推理链）：少了 `-i` → 容器内 `psql -f -` 立刻遇到 EOF → 不输出任何行、不报错、退出码 0 → 执行者把「无输出」写成 PASS，而实际一条 SQL 都没跑，**整份清单的 SQL 检查会静默假通过**。
-  - 性质标注：以上是根据文档措辞推出的**推理**（本轮 Docker daemon 未运行，未做真机实测），今晚由 §5 末尾的**形态冒烟自检**直接证伪——自检跑不通就按那条的分支判 BLOCKED，不得凭本段文字判 PASS。
-  - `-T` 这一面：`-T` 出现在 `docker run`/`docker compose` 的文档里，在 `docker exec` 的文档页上并未列出。今晚若某版 CLI 直接拒绝 `-T`（报 `unknown shorthand flag` 之类），**如实记录并按「形态缺陷」停**（与上面 ② 同级处理），不要现场改成 `bash -c`、去掉 `-T` 或换回 `-c` 传 SQL 之类的发挥——那会把「命令形态」问题伪装成「数据库行为」结论。
-- **两条硬禁令（本轮定点）**：不得运行 `docker inspect --format '{{json .Config.Env}}' interview-eval-postgres`，不得运行 `docker exec -T interview-eval-postgres env` 或 `… printenv`。容器环境里同时带着 `POSTGRES_PASSWORD` 与 `EVAL_RUNNER_PASSWORD`，这两条都会把两个口令明文打到终端（下一条「不打印渲染后的完整 Compose 配置」的边界同样覆盖它们）。
-- **口令新鲜度的诚实口径**：容器环境里的口令是 `up` 时刻从 `.env.eval` 读到的值。若执行者在 `up` 之后改过 `.env.eval`，登录测试反映的仍是 `up` 时刻的值，所以要把 `up` 时刻一并记进 §12。§5 分支 B 的口令新鲜度检查（B2）仍然成立，而且这个口径比宿主机传值更强：卷内角色口令与当前口令不一致时会直接登录失败，而不是静默地改用宿主机随手传进来的那个值。若某条命令报 `FATAL: password authentication failed`，先按 B2 判「卷与当前凭据不一致」，不要改成明文重试，也不要现场 `ALTER ROLE`。
+  要点：外层 `sh -c` 的参数**必须用单引号**，这样 `$EVAL_RUNNER_PASSWORD` 不在宿主机展开；SQL 一律走 here-doc + `-f -`，**不要**改成用 `-c` 传 SQL——外层若用双引号宿主机就会展开变量，外层保持单引号时 `-c` 里的 SQL 又必然带单引号（字符串字面量），与外层单引号直接冲突，这是必须避免的 quoting 陷阱；`exec` 让 psql 顶替 sh 进程，少留一层进程；here-doc 的结束标记 `SQL` 必须**顶格**（§0 的断言会检查开闭配对）。各条原本选的 `ON_ERROR_STOP=0/1` 按原语义保留，不要统一成同一个值。需要 `postgres` 超管的项（C6.0 查 `pg_hba_file_rules`、C8a 声明式权限）本来就是容器内 unix socket 免密登录，保持 `docker exec interview-eval-postgres psql -U postgres …` 的裸形态不动（这类命令不读 stdin，不需要 `-i`；`docker exec` 也不存在 `-T` 可加，见下方实测事实）。
+- **实测事实：`docker exec` 没有 `-T` 旗标（本轮在目标机实测，daemon 停止状态即可完成，见 §14 #9）**：宿主机 CLI 为 `Docker version 29.7.2, build a7dcaa6`（`docker --version`，exit 0）。`docker exec --help` 的选项列表恰为：`-d/--detach`、`--detach-keys`、`-e/--env`、`--env-file`、`-i/--interactive "Keep STDIN open even if not attached"`、`--privileged`、`-t/--tty "Allocate a pseudo-TTY"`、`-u/--user`、`-w/--workdir`——**其中没有 `-T`**。带 `-T` 的旧写法 `docker exec -T nosuchcontainer true` 返回 `unknown shorthand flag: 'T' in -T` 加用法提示、**exit 125**；这条检查不需要任何容器、也不需要 daemon 在跑，因为 **flag 解析先于 daemon 调用**（实测时 Docker Desktop 未运行，命令在解析阶段就被拒——这正是它无需容器即可判定的原因）。对照：`docker exec -i nosuchcontainer true` 与裸 `docker exec nosuchcontainer true` 都能通过解析，之后才在连接 daemon 的 socket 上报错（exit 1）。而 `docker compose exec --help` **确实**列出 `-T, --no-tty`，所以 C4 的 `docker compose … exec -T eval-postgres pg_isready …` 保持原样。据此，本清单正文的全部 `docker exec` 命令行已去掉 `-T`：14 条读 here-doc 的统一 `docker exec -i`，4 条不读 stdin 的（§1 存在性探针、C6.0/C6.1/C8a 的超管 `-c` 查询）用裸 `docker exec`——上一版这些带 `-T` 的行文（含全部 here-doc SQL 与存在性探针）今晚都会以 125 硬失败。
+- **`-i` 是这条形态的前置条件，不是可选项（性质：文档推导，今晚由 §5 的 C5.1 形态冒烟自检证伪）**：Docker CLI 文档对 `-i/--interactive` 的措辞是 "Keep STDIN open even if not attached"，据此**不加 `-i` 时 here-doc 可能根本不会到达容器进程**。后果（推理链）：少了 `-i` → 容器内 `psql -f -` 立刻遇到 EOF → 不输出任何行、不报错、退出码 0 → 执行者把「无输出」写成 PASS，而实际一条 SQL 都没跑，**整份清单的 SQL 检查会静默假通过**。诚实口径：上一条的实测只覆盖**旗标解析层**；「不加 `-i` 时 stdin 是否真的不转发进容器」在没有容器的前提下无法实测，**仍属根据文档措辞推出的推理**，今晚由 §5 末尾的**形态冒烟自检 C5.1** 直接证伪——自检跑不通就按那条的分支判 BLOCKED，不得凭本段文字判 PASS。（旧版「`-i -T` 才是『无 TTY 但转发 stdin』的组合」的说法随 `-T` 一并作废：真机 CLI 根本没有 `-T`，今晚只需 `docker exec -i`。）
+- **两条硬禁令（本轮定点）**：不得运行 `docker inspect --format '{{json .Config.Env}}' interview-eval-postgres`，不得运行 `docker exec interview-eval-postgres env` 或 `… printenv`（裸形态，不带旗标——`docker exec` 本就没有 `-T`，见下方实测事实）。容器环境里同时带着 `POSTGRES_PASSWORD` 与 `EVAL_RUNNER_PASSWORD`，这两条都会把两个口令明文打到终端（下一条「不打印渲染后的完整 Compose 配置」的边界同样覆盖它们）。
+- **口令新鲜度的诚实口径**：容器环境里的口令是在 **up 开始~结束窗口内**（注入发生在 `up` 期间）从 `.env.eval` 读到的值。若执行者在 `up` 结束后改过 `.env.eval`，登录测试反映的仍是该窗口内读到的值，所以要把 up 开始时刻与 up 结束时刻一并记进 §12（C4 块的两个 `date` 输出，见 §5）。§5 分支 B 的口令新鲜度检查（B2）仍然成立，而且这个口径比宿主机传值更强：卷内角色口令与当前口令不一致时会直接登录失败，而不是静默地改用宿主机随手传进来的那个值。若某条命令报 `FATAL: password authentication failed`，先按 B2 判「卷与当前凭据不一致」，不要改成明文重试，也不要现场 `ALTER ROLE`。
 - **不打印渲染后的完整 Compose 配置**：`docker compose config` 的输出里 `environment` 段是**已解析的 `POSTGRES_PASSWORD` / `EVAL_RUNNER_PASSWORD` 明文**。C3 只允许 `config --quiet` 与「用 python 只取 ports 字段」两条命令，完整输出不得打到终端、`tee` 到文件或粘进 §12。
 - **不提供自动删除卷的步骤**。C6 的重建动作需要执行者先人工确认「该卷内没有需要保留的东西」，再手工执行；确认人、时间和理由记入 §12，并同步到根目录 `PROJECT_PROGRESS.md`。
 - 通用停止条件：任一条目实测与预期不符 → **停下**，原样记录实际输出与判定失败的原因。不修改 `eval-init.sql` / `eval-user.sh` / 设计文档语义来「让检查通过」；不把 FAIL 改写成 PASS。
@@ -208,11 +235,12 @@ docker compose -f docker-compose-eval.yml --env-file .env.eval config --format j
 关键事实：官方 Postgres 镜像只在**数据目录为空**时执行 `/docker-entrypoint-initdb.d/`。所以旧卷复用时**必然**看不到 init 日志，而对象照样齐全——这正是旧判据会把「复用历史产物」误写成「初始化已执行」的成因。
 
 ```bash
-# C4 启动并等待健康检查
+# C4 启动并等待健康检查（本轮定点：时间戳必须在 up 前后各取一次，分支 A 用「窗口」比对，见下方判据 1）
+date '+%Y-%m-%dT%H:%M:%S%z'   # ① UP_START = up 开始时刻：必须在下一行 `up -d` 之前取
 docker compose -f docker-compose-eval.yml --env-file .env.eval up -d; echo "exit=$?"
 docker compose -f docker-compose-eval.yml --env-file .env.eval ps              # 期望 Status 含 (healthy)
 docker compose -f docker-compose-eval.yml --env-file .env.eval exec -T eval-postgres pg_isready -U postgres; echo "exit=$?"
-date '+%Y-%m-%dT%H:%M:%S%z'                                                    # 记下 up 时刻，供时间线比对
+date '+%Y-%m-%dT%H:%M:%S%z'                                                    # ② UP_END = up 结束时刻：健康检查与 pg_isready 都通过之后再取。UP_START / UP_END 两个值都要记进 §12——分支 A 判据 1 用的就是这两个时刻围成的窗口
 
 # C5 时间线 + 本次启动窗口的日志（日志只是线索，判定按下面的分支规则）
 docker inspect interview-eval-postgres \
@@ -223,26 +251,26 @@ docker compose -f docker-compose-eval.yml --env-file .env.eval logs --since 15m 
 ```
 `--since 15m` 用来把证据限定在本次启动窗口内，避免把历史日志当成本次的证据；日志措辞随镜像版本变化，所以判定**只按分支规则**，不依赖某个具体词。
 
-**分支 A —— 新卷首次初始化**（对应 §3 判定表状态 ①：C2-pre 无容器输出且 C2-pre-vol `CAND_COUNT 0`，并且 `VolumeCreatedAt` 落在本次 `up` 之后）。以下四项同时成立才允许写「本次启动执行过初始化脚本」：
-1. `VolumeCreatedAt` ≈ 容器 `StartedAt`，且两者都晚于记录的 up 时刻；
+**分支 A —— 新卷首次初始化**（对应 §3 判定表状态 ①：C2-pre 无容器输出且 C2-pre-vol `CAND_COUNT 0`，并且 `VolumeCreatedAt` 落在 [up 开始时刻, up 结束时刻] 窗口内）。以下四项同时成立才允许写「本次启动执行过初始化脚本」：
+1. 卷 `CreatedAt` 与容器 `CreatedAt`/`StartedAt` **全部落在 [up 开始时刻, up 结束时刻] 区间内（含等号）**，且卷 `CreatedAt` ≈ 容器 `StartedAt`。为什么区间才是正确的形状：卷与容器的创建就发生在 `up` 期间——若像上一版那样只在 `up` 之后再记一个时间点并要求「晚于它」，该时刻必然晚于对象本身的创建时间，判据在数学上不可能成立；更糟的是执行者可能拿一个「对象创建之后」的时间去比对而让新旧卷都「看起来更早」或都「看起来合格」，无法区分「本次创建」与「更早创建」。两个时刻都在 `up` 前后当场取值（见上方 C4 块），区间比对才可复核；
 2. 本次窗口日志里出现 `initdb` 与两个 init 文件名（`10-eval-schema.sql`、`20-eval-user.sh`）；
 3. C6 对象与扩展齐全；
 4. C7 用**当前** `.env.eval` 的口令经 TCP 以 `eval_runner` 登录成功（只有本次创建的卷，角色口令才会与当前 `.env.eval` 一致）。
 
-**分支 B —— 旧卷复用**（`VolumeCreatedAt` 早于本次启动，或本次窗口日志里没有 init 文件名）。**本轮定点**：分支 B 现在明确包含 §3 判定表的**状态 ②「卷在、容器不在」**这一子情形——它必然落在分支 B（数据目录非空 → init 不会重跑），并且要求 `up` 之后补做的 C2-post 读到的卷名与 `up` 之前的卷侧初判逐字一致。**这不是 FAIL，但绝不能记「init 已执行」**；改判为「数据面就绪、init 归属未知」，并逐项完成：
+**分支 B —— 旧卷复用**（`VolumeCreatedAt` 早于 up 开始时刻，或本次窗口日志里没有 init 文件名）。**本轮定点**：分支 B 现在明确包含 §3 判定表的**状态 ②「卷在、容器不在」**这一子情形——它必然落在分支 B（数据目录非空 → init 不会重跑），并且要求 `up` 之后补做的 C2-post 读到的卷名与 `up` 之前的卷侧初判逐字一致。**这不是 FAIL，但绝不能记「init 已执行」**；改判为「数据面就绪、init 归属未知」，并逐项完成：
 - B1 对象存在性：C6 的表 / 角色 / 扩展；
-- B2 凭据新鲜度：用**当前** `.env.eval` 口令以 `eval_runner` 经容器内 TCP 登录（C7）。`CREATE ROLE ... WHERE NOT EXISTS` 使旧卷保留旧口令，改了 `.env.eval` 也不轮换、不报错——登录失败说明**卷与当前凭据不一致**，属状态不明：停止并报告，不要现场 `ALTER ROLE` 凑过（那会掩盖卷的来源问题）。注意本清单的登录测试用的是**容器环境里 `up` 时刻注入的值**（见 §1），所以「当前口令」在这里要以 up 时刻为锚：`up` 之前刚写好 `.env.eval`、`up` 之后不再改，两者才等价；
+- B2 凭据新鲜度：用**当前** `.env.eval` 口令以 `eval_runner` 经容器内 TCP 登录（C7）。`CREATE ROLE ... WHERE NOT EXISTS` 使旧卷保留旧口令，改了 `.env.eval` 也不轮换、不报错——登录失败说明**卷与当前凭据不一致**，属状态不明：停止并报告，不要现场 `ALTER ROLE` 凑过（那会掩盖卷的来源问题）。注意本清单的登录测试用的是**容器环境里在 up 开始~结束窗口内注入的值**（见 §1），所以「当前口令」在这里要以该窗口为锚：`up` 之前刚写好 `.env.eval`、`up` 之后不再改，两者才等价；
 - B3 数据面干净：`vector_store` 行数 = 0（C7），且 C9 探针回滚后仍为 0；
 - B4 口径一致：C10 的 `atttypmod` / `indexdef` 与交付脚本一致（旧卷若由更早版本脚本创建，索引名或维度口径可能不同）；
 - B5 时间线留痕：卷 `CreatedAt` 与容器 `StartedAt` 都写进 §12，作为「历史创建」的证据；状态 ② 还要附 C2-pre-vol 的卷侧快照（候选卷数、卷名、两个标签原文）。
 
 ### C5.1 形态冒烟自检（本轮定点，**强制**，排在任何权限 / 身份 / 维度类 SQL 之前）
 
-C6 之后每一条结论都建立在「here-doc 里的 SQL 真的送到了容器内 psql」这个前提上，而这个前提本轮才刚被修（§1 的 `-i`）。所以先跑一条**只依赖客户端解析、不引用任何评测表结构**的 SQL 把形态本身钉住：它过了，后面的「无输出」才有资格被解释成别的原因；它不过，后面全部 SQL 检查会同时变成静默假 PASS。
+C6 之后每一条结论都建立在「here-doc 里的 SQL 真的送到了容器内 psql」这个前提上，而这个前提的修订本轮走到了第二步：#8 补上 `-i`，#9 又在目标机实测确认 `docker exec` 根本没有 `-T` 旗标、把全部命令行的 `-T` 移除（见 §1「实测事实」）。所以先跑一条**只依赖客户端解析、不引用任何评测表结构**的 SQL 把形态本身钉住：它过了，后面的「无输出」才有资格被解释成别的原因；它不过，后面全部 SQL 检查会同时变成静默假 PASS。
 
 ```bash
 # C5.1 形态冒烟自检：验证 stdin → 容器内 psql 这一段是否真的通
-docker exec -i -T interview-eval-postgres sh -c \
+docker exec -i interview-eval-postgres sh -c \
   'PGPASSWORD="$EVAL_RUNNER_PASSWORD"; export PGPASSWORD; exec psql -h 127.0.0.1 -p 5432 -U eval_runner -d interview_guide_eval -X -q -v ON_ERROR_STOP=1 -f -' \
   <<'SQL'
 SELECT 'stdin_ok user='||current_user;
@@ -258,29 +286,31 @@ echo "exit=$?"                                                       # 三分支
 | ② **无任何输出且 `exit=0`** | 正是 §1 描述的症状：`-i` 缺失，或该版 CLI 的 stdin 语义与文档措辞不符 → **BLOCKED（命令形态 / CLI 行为不符）**。停下，把 `docker --version` 与 `docker compose version` 的原文一并记进 §12。**不许写成 PASS、不许改判据、不许现场改成 `bash -c` / `-c` 传 SQL 之类来「绕过去」** |
 | ③ 报 `FATAL:`（password authentication failed / role does not exist）或 `could not connect to server` | 属凭据或连接问题，按 C6 / C7 与分支 B 的 B2 处理（卷与当前凭据不一致 → 停止并报告），**不在此处得出任何权限结论** |
 
+**三分支与今晚实况的关系（本轮 #9 定点）**：上一版带 `-T` 的旧形态根本走不进上面任何一支——真 CLI 在旗标解析层就报 `unknown shorthand flag: 'T' in -T`、**exit 125**（§1 实测事实）。那种形状属 §7 判定表里的「命令抄写缺陷」：改正形态后重跑，不得计入 ②「无输出 + exit 0」，也不得把 125 记成任何空跑或数据库结论。三分支表本身保持不变——② 防的是「带了 `-i` 而 stdin 仍未转发」这一**文档推导级**风险（见 §1 第二条要点），今晚由本自检证伪。
+
 **为什么它必须在最前面**：本自检放在 C5（启动与时间线）之后、C6.0（第一条超管 SQL）之前，是 §11 的硬性验收项；它同时覆盖了「容器已起来」「`eval_runner` 能经容器内 TCP 登录」「here-doc 形态可用」三件事的形态面，但**不**替代 C6/C7 对库名、标记表、空表的核验。
 
 ```bash
 # C6.0 先确认 unix socket 的认证方式，决定 C6 的超管查询要不要改走 TCP
-docker exec -T interview-eval-postgres psql -U postgres -d postgres -X -q \
+docker exec interview-eval-postgres psql -U postgres -d postgres -X -q \
   -c "SELECT rule_number, type, auth_method, database, user_name FROM pg_hba_file_rules ORDER BY rule_number;"
 ```
 - 若 `local`（unix socket）条目是 `trust` → C6 的只读命令可免密直跑；这同时解释了**为什么凭据核验绝不能走 socket**（socket 登录成功证明不了口令）。
 - 若是 `scram-sha-256` / `md5` → 同样按 §1 的形态改由**容器内** shell 展开容器自己环境里的超管变量，宿主机不接触口令值：
 
 ```bash
-docker exec -i -T interview-eval-postgres sh -c \
+docker exec -i interview-eval-postgres sh -c \
   'PGPASSWORD="$POSTGRES_PASSWORD"; export PGPASSWORD; exec psql -h 127.0.0.1 -p 5432 -U postgres -d interview_guide_eval -X -q -v ON_ERROR_STOP=1 -f -' \
   <<'SQL'
 SELECT 'superuser_tcp_ok user='||current_user||' db='||current_database();
 SQL
 ```
 
-- 查询报 `permission denied for view pg_hba_file_rules` 或 `must be superuser` → 如实记录，说明当前身份不足，改用能读 `pg_hba.conf` 的路径（`docker exec -T interview-eval-postgres cat /var/lib/postgresql/data/pg_hba.conf`，只读，不含口令）。
+- 查询报 `permission denied for view pg_hba_file_rules` 或 `must be superuser` → 如实记录，说明当前身份不足，改用能读 `pg_hba.conf` 的路径（`docker exec interview-eval-postgres cat /var/lib/postgresql/data/pg_hba.conf`，只读，不含口令）。
 
 ```bash
 # C6.1 数据面就绪核对（容器内超级用户，只读）
-docker exec -T interview-eval-postgres psql -U postgres -d interview_guide_eval -X -q -v ON_ERROR_STOP=1 \
+docker exec interview-eval-postgres psql -U postgres -d interview_guide_eval -X -q -v ON_ERROR_STOP=1 \
   -c "SELECT 'tables='||string_agg(tablename,',' ORDER BY tablename) FROM pg_tables WHERE schemaname='public' AND tablename IN ('vector_store','eval_instance_identity');" \
   -c "SELECT 'roles='||coalesce(string_agg(rolname,','),'(none)') FROM pg_roles WHERE rolname='eval_runner';" \
   -c "SELECT 'ext='||coalesce(string_agg(extname,','),'(none)') FROM pg_extension;"
@@ -294,7 +324,7 @@ docker exec -T interview-eval-postgres psql -U postgres -d interview_guide_eval 
 宿主机无 `psql`，所以经容器执行；**必须走 `-h 127.0.0.1 -p 5432` 的 TCP 路径**，因为 unix socket 可能是 `trust` 认证（见 C6.0），socket 登录成功证明不了 `.env.eval` 里的口令与卷内角色口令一致。口令由容器内的 `/bin/sh` 从容器环境展开（形态见 §1），宿主机不接触口令值；本条**不加** `-v ON_ERROR_STOP=1`（沿用上一版默认值 0 的语义：某一行报错时后面的查询仍会跑完，便于一次拿全六项）。
 
 ```bash
-docker exec -i -T interview-eval-postgres sh -c \
+docker exec -i interview-eval-postgres sh -c \
   'PGPASSWORD="$EVAL_RUNNER_PASSWORD"; export PGPASSWORD; exec psql -h 127.0.0.1 -p 5432 -U eval_runner -d interview_guide_eval -X -q -f -' \
   <<'SQL'
 SELECT 'db='||current_database()||' user='||current_user;
@@ -308,7 +338,7 @@ SQL
 预期（逐项）：
 - 会话本身就是**一次以 `eval_runner` 完成的 TCP 登录**——上面六条能跑出来，等价于「TCP 口令认证通过」；
 - `db=interview_guide_eval`，且与 Java 侧 `eval.datasource.url` 的库名一致；
-- `user=eval_runner`（**不是** `postgres`）；能连上本身就证明**`.env.eval` 在 up 时刻注入容器的口令与卷内角色口令一致**（分支 B 的 B2 判据）；
+- `user=eval_runner`（**不是** `postgres`）；能连上本身就证明**`.env.eval` 在 up 开始~结束窗口内注入容器的口令与卷内角色口令一致**（分支 B 的 B2 判据）；
 - 标记表两行 = `instance_type | p1c-eval-isolated`、`instance_uuid | f47ac10b-58cc-4372-a567-0e0283c5d9e7`；
 - `server_port=5432`（容器内部端口；宿主机映射才是 5433，容器内查不到 5433 是正常的）；
 - `vector_store_rows=0`；
@@ -321,7 +351,7 @@ SQL
 
 ```bash
 # (a) 声明式：容器内超级用户查询，只证明"角色被授予了什么"
-docker exec -T interview-eval-postgres psql -U postgres -d interview_guide_eval -X -q -v ON_ERROR_STOP=1 \
+docker exec interview-eval-postgres psql -U postgres -d interview_guide_eval -X -q -v ON_ERROR_STOP=1 \
   -c "SELECT rolname, rolsuper, rolcreatedb, rolcanlogin FROM pg_roles WHERE rolname='eval_runner';" \
   -c "SELECT has_database_privilege('eval_runner','interview_guide_eval','CONNECT') AS db_connect,
          has_schema_privilege('eval_runner','public','USAGE') AS schema_usage,
@@ -344,7 +374,7 @@ docker exec -T interview-eval-postgres psql -U postgres -d interview_guide_eval 
 
 ```bash
 # probe-1：向标记表写入（期望被拒）
-docker exec -i -T interview-eval-postgres sh -c \
+docker exec -i interview-eval-postgres sh -c \
   'PGPASSWORD="$EVAL_RUNNER_PASSWORD"; export PGPASSWORD; exec psql -h 127.0.0.1 -p 5432 -U eval_runner -d interview_guide_eval -X -q -v ON_ERROR_STOP=0 -f -' \
   <<'SQL'
 SELECT 'session_alive user='||current_user||' db='||current_database();
@@ -355,7 +385,7 @@ SQL
 ```
 ```bash
 # probe-1 残留复查（独立会话、自动提交，必须在事务之外）
-docker exec -i -T interview-eval-postgres sh -c \
+docker exec -i interview-eval-postgres sh -c \
   'PGPASSWORD="$EVAL_RUNNER_PASSWORD"; export PGPASSWORD; exec psql -h 127.0.0.1 -p 5432 -U eval_runner -d interview_guide_eval -X -q -f -' \
   <<'SQL'
 SELECT count(*) AS marker_total, count(*) FILTER (WHERE marker_key='probe') AS probe_rows FROM eval_instance_identity;
@@ -363,7 +393,7 @@ SQL
 ```
 ```bash
 # probe-2：在 public 建表（期望被拒，PG15+ public 不再默认授 CREATE）
-docker exec -i -T interview-eval-postgres sh -c \
+docker exec -i interview-eval-postgres sh -c \
   'PGPASSWORD="$EVAL_RUNNER_PASSWORD"; export PGPASSWORD; exec psql -h 127.0.0.1 -p 5432 -U eval_runner -d interview_guide_eval -X -q -v ON_ERROR_STOP=0 -f -' \
   <<'SQL'
 SELECT 'session_alive user='||current_user||' db='||current_database();
@@ -374,7 +404,7 @@ SQL
 ```
 ```bash
 # probe-2 残留复查：不得留下 public.probe_t
-docker exec -i -T interview-eval-postgres sh -c \
+docker exec -i interview-eval-postgres sh -c \
   'PGPASSWORD="$EVAL_RUNNER_PASSWORD"; export PGPASSWORD; exec psql -h 127.0.0.1 -p 5432 -U eval_runner -d interview_guide_eval -X -q -f -' \
   <<'SQL'
 SELECT count(*) AS probe_t_leftover FROM pg_tables WHERE schemaname='public' AND tablename='probe_t';
@@ -382,7 +412,7 @@ SQL
 ```
 ```bash
 # probe-3：TRUNCATE（期望被拒）
-docker exec -i -T interview-eval-postgres sh -c \
+docker exec -i interview-eval-postgres sh -c \
   'PGPASSWORD="$EVAL_RUNNER_PASSWORD"; export PGPASSWORD; exec psql -h 127.0.0.1 -p 5432 -U eval_runner -d interview_guide_eval -X -q -v ON_ERROR_STOP=0 -f -' \
   <<'SQL'
 SELECT 'session_alive user='||current_user||' db='||current_database();
@@ -393,7 +423,7 @@ SQL
 ```
 ```bash
 # probe-3 残留复查
-docker exec -i -T interview-eval-postgres sh -c \
+docker exec -i interview-eval-postgres sh -c \
   'PGPASSWORD="$EVAL_RUNNER_PASSWORD"; export PGPASSWORD; exec psql -h 127.0.0.1 -p 5432 -U eval_runner -d interview_guide_eval -X -q -f -' \
   <<'SQL'
 SELECT count(*) AS vs_rows FROM vector_store;
@@ -425,7 +455,7 @@ SQL
 
 ```bash
 # C9.1 正向事务探针（这一步的所有语句都应当成功，所以 ON_ERROR_STOP=1）
-docker exec -i -T interview-eval-postgres sh -c \
+docker exec -i interview-eval-postgres sh -c \
   'PGPASSWORD="$EVAL_RUNNER_PASSWORD"; export PGPASSWORD; exec psql -h 127.0.0.1 -p 5432 -U eval_runner -d interview_guide_eval -X -q -v ON_ERROR_STOP=1 -f -' \
   <<'SQL'
 BEGIN;
@@ -444,7 +474,7 @@ SQL
 
 ```bash
 # C9.2 回滚证据（必须独立会话执行，不能放在同一事务里）
-docker exec -i -T interview-eval-postgres sh -c \
+docker exec -i interview-eval-postgres sh -c \
   'PGPASSWORD="$EVAL_RUNNER_PASSWORD"; export PGPASSWORD; exec psql -h 127.0.0.1 -p 5432 -U eval_runner -d interview_guide_eval -X -q -f -' \
   <<'SQL'
 SELECT count(*) AS total_rows FROM vector_store;
@@ -458,7 +488,7 @@ SQL
 
 ```bash
 # 以 eval_runner 经容器内 TCP 执行（Java Phase 0 用的就是这几条，口径保持一致）
-docker exec -i -T interview-eval-postgres sh -c \
+docker exec -i interview-eval-postgres sh -c \
   'PGPASSWORD="$EVAL_RUNNER_PASSWORD"; export PGPASSWORD; exec psql -h 127.0.0.1 -p 5432 -U eval_runner -d interview_guide_eval -X -q -f -' \
   <<'SQL'
 SELECT 'atttypmod='||atttypmod FROM pg_attribute JOIN pg_class ON attrelid=oid
@@ -474,7 +504,7 @@ SQL
 
 ```bash
 docker compose -f docker-compose-eval.yml --env-file .env.eval ps        # 期望 (healthy)
-docker exec -i -T interview-eval-postgres sh -c \
+docker exec -i interview-eval-postgres sh -c \
   'PGPASSWORD="$EVAL_RUNNER_PASSWORD"; export PGPASSWORD; exec psql -h 127.0.0.1 -p 5432 -U eval_runner -d interview_guide_eval -X -q -f -' \
   <<'SQL'
 SELECT 'vector_store_rows='||count(*) FROM vector_store;
@@ -483,14 +513,15 @@ docker inspect interview-eval-postgres \
   --format 'image={{.Config.Image}} | imageID={{.Image}} | startedAt={{.State.StartedAt}}'
 docker volume inspect <C2-post 的卷名> --format 'volumeCreatedAt={{.CreatedAt}}'
 ```
-预期：`vector_store_rows=0`（本清单全程不允许出现非探针写入，探针已回滚）。§12 必须同时记录镜像名、镜像 ID（digest 更佳）、容器 `StartedAt` 与卷 `CreatedAt`——它们是分支 A/B 结论的时间线凭据。停止方式：`docker compose -f docker-compose-eval.yml --env-file .env.eval stop`（保留卷，供复核）。**不要求、也不要**在本轮 `down -v`。
+预期：`vector_store_rows=0`（本清单全程不允许出现非探针写入，探针已回滚）。§12 必须同时记录镜像名、镜像 ID（digest 更佳）、容器 `StartedAt`、卷 `CreatedAt` 与 C4 的 **up 开始/结束两个时刻**——它们是分支 A/B 结论的时间线凭据（分支 A 的区间核对直接用后者）。停止方式：`docker compose -f docker-compose-eval.yml --env-file .env.eval stop`（保留卷，供复核）。**不要求、也不要**在本轮 `down -v`。
 口令收尾：本清单**不再**有 `unset PGPASSWORD` 这一步（宿主机从未设置过任何口令变量，`unset` 一个不存在的变量只会制造「已经清理过」的错觉）。改为在 §12 记录一行「本清单全程未在宿主机 argv / shell 历史 / 记录表里出现口令值」，并核对两件事：宿主机侧没有 export 过 `PGPASSWORD`；§12 里只出现过 `env_present len=` 这种长度信息。
 
 ## 11. 验收判据
 
 - C1–C11 全部 PASS，且每项在 §12 有**实测值原文**（不是「符合预期」这类转述）；
-- **§5 的「形态冒烟自检」必须留下 `stdin_ok` 原文**（实测行形如 `stdin_ok user=eval_runner`，退出码 0），它是 C6–C11 每一条 SQL 结论的前置：这条没留痕，后面所有「SQL 检查」都可能是 `-i` 缺失导致的空跑，一律不得算 PASS。若命中「无输出 + exit 0」分支，本条与 C6–C11 全部记 **BLOCKED**，并附 `docker --version` / `docker compose version` 原文；
-- §5 的分支判定必须写明走了 **A（新卷首次初始化）** 还是 **B（旧卷复用）**，并附卷 `CreatedAt` / 容器 `StartedAt` / up 时刻三个时间点；只有分支 A 且四要件齐备，才允许出现「本次启动执行过初始化脚本」这句话；分支 B 只能写「数据面就绪、init 归属未知」；
+- **§5 的「形态冒烟自检」必须留下 `stdin_ok` 原文**（实测行形如 `stdin_ok user=eval_runner`，C5.1 命令为 `docker exec -i`、无 `-T`，退出码 0），它是 C6–C11 每一条 SQL 结论的前置：这条没留痕，后面所有「SQL 检查」都可能是 `-i` 缺失导致的空跑，一律不得算 PASS。若命中「无输出 + exit 0」分支，本条与 C6–C11 全部记 **BLOCKED**，并附 `docker --version` / `docker compose version` 原文；若报 `unknown shorthand flag: 'T' in -T` 且 **exit 125**，那是命令行混进了旧写法的 `-T`（§1 实测事实：`docker exec` 没有这个旗标）——按「命令抄写缺陷」改正形态后重跑，不属于 C5.1 三分支中的任何一支，也不得记成任何数据库结论；
+- **命令行形态判据（本轮 #9 定点）**：正文所有 `docker exec` 命令行均不带 `-T`；读 here-doc 的 14 条一律 `docker exec -i`，4 条不读 stdin 的（§1 存在性探针、C6.0/C6.1/C8a 超管 `-c` 查询）为裸 `docker exec`；唯一合法保留的 `-T` 是 C4 的 `docker compose … exec -T`（实测 `docker compose exec --help` 列出 `-T/--no-tty`）。执行时若在任何命令行发现 `-T` 残留，先改正形态、再谈结论，不得把 125 解读成容器或数据库行为；
+- §5 的分支判定必须写明走了 **A（新卷首次初始化）** 还是 **B（旧卷复用）**，并附 **up 开始时刻与 up 结束时刻这一对**、卷 `CreatedAt`、容器 `CreatedAt`/`StartedAt`，且写明区间核对结果：卷与容器的创建/启动时间是否全部落在 [up 开始, up 结束] 区间内（含等号）——分支 A 判据 1 用的就是这个区间，只记单个「up 之后」的时间点不算记录完成；只有分支 A 且四要件齐备，才允许出现「本次启动执行过初始化脚本」这句话；分支 B 只能写「数据面就绪、init 归属未知」；
 - C2 的三方归属（容器 project 标签 / 容器 Mounts 卷名 / 卷 project+volume 标签）必须逐项记录实际字符串；
 - C2 还必须写明命中 §3 判定表的哪一档（①/②/③/④）：**状态 ②（卷在、容器不在）**要在 `up` 之前留 C2-pre-vol 快照（`CAND_COUNT`、卷名、两个标签原文、`CreatedAt`），并在 `up` 之后立即补做 C2-post，核对从容器 `Mounts` 读到的卷名与快照**逐字一致**——两条都记录才算归属闭环，只记其一不算 PASS；状态 ④ 只能记 BLOCKED（未 `up`，无法继续 C3 之后各条），不得为了走完清单而 `up`；
 - C8 的声明式与行为式两个口径分别记录；三条负向探针必须**各自独立会话**执行，§12 里记下每条的实际错误文本原文、**`session_alive` 行是否出现**与复查计数（缺错误文本或缺会话存活行 = 不能算 PASS；会话存活行缺失一律 BLOCKED 不判 FAIL）；
@@ -514,9 +545,10 @@ C2post 容器Mounts三条        实测:__________  PASS/FAIL
 C2post 卷名/CreatedAt/标签   实测:__________  PASS/FAIL
 C2post 状态②:up后读到的卷名 == C2pre-vol 初判卷名  实测:______ / ______  一致? 是/否/不适用
 C3  config --quiet 退出码     exit=______  ports一行:__________  PASS/FAIL
-C4  up+healthcheck+pg_isready 实测:__________  PASS/FAIL  up时刻:______
+C4  up+healthcheck+pg_isready 实测:__________  PASS/FAIL  up开始时刻(UP_START):______  up结束时刻(UP_END):______
+C4  区间核对: 卷CreatedAt与容器CreatedAt/StartedAt ∈ [up开始,up结束](含等号)  实测:______  是/否(分支A判据1依据)
 C5  容器StartedAt/卷CreatedAt/本次窗口日志  实测:__________
-C5.1 形态冒烟自检 stdin_ok原文:__________  exit=______  分支判定: ①继续/②BLOCKED/③凭据分支  docker --version:______  docker compose version:______
+C5.1 形态冒烟自检 stdin_ok原文:__________  exit=______  分支判定: ①继续/②BLOCKED/③凭据分支  形态核对: 命令为 docker exec -i 无 -T（若混入 -T 会得 exit 125，按抄写缺陷改正重跑）:______  docker --version:______  docker compose version:______
 口令探针 env_present len= / env_ABSENT  实测:______(只记长度，不记值)  PASS/BLOCKED
 C6.0 unix socket auth_method  实测:__________（trust / scram / md5）
 C6.1 tables / roles / ext 三行 实测:__________  PASS/FAIL  人工确认人(若需重建):______
@@ -542,35 +574,48 @@ C11 收尾(空表/镜像名与ID/时间线/stop未删卷) 实测:__________  PAS
 
 ## 14. 本轮（2026-09-30 离线文档轮）定点修订记录
 
-按复核意见逐条对应，全部只改本文档；未启动容器、未连数据库、未调用 Embedding、未运行 `evalP1cReal`、未删除任何卷。#1–#5 是这一轮的第一次定点修订，#6–#7 是收到复核追加意见后的第二次，**#8 是本轮（R3）对 #7 形态改造自身缺陷的第三次定点**（下表与 §14.1 的 R1/R2/R3 轮次标注与之一一对应；#8 的两条不是复核意见，是本轮静态核验新发现）。
+按复核意见逐条对应，全部只改本文档；未启动容器、未连数据库、未调用 Embedding、未运行 `evalP1cReal`、未删除任何卷。#1–#5 是这一轮的第一次定点修订，#6–#7 是收到复核追加意见后的第二次，**#8 是 R3 轮对 #7 形态改造自身缺陷的第三次定点**（下表与 §14.1 的 R1/R2/R3 轮次标注与之一一对应；#8 的两条不是复核意见，是静态核验新发现）。**#9–#11 是最新一轮（R4）**：#9 源于目标机对 `-T` 的直接实测（daemon 停止即可完成）——它**推翻了 #5/#7/#8 保留 `-T` 的全部决定**，那几行里的 `-T` 写法自此按「旧写法（已作废，今晚 exit 125）」读；#10 是 C4 时间戳取值时机的缺陷修订（复核指出「在 `up` 之后才记 up 时刻」使分支 A 判据 1 在数学上不可能成立，还可能被时间更晚的记录意外「通过」）；#11 把 #9 的同一套形态口径**扩到设计文档的可复制面**并加机器断言（含本轮自查发现的一个断言块自身写法的缺陷，见该行）。R4 的实测与静态验证见 §14.1 的 R4 行。
 
 | # | 复核意见 | 修订 |
 |---|----------|------|
 | 1 | 卷标签判据不成立 | C2 改为读 `.Labels`，用 `com.docker.compose.project` + `com.docker.compose.volume` + 容器实际 `Mounts` + 容器 project 标签做三方归属；**取消**对卷上 `project.config_files` 的要求，并说明该标签属于容器/网络层 |
 | 2 | 负向探针要可回滚、可区分拒绝原因、不留残留 | C8b 拆成三条独立会话、各自 `BEGIN … ROLLBACK`；每条后附事务之外的残留复查；给出 PASS / FAIL / BLOCKED 分类表（按错误文本 + `session_alive` 行 + 复查计数三重判据）；说明 PostgreSQL 的 DDL 事务性使 `public.probe_t` 不会留下，并解释上一版共用事务会造成「后两条没跑却像全被拒」的假 PASS |
 | 3 | 不得输出完整配置或环境变量值 | C3 只留 `config --quiet` 与「python 只取 ports」两条命令，删除原 `config \| grep`；新增 §1 硬边界与 `--no-interpolate` 替代路径 |
-| 4 | 对象存在 ≠ 本次执行过 init | §5 拆成两个命题表 + 分支 A（新卷四要件）/ 分支 B（旧卷 B1–B5 检查），要求记录卷 `CreatedAt`、容器 `StartedAt`、up 时刻与 `--since 15m` 的本次窗口日志；`down -v` 仍只作为人工确认后的手工动作，并补项目名核对要求 |
-| 5 | 静态检查命令的目标环境可执行性 | 上一轮实测：宿主机**无 `psql`、无 `jq`**，Docker daemon 未运行 → C6/C7/C8/C9/C10/C11 的 SQL 全部改为经 `docker exec -T` 在容器内执行 `psql`，凭据核验走容器内 TCP（并解释 unix socket 可能是 `trust`，socket 成功证明不了口令）；JSON 过滤统一用 `python`；所有 `docker compose` 子命令补 `--env-file .env.eval`；口令改为宿主机静默读取 + `export`（**这一处理方式已被下面 #7 取代**） |
+| 4 | 对象存在 ≠ 本次执行过 init | §5 拆成两个命题表 + 分支 A（新卷四要件）/ 分支 B（旧卷 B1–B5 检查），要求记录卷 `CreatedAt`、容器 `StartedAt`、up 时刻与 `--since 15m` 的本次窗口日志（**本行的单个「up 时刻」已被 #10 修订为 [up 开始, up 结束] 窗口比对**）；`down -v` 仍只作为人工确认后的手工动作，并补项目名核对要求 |
+| 5 | 静态检查命令的目标环境可执行性 | 上一轮实测：宿主机**无 `psql`、无 `jq`**，Docker daemon 未运行 → C6/C7/C8/C9/C10/C11 的 SQL 全部改为经 `docker exec -T`（**旧写法，已被 #9 作废**：目标机实测 `docker exec` 无 `-T`，该形态今晚 exit 125；今晚正文一律 `docker exec -i` / 裸 `docker exec`）在容器内执行 `psql`，凭据核验走容器内 TCP（并解释 unix socket 可能是 `trust`，socket 成功证明不了口令）；JSON 过滤统一用 `python`；所有 `docker compose` 子命令补 `--env-file .env.eval`；口令改为宿主机静默读取 + `export`（**这一处理方式已被下面 #7 取代**） |
 | 6 | C2-post 无法先于 `up` 执行：「卷存在但容器不存在」是常见状态，而 C2-post 依赖容器 | §3 新增 **C2-pre-vol**（`docker volume ls` 交给 python 只留名字等于 `eval_postgres_data` 或以 `_eval_postgres_data` 结尾的条目，再对每个命中项单独 `docker volume inspect`，只取两个 compose 标签与 `CreatedAt`）+ **四状态判定表**（①无容器无卷→分支 A；②无容器+恰 1 候选卷→分支 B，C2-post 顺延到 `up` 后立即补做并逐字比对卷名；③容器存在+恰 1 候选卷→可先做 C2-post；④候选卷 ≥ 2 / project 标签不符 / 标签缺失→立即停止不 `up`，理由是 `up` 可能新建第三个卷而 `down -v` 按项目名删卷）；写明「预期项目名」的来源与不得越界（默认为 Compose 文件所在目录名、可被 `-p`/`COMPOSE_PROJECT_NAME` 覆盖、**不**为取项目名另跑 `config`、`up` 后以容器 Labels 实测值闭环、前缀规则属推导）；§5 分支 A/B 与 §11/§12 做对应交叉引用（未重写 §5 既有证据要求） |
-| 7 | `docker exec` 用 `-e` 把宿主机口令变量透进容器，会由宿主机先展开成明文并留在 `docker` 进程 argv 里 | §1 删除宿主机口令录入，改为**只打印长度**的存在性探针（`env_present len=` / `env_ABSENT` 即停止）；C6.0(scram 分支)、C7、C8b 六条、C9、C10、C11 的 `eval_runner` SQL 统一为 `docker exec -T … sh -c 'PGPASSWORD="$EVAL_RUNNER_PASSWORD"; … exec psql … -f -'` + 顶格 here-doc（外层单引号避免宿主机展开，SQL 走 here-doc 避免单引号冲突，`exec` 顶替 sh 进程，原 `ON_ERROR_STOP=0/1` 选择按语义保留）；**并修正 `-T` 不转发 stdin 的形态缺陷（给读 here-doc 的命令补 `-i`，见下面 #8 与 §14.1 的 R3）**；C6.0/C8a 的 `postgres` 超管项保持容器内 socket 免密形态；新增两条硬禁令（读 `.Config.Env`、容器内 `env`/`printenv`）；C11 取消 `unset` 改为记录「宿主机 argv / shell 历史 / 记录表无口令值」；§11/§12/§0 同步。**已知遗留**：`P1C-L1-DESIGN.md` §13 表里仍留着旧的 `-e` 透传写法，本轮按边界未动 |
-| 8 | 本轮（R3）静态核验**新发现**的两条缺陷，均由上面 #7 那次形态改造引入或暴露：① #7 把 SQL 从 `-c "…"` 改成 here-doc + `-f -`，却沿用 `docker exec -T`——`-T` 只关 TTY，**不转发 stdin**，于是 `-f -` 立刻遇到 EOF：不输出任何行、不报错、退出码 0，**整份清单的 SQL 检查会静默假 PASS**（这是本清单最坏的一类生成器：它不是某条判据错了，而是让所有判据同时失去取证能力）；② §7 (b) 的判据第 2 条要求「`session_alive …` 那行必须先出现」，但正文只给 probe-1 写了这行，probe-2/3 永远无法满足该判据（且在 ① 修好之前，这个缺失恰好还会掩盖「会话根本没连上」） | ① 13 条读 stdin 的命令（判定口径：单引号程序文本里含 `-f -` 且其后紧跟带引号定界符的 here-doc）逐条改为 `docker exec -i -T`，**不读 stdin 的保持 `-T`**：§1 的 `env_present len=` 存在性探针、C6.0/C6.1/C8a 的 `psql -U postgres … -c "SELECT …"`（容器内 unix socket 免密、超管声明式查询）、C6.0 兜底的 `cat pg_hba.conf`——按规则逐条判断，未做全局替换；§1 补「为什么必须 `-i`」的说明（引 Docker CLI 对 `-i/--interactive` 的原文措辞、标注其为**推理**且今晚由自检实测证伪、写明 `-T` 与 stdin 无关、以及某版 CLI 拒收 `-T` 时按形态缺陷停不许现场发挥）；§5 末新增 **C5.1 形态冒烟自检**（强制，排在一切权限/身份/维度类 SQL 之前；三分支判据：`stdin_ok` 原文 = 继续 / **零输出 + exit 0 = BLOCKED 并记 `docker --version`** / `FATAL:`、`could not connect` = 回 C6-C7 凭据分支）；② 同一行会话存活 SQL 逐字加到 probe-2、probe-3 的 `BEGIN;` **之前**（事务外的自动提交语句，不把回滚语义带进探针），§7 写明它的唯一作用是证明「会话活着 + SQL 真送到了 psql」、缺失即判 BLOCKED 不判 FAIL，判定表新增「零输出 + exit 0 = 形态缺陷」一行；§11 加「必须留下 `stdin_ok` 原文」的验收项、§12 加 C5.1 行与三条探针的「session_alive 行:有/无」列、§0 新增两条形态断言（31→33）。**上一轮 R2 的干跑之所以「13/13 通过」，是因为它那个假 `docker` 无条件把 stdin 交给假 `psql`——它验的是自己设计的模型，不是 CLI 的真实语义，恰好没覆盖 ①；本轮把 stdin 转发语义本身作为干跑对象（见 §14.1 R3 的对照实验）** |
+| 7 | `docker exec` 用 `-e` 把宿主机口令变量透进容器，会由宿主机先展开成明文并留在 `docker` 进程 argv 里 | §1 删除宿主机口令录入，改为**只打印长度**的存在性探针（`env_present len=` / `env_ABSENT` 即停止）；C6.0(scram 分支)、C7、C8b 六条、C9、C10、C11 的 `eval_runner` SQL 统一为 `docker exec -T … sh -c 'PGPASSWORD="$EVAL_RUNNER_PASSWORD"; … exec psql … -f -'` + 顶格 here-doc（外层单引号避免宿主机展开，SQL 走 here-doc 避免单引号冲突，`exec` 顶替 sh 进程，原 `ON_ERROR_STOP=0/1` 选择按语义保留）；**并修正 `-T` 不转发 stdin 的形态缺陷（给读 here-doc 的命令补 `-i`，见下面 #8 与 §14.1 的 R3）**；C6.0/C8a 的 `postgres` 超管项保持容器内 socket 免密形态；新增两条硬禁令（读 `.Config.Env`、容器内 `env`/`printenv`）；C11 取消 `unset` 改为记录「宿主机 argv / shell 历史 / 记录表无口令值」；§11/§12/§0 同步。**已知遗留**：`P1C-L1-DESIGN.md` §13 表里仍留着旧的 `-e` 透传写法，本轮按边界未动（**该遗留已随 #9 同轮定点清除，见 §16 对应行**）。**本行保留 `-T` 的决定已被 #9 作废：`docker exec -T …` 是旧写法，今晚真机 exit 125；「口令只在容器内展开 + here-doc + `-f -`」的设计不受影响，仅旗标部分改为 `docker exec -i`** |
+| 8 | 本轮（R3）静态核验**新发现**的两条缺陷，均由上面 #7 那次形态改造引入或暴露：① #7 把 SQL 从 `-c "…"` 改成 here-doc + `-f -`，却沿用 `docker exec -T`——`-T` 只关 TTY，**不转发 stdin**，于是 `-f -` 立刻遇到 EOF：不输出任何行、不报错、退出码 0，**整份清单的 SQL 检查会静默假 PASS**（这是本清单最坏的一类生成器：它不是某条判据错了，而是让所有判据同时失去取证能力）；② §7 (b) 的判据第 2 条要求「`session_alive …` 那行必须先出现」，但正文只给 probe-1 写了这行，probe-2/3 永远无法满足该判据（且在 ① 修好之前，这个缺失恰好还会掩盖「会话根本没连上」） | ① 13 条读 stdin 的命令（判定口径：单引号程序文本里含 `-f -` 且其后紧跟带引号定界符的 here-doc）逐条补 `-i`（当时把命令行写成 `-i -T` 组合，**其中 `-T` 部分已被 #9 作废——今晚的正确形态是 `docker exec -i`，本行为历史记录**），**不读 stdin 的当时保持 `-T`（旧写法，同样已被 #9 作废，今晚为裸 `docker exec`）**：§1 的 `env_present len=` 存在性探针、C6.0/C6.1/C8a 的 `psql -U postgres … -c "SELECT …"`（容器内 unix socket 免密、超管声明式查询）、C6.0 兜底的 `cat pg_hba.conf`——按规则逐条判断，未做全局替换；§1 补「为什么必须 `-i`」的说明（引 Docker CLI 对 `-i/--interactive` 的原文措辞、标注其为**推理**且今晚由自检实测证伪、写明 `-T` 与 stdin 无关、以及某版 CLI 拒收 `-T` 时按形态缺陷停不许现场发挥）；§5 末新增 **C5.1 形态冒烟自检**（强制，排在一切权限/身份/维度类 SQL 之前；三分支判据：`stdin_ok` 原文 = 继续 / **零输出 + exit 0 = BLOCKED 并记 `docker --version`** / `FATAL:`、`could not connect` = 回 C6-C7 凭据分支）；② 同一行会话存活 SQL 逐字加到 probe-2、probe-3 的 `BEGIN;` **之前**（事务外的自动提交语句，不把回滚语义带进探针），§7 写明它的唯一作用是证明「会话活着 + SQL 真送到了 psql」、缺失即判 BLOCKED 不判 FAIL，判定表新增「零输出 + exit 0 = 形态缺陷」一行；§11 加「必须留下 `stdin_ok` 原文」的验收项、§12 加 C5.1 行与三条探针的「session_alive 行:有/无」列、§0 新增两条形态断言（31→33）。**上一轮 R2 的干跑之所以「13/13 通过」，是因为它那个假 `docker` 无条件把 stdin 交给假 `psql`——它验的是自己设计的模型，不是 CLI 的真实语义，恰好没覆盖 ①；本轮把 stdin 转发语义本身作为干跑对象（见 §14.1 R3 的对照实验）** |
+| 9 | 本轮（R4）**目标机实测**（复核意见第 1 条要求「用本机 `docker exec --help` 核对选项，不能再把『`docker exec` 是否支持 `-T`』留作今晚验证」；本轮据此在目标机自行实测，daemon 保持停止、不接触任何容器）：`docker exec` 根本没有 `-T` 旗标——`docker exec --help` 只列 `-d/--detach`、`--detach-keys`、`-e/--env`、`--env-file`、`-i/--interactive`、`--privileged`、`-t/--tty`、`-u/--user`、`-w/--workdir`；`docker exec -T nosuchcontainer true` 报 `unknown shorthand flag: 'T' in -T`、**exit 125**（flag 解析先于 daemon 调用，所以无需容器即可判定）；`docker exec -i` / 裸 `docker exec` 能通过解析；而 `docker compose exec --help` **确有** `-T, --no-tty`。这意味着 #5/#7/#8 一路保留 `-T` 的写法**今晚会让全部 14 条 here-doc SQL、存在性探针与三条超管 `-c` 查询以 125 硬失败** | 全部 `docker exec` 命令行去掉 `-T`：14 条读 here-doc 的改 `docker exec -i`，4 条不读 stdin 的（§1 存在性探针、C6.0/C6.1/C8a 超管 `-c`）改裸 `docker exec`；C6.0 兜底 `cat pg_hba.conf` 与 §1 硬禁令里的禁令命令文本同步为裸形态；C4 的 `docker compose … exec -T` **保持不动**（合法）。§1 原两处「今晚再看 CLI 是否收 `-T`」的推导级存疑（旧第 107–109 行的性质标注与 `-T` 那一面）替换为**「实测事实」块**（CLI 版本 `Docker version 29.7.2, build a7dcaa6`、`--help` 选项清单、125 退出码、解析先于 daemon 调用、compose exec 与 exec 的旗标差异）；**但「不加 `-i` 时 here-doc 到不了容器」仍是文档推导**——本轮实测只覆盖旗标解析层，该推理保留存疑、仍由 C5.1 证伪，C5.1 三分支表原样不动，只补了「旧 `-T` 形态会在解析层 125、属抄写缺陷、不进三分支」的关系说明。§0 断言 33→34（新增「正文 `docker exec` 命令行零 `-T`」，命令行锚定行首 `docker exec`，引号内提及与 `compose exec -T` 不计；反向突变对照见 §14.1 R4）；§11 加「命令行形态判据」；§12 C5.1 行加形态核对格；§14 的 #5/#7/#8 行加「旧写法（已作废）」标注；同步修复 `P1C-L1-DESIGN.md` §13 的 `-e`/`-T` 遗留（见其 §16 #7） |
+| 10 | 本轮（R4）复核指出 §5 C4 的时间戳缺陷：原块先 `up -d`、再 `ps`/`pg_isready`、**最后**才 `date` 记「up 时刻」——而分支 A 判据 1 要求卷与容器的创建时间**晚于**该时刻，可创建明明发生在 `up` 期间，判据在数学上不可能成立；更糟的是执行者可能拿一个晚于对象创建的记录值去比对，让旧卷也「看起来更早」、意外「通过」 | C4 块改为两个 `date`：**UP_START 在 `up -d` 之前**取、**UP_END 在健康检查与 `pg_isready` 通过之后**取，两值都进 §12；分支 A 判据 1 改写为区间核对（卷 `CreatedAt` 与容器 `CreatedAt`/`StartedAt` 全部落在 [up 开始, up 结束] 内，含等号，并说明为什么区间才是正确形状）；分支 B 与 B2 的「早于本次启动 / 以 up 时刻为锚」改述为「早于 up 开始时刻 / 以窗口为锚」；§1「口令新鲜度的诚实口径」按窗口重述（不削弱记录要求）；C7 预期行、§10 C11 记录要求、§11 分支判据与 §12 记录表同步（up 时刻一格拆为开始/结束两格，并新增区间核对格） |
+| 11 | 本轮（R4）第 3 项要求「同步修正设计文档 §13 并**扫描当前 HEAD，确保没有其他可复制的旧命令**」：`git grep` 扫描发现除 §13 外，设计文档 §14「失败时清理规则」的方案 A/B 代码块与表格里的人工清理行仍是旧形态（`docker exec -T` + `-e` 把宿主机口令展开进 argv + `-c "DELETE …"`），而那是**最容易被照抄执行**的一处（失败时的应急命令）；同时原边界只保证清单自身一致，设计文档的口径靠人工对齐，下一轮仍可能漂移 | §14 方案 A 两条 compose 命令补 `--env-file .env.eval`；方案 B 改为 `docker exec -i interview-eval-postgres sh -c 'PGPASSWORD="$EVAL_RUNNER_PASSWORD"; … exec psql -h 127.0.0.1 -p 5432 -U eval_runner -d interview_guide_eval -X -q -v ON_ERROR_STOP=1 -f -'` + 顶格 `SQL` here-doc，删除语句按 `metadata->>'eval_run_id'` 谓词、后附 `remaining_for_run_id=` 行数复核；表格里「人工清理」行同样补 `--env-file` 并说明原因（`${…:?}` 插值缺省即失败）；`down -v` 保留为**人工确认后手工执行**并在正文写明不可逆、确认要记进本清单 §12。**并把「可复制面」定义为机器断言**：§0 新增 5 条（断言总数 34→39），扫描范围严格限定为设计文档的 bash 围栏代码块 + §13 表格行，**不含 §16 变更记录**（那里是「旧写法」的历史描述，纳入会假 FAIL）；断言为——无 `docker exec -T`/`-i -T` 旧形态、无 `-e` 口令透传、无宿主机静默录入与收尾 unset 取值、compose 命令均带 `--env-file`、§14 方案 B 已是 here-doc + 容器内展开。**本轮自查新发现并修掉一个断言块自身的缺陷**：这 5 条里最初直接写了「三个反引号 + bash」形式的围栏标记，而该标记会**截断核验脚本自己按 bash 围栏提取正文的正则**，结果是新增断言静默不参与判定、脚本却照样 exit 0——这正是 #8 ① 那类「取证工具自己失效」的形状，改法是用 `chr(96)*3` 拼出围栏标记并在断言里注明原因；修好后计数才从虚报的 34 变成真实的 39 PASS。反向突变对照（5 条各自回潜旧写法即响）见 §14.1 R4。同理，本表这一行也不得写出真围栏标记 |
 
 ### 14.1 验证命令与退出码（零容器、零网络）
 
-下表逐行标注轮次：**R1** = 更早那次静态核验（未重跑，结论不外推到之后的改动）；**R2** = #6/#7 两项定点完成时的实测；**R3** = 本轮 #8（补 `-i` + 三条探针的会话存活行）之后同一批命令的实际重跑。R2 各行里的 31 / 23 / 13 是**当时文本**的计数，#8 改动后已分别变为 33 / 24 / 14（以下方 R3 行为当前值）。
+下表逐行标注轮次：**R1** = 更早那次静态核验（未重跑，结论不外推到之后的改动）；**R2** = #6/#7 两项定点完成时的实测；**R3** = #8（补 `-i` + 三条探针的会话存活行）之后同一批命令的实际重跑；**R4** = 本轮 #9/#10/#11 之后同一批命令的实际重跑（**当前值以 R4 行为准**）。R2 各行里的 31 / 23 / 13 是**当时文本**的计数，#8 改动后变为 33 / 24 / 14，#9/#10 改动后断言数为 34，#11（设计文档可复制面 5 条）后为 **39**（R4 行）。**凡 R2/R3 行里出现的 `-T` / `-i -T` 均为历史写法（已被 #9 取代：目标机实测 `docker exec` 没有 `-T`，那些形态今晚会在旗标解析层以 exit 125 直接失败），只作轮次留痕，不代表当前正文**；R3 的「对照干跑」用的是假 `docker` 模型（把 `-T` 建模为「不转发 stdin」），真机根本不接受该旗标——两段证据的层级不同，勿混读。
 
 | 轮次 / 命令 | 退出码 | 结果 |
 |------|--------|------|
-| R2 §0 的 `python - <<'PY' … PY` 断言块（只读文件，用 `C:\Python313\python.exe` 真跑，cwd = 仓库根） | 0 | **31 项断言 → 31 PASS / 0 FAIL**（上一轮为 25 项）；here-doc 开闭配对 `13/13`；`--env-file` 违例 = 无。**这是 #8 之前的计数，同一命令本轮 #8 之后重跑为 33 项，以 R3 行为当前值** |
+| R2 §0 的 `python - <<'PY' … PY` 断言块（只读文件，用 `C:\Python313\python.exe` 真跑，cwd = 仓库根） | 0 | **31 项断言 → 31 PASS / 0 FAIL**（上一轮为 25 项）；here-doc 开闭配对 `13/13`；`--env-file` 违例 = 无。**历史行：这是 #8 之前的计数（当时正文全部走 `docker exec -T`，属旧写法，今晚真机 exit 125，已被 #9 取代）；当前值以 R4 行为准** |
 | R2 逐个 bash 围栏代码块喂 `bash -n`（Git Bash：`C:\Program Files\Git\bin\bash.exe`） | 0 | **23 个块 / 0 处语法错误**（上一轮 18 个块；本轮新增 C2-pre-vol 两条与「一条会话一个块」的拆分。#8 加 C5.1 后为 24 块，见 R3） |
-| R2 §1 存在性探针 + 正文全部 13 条 here-doc 命令的**离线干跑**：定义 shell 函数 `docker` 模拟 `docker exec`、PATH 前置一个假 `psql` 脚本、容器侧环境给哨兵口令 | 0 | 14/14 通过：`docker` 收到的 argv 里只有变量名的字面文本（哨兵口令 0 命中）；假 `psql` 拿到 `-f -` 且 here-doc 的 SQL 全文进了 stdin；容器侧 `PGPASSWORD_is_set=yes len=12`（证明展开发生在容器内、不在宿主机）；探针两个分支分别输出 `env_present len=12` 与 `env_ABSENT`。**该模型的局限正是 #8 ① 漏网的原因**：那个假 `docker` 无条件把 stdin 交给假 `psql`，等于把「CLI 是否转发 stdin」这个待验命题当成了假设——本轮 R3 换成按 `-i` 有无来分流 stdin 的模型 |
+| R2 §1 存在性探针 + 正文全部 13 条 here-doc 命令的**离线干跑**：定义 shell 函数 `docker` 模拟 `docker exec`、PATH 前置一个假 `psql` 脚本、容器侧环境给哨兵口令 | 0 | 14/14 通过：`docker` 收到的 argv 里只有变量名的字面文本（哨兵口令 0 命中）；假 `psql` 拿到 `-f -` 且 here-doc 的 SQL 全文进了 stdin；容器侧 `PGPASSWORD_is_set=yes len=12`（证明展开发生在容器内、不在宿主机）；探针两个分支分别输出 `env_present len=12` 与 `env_ABSENT`。**该模型的局限正是 #8 ① 漏网的原因**：那个假 `docker` 无条件把 stdin 交给假 `psql`，等于把「CLI 是否转发 stdin」这个待验命题当成了假设——本轮 R3 换成按 `-i` 有无来分流 stdin 的模型。（历史行：当轮正文命令一律带旧写法 `-T`（已被 #9 作废，今晚真机 exit 125），但干跑结论中「argv 无口令」那部分不受旗标修订影响） |
 | R2 C2-pre-vol 的两条 `python` 过滤器，输入为**合成的**假 `docker volume ls` / `docker volume inspect` 输出（其中一份埋哨兵标签、一份故意把 Labels 给成 `null`） | 0 | 候选卷数与命中名符合预期（精确名与 `_eval_postgres_data` 后缀都收，无关卷不收）；只打印卷名、`CreatedAt` 与两个 compose 标签，哨兵标签没出现；`Labels=null` 不崩且 `VOL_LABEL_MISSING` 列全两个标签——正是判定档 ④ 的输入形状 |
 | R2 `date '+%Y-%m-%dT%H:%M:%S%z'` | 0 | `2026-09-30T19:20:42+0800`（C4/C5 记录的时间戳格式据此确定） |
 | R2 `netstat -ano \| grep ":5433" \| grep LISTEN`（C1 预跑，非今晚正式执行） | 1 | 无匹配 = 端口空闲；1 是 grep 的「无命中」码，不是失败；今晚仍须重跑（状态会变） |
-| **R3** §0 断言块（#8 之后重跑，命令与 R2 首行同） | 0 | **33 项断言 → 33 PASS / 0 FAIL**（#8 前 31 项）；here-doc 开闭配对 **`14/14`**；`--env-file` 违例 = 无；新增两条形态断言均 PASS：`-f -` ⇒ `-i` 违例 = 无（正文 14 条读 stdin 的命令全部带 `-i`）、会话存活行 **3/3** |
+| **R3** §0 断言块（#8 之后重跑，命令与 R2 首行同） | 0 | **33 项断言 → 33 PASS / 0 FAIL**（#8 前 31 项）；here-doc 开闭配对 **`14/14`**；`--env-file` 违例 = 无；新增两条形态断言均 PASS：`-f -` ⇒ `-i` 违例 = 无（正文 14 条读 stdin 的命令全部带 `-i`）、会话存活行 **3/3**。（历史行：#9/#10 后同一命令重跑为 34 项，以 R4 行为当前值；该轮正文的 `-T` 写法已被作废，今晚真机 exit 125） |
 | **R3** 逐个 bash 围栏代码块喂 `bash -n`（Git Bash `C:\Program Files\Git\bin\bash.exe`，子进程字节模式 + `errors='replace'`） | 0 | **24 个块 / 0 处语法错误**（R2 为 23；新增的一块就是 C5.1 形态冒烟自检） |
-| **R3** **stdin 语义对照干跑**（本轮关键证据）：假 `docker` 函数按「参数里有没有 `-i`」决定转发还是丢弃 stdin，丢弃用 `< /dev/null` 建模「不 keep open = 立刻 EOF」；假 `psql` 读 stdin 后按 SQL 里的字面量回显 | 0 | 同一条 C5.1 命令只差 `-i`：**带 `-i -T`** → 假 psql `stdin_bytes=39`、stdout 输出 `stdin_ok user=eval_runner`、exit 0；**只有 `-T`**（#8 修前的形态）→ 假 psql `stdin_bytes=0`、**stdout 零字节、exit 仍为 0**，缺陷 1 的静默假 PASS 症状完整复现，即今晚 C5.1 分支 ② 的输入形状。顺带复查假 `docker` 的 argv 记录：哨兵口令 0 命中，只有变量名的字面文本（补 `-i` 没有把口令带回 argv） |
-| **R3** 新断言的**反向对照**（只在内存副本上做，文件未改动）：① 把 14 条 `-i -T` 改回 `-T` → 断言报 **14 条违例**；② 删掉 probe-2/3 的会话存活行 → 计数从 3 降到 **1**，`>=3` 断言 FAIL | 0 | 两条新断言**不是恒真**：回归时会立刻响，且违例片段打进消息便于定位。（上一轮 R2 的干跑正是缺这层反向对照，才让 `-i` 缺失漏网） |
+| **R3** **stdin 语义对照干跑**（本轮关键证据）：假 `docker` 函数按「参数里有没有 `-i`」决定转发还是丢弃 stdin，丢弃用 `< /dev/null` 建模「不 keep open = 立刻 EOF」；假 `psql` 读 stdin 后按 SQL 里的字面量回显 | 0 | 同一条 C5.1 命令只差 `-i`：**带 `-i -T`** → 假 psql `stdin_bytes=39`、stdout 输出 `stdin_ok user=eval_runner`、exit 0；**只有 `-T`**（#8 修前的形态）→ 假 psql `stdin_bytes=0`、**stdout 零字节、exit 仍为 0**，缺陷 1 的静默假 PASS 症状完整复现，即今晚 C5.1 分支 ② 的输入形状。顺带复查假 `docker` 的 argv 记录：哨兵口令 0 命中，只有变量名的字面文本（补 `-i` 没有把口令带回 argv）。（历史行：本行的 `-i -T` / `-T` 均为当时形态，已被 #9 作废；且假 `docker` 把 `-T` 当成合法旗标建模，真机在解析层就 exit 125——本行只证明假模型的 stdin 分流行为，不证明真 CLI） |
+| **R3** 新断言的**反向对照**（只在内存副本上做，文件未改动）：① 把 14 条 `-i -T` 改回 `-T` → 断言报 **14 条违例**；② 删掉 probe-2/3 的会话存活行 → 计数从 3 降到 **1**，`>=3` 断言 FAIL | 0 | 两条新断言**不是恒真**：回归时会立刻响，且违例片段打进消息便于定位。（上一轮 R2 的干跑正是缺这层反向对照，才让 `-i` 缺失漏网。历史行：本轮 R4 对「零 `-T`」新断言做了同方法的反向突变对照，见下） |
+| **R4** §0 断言块（#9/#10 之后重跑，命令与 R2 首行同，Git Bash + `C:\Python313\python.exe`，cwd = 仓库根） | 0 | **34 项断言 → 34 PASS / 0 FAIL**（#9 前 33 项）；here-doc 开闭配对 **`14/14`**；`--env-file` 违例 = 无；三条形态断言全 PASS：`-f -` ⇒ `-i` 违例 = 无、会话存活行 **3/3**、新增「正文 `docker exec` 命令行零 `-T`」违例 = 无。（**#11 之后同一命令再重跑为 39 项，见下**） |
+| **R4** 逐个 bash 围栏代码块喂 `bash -n`（`C:\Program Files\Git\bin\bash.exe`，只解析不执行，§0 块同样只解析） | 0 | **24 个块 / 0 处语法错误**（块数与 R3 相同：#9 未增删围栏，#10 只是在 C4 块内加了第二行 `date` 并重排注释） |
+| **R4** 形态清点（python 逐行扫描正文，锚定行首 `docker exec`） | 0 | `docker exec` 命令行共 **18** 条：带 `-i` 的 **14** 条（here-doc 全部）；不带 `-i` 的 **4** 条，逐条为——§1 存在性探针（`env_present len=`）、C6.0 `psql -U postgres -d postgres … -c`、C6.1 `psql -U postgres … -v ON_ERROR_STOP=1`、C8a 声明式权限同形态；带 `-T` 旗标的命令行 **0** 条；`docker compose … exec -T`（C4）保留 **1** 条且不被命令行断言计入 |
+| **R4** 新断言的**反向突变对照**（只在内存副本上做，文件未改动、仓库内未留任何副本）：① 把 14 条 `-i` 的 here-doc 命令与 4 条裸命令逐一恢复旧旗标组合（即 #9 修前形态）→「零 `-T`」断言报 **18 条违例**（14 + 4），干净文本 0 违例，且突变后 C4 的 `compose exec -T` 行仍不计入（1→1，正则锚定行首 `docker exec` 的作用）；② 另一路突变：只把 14 条命令的 `-i` 删掉 → 「`-f -` ⇒ `-i`」断言报 **14 条违例** | 0 | 「零 `-T`」断言**不是恒真**：旧形态回潜即 18 条全响；违例片段带行首 70 字符打进消息便于定位。② 顺带复证 `-i` 断言的反向灵敏度 |
+| **R4** 陈旧副本扫描（`count()` 全文扫描，两个文档分别统计；搜索词一律用拆分拼接写出，避免扫描脚本自身成为违例） | 0 | `-e` + 口令参数赋值式：**0**（清单与设计均 0）；宿主机静默读取选项串与旧临时变量名：清单正文 **0**（唯一命中在 §0 断言脚本自身的字符串字面量里，属 `kk` 剔除范围，设计文档 0）；「`eval_runner_` + 年份」拼接式口令字面量：两文档 **0**；残留 `-T` 提及：清单 10 行 / 设计 2 行，**全部**是引号内提及或 §14/§16 历史行并已逐条标注「旧写法 / 已作废 / 历史行 / 实测被拒引用」，命令行 0 处（设计文档那 1 处未标注残留已由 #11 定点清除，见下两行） |
+| **R4** #11 后 §0 断言块重跑（命令与首行同，Git Bash + `C:\Python313\python.exe`，cwd = 仓库根） | 0 | **39 项断言 → 39 PASS / 0 FAIL**（#11 前 34）；新增 5 条设计文档可复制面断言全 PASS：无 `docker exec -T` 旧形态 / 无 `-e` 口令透传 / 无宿主机静默录入与收尾 unset / compose 命令均带 `--env-file`（违例 = 无）/ §14 方案 B 已是 here-doc + 容器内展开；here-doc 开闭配对仍 `14/14`，清单 `--env-file` 违例 = 无。**修脚本自身的围栏字面量之前的那次重跑是「34 PASS / exit 0」的假象**——5 条新断言因提取正则被截断而根本没执行，这行记录的 39 才是真实判定数 |
+| **R4** #11 后逐个 bash 围栏代码块喂 `bash -n`（清单 + 设计文档，`C:\Program Files\Git\bin\bash.exe`，只解析不执行） | 0 | 清单 **24 个块 / 0 处语法错误**（与 #9/#10 后相同：#11 只改表格与段落文字，未增删围栏）；设计文档 **1 个块 / 0 处语法错误**，其 here-doc 开闭配对 1/1 |
+| **R4** 退出码语义修正（本轮定点，同属取证工具缺陷）：`ok` 原是一个只 `print` 的 lambda，**任何 FAIL 都不会改变退出码**——此前各行记录的「exit=0」其实只证明 python 跑完了，不证明断言通过；今晚若有人只看 `echo $?` 会把 FAIL 读成 PASS。改为收集失败项并在块末 `raise SystemExit(1 if BAD else 0)`，同时打印 `ASSERT_TOTAL n, FAILING m` | 0（当前 39/39）；对照两次，都在**内存副本**上做、文件未改动：① 注入一条必然失败的断言 → **exit 1**（`ASSERT_TOTAL 40, FAILING 1` 并列出失败项）；② 模拟旧形状（把 `raise SystemExit(...)` 换成 `pass`）后同样注入 → **1 条 FAIL 仍 exit 0**，即修正前的盲区 | 修正后「exit=0」才等价于「全部断言通过」；失败时退出码 1 并把失败项逐条列出。此改动只动 §0 自检块自身，不改任何 C1–C11 命令与判据。**顺带得到一条真实的灵敏度证据**：本轮写 §14.1 记录时把旧写法（`-e` + 口令参数赋值式）**原样贴进了一行表格**，重跑立刻 **38 PASS / 1 FAIL**，改成文字描述后恢复 39/39——即本清单「引用缺陷一律用描述而不是原样粘贴」这条规则确实由断言在执行，不是空话 |
+| **R4** #11 五条新断言的**反向突变对照**（只在内存副本上做，文件未改动、仓库内未留副本；扫描范围与设计文档可复制面同口径） | 0 | 干净副本四项布尔判据全为 False（无违例）。逐条回潜旧写法，各自立刻响：**A1** 把裸 `docker exec interview-eval-postgres psql` 改回 `docker exec -T …` → 无 `-T` 断言真；**A2** 在 `sh -c` 前插回「`-e` + 宿主机口令参数赋值式」（把宿主机变量透进 `docker` argv 的旧写法） → 口令透传断言真；**A3** 追加一行含宿主机静默录入选项串与旧临时变量名 → 静默录入断言真；**A4** 追加一条不带 `--env-file` 的 compose 命令 → `--env-file` 违例列表非空；**A5** 把 here-doc 定界符改掉 → §14 方案 B 形态断言由真变假。**A1–A4 的违例只命中自己那一条断言，其余判据保持 False**，说明 5 条互不串台、不是恒真 |
+| **R4** 目标机 `-T` 实测（**本轮在目标机自行完成，零容器、零网络**：全部命令要么只读帮助文本，要么对一个**不存在的容器名**执行，而旗标解析先于 daemon 调用，所以既没有启动 Docker Desktop，也没有接触任何容器或数据库）：`docker --version` → `Docker version 29.7.2, build a7dcaa6`，exit 0；`docker exec --help` → Options 段逐字为 `-d,--detach` / `--detach-keys` / `-e,--env` / `--env-file` / `-i,--interactive "Keep STDIN open even if not attached"` / `--privileged` / `-t,--tty` / `-u,--user` / `-w,--workdir`，**不含 `-T`**，exit 0；`docker exec -T nosuchcontainer true` → `unknown shorthand flag: 'T' in -T` + 用法提示，**exit 125**；`docker exec -i nosuchcontainer true` / 裸 `docker exec nosuchcontainer true` → 通过解析，之后才因 daemon 未运行报 npipe 连接错误，exit 1；`docker compose exec --help` → 含 `-T, --no-tty` | 0 / 0 / 125 / 1 / 0（逐条如上） | 结论层：`--help` 的选项清单本身已足以判定 `-T` 不是 `docker exec` 的合法旗标，125 那一层进一步说明它在解析阶段就失败、**不需要容器也不需要 daemon**——这正是该组检查能在本轮零容器完成的原因，也是「不能再把『`docker exec` 是否支持 `-T`』留作今晚验证」的依据。上一版正文那 18 条带 `-T` 的行文今晚会**在取到任何数据库证据之前**整体失败。§1「实测事实」块与 #9 的全部形态修订即依据这组实测；`docker compose exec` 有 `-T` 由同轮 `--help` 直接核对，故 C4 那条保持 |
 | R1 C3.2 与 C2-post 的三条 `python -c` 过滤器（合成假 JSON，内含哨兵字段 `SECRET`） | 0 | 输出形状符合预期、`SECRET` 未出现 → 只打印 ports/labels/mounts。本轮未改动这三条命令，故未重跑 |
 | R1 `docker info` | 非 0 | `failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine` → Docker Desktop 未运行，属 T4 前置条件。**本轮按边界没有重跑，也没有启动它** |
 
