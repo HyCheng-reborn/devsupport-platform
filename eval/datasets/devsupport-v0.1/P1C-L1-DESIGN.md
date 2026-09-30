@@ -127,22 +127,26 @@ INSERT INTO eval_instance_identity (marker_key, marker_value) VALUES
     ('instance_type',  'p1c-eval-isolated'),
     ('instance_uuid',  'f47ac10b-58cc-4372-a567-0e0283c5d9e7');
 
--- 3. 预建 vector_store 表（与 PgVectorStore 默认 schema 一致）
+-- 3. 预建 vector_store 表（与交付的 eval-init.sql 一致）
 CREATE TABLE IF NOT EXISTS vector_store (
     id        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     content   TEXT,
-    metadata  JSONB,
+    metadata  json,           -- 交付 schema 是 json，不是 jsonb
     embedding vector(1024)
 );
 
 -- 4. 预建 HNSW 索引
 CREATE INDEX IF NOT EXISTS spring_ai_vector_index
     ON vector_store USING hnsw (embedding vector_cosine_ops);
+```
 
--- 5. 专用评测用户
-CREATE USER eval_runner WITH PASSWORD 'eval_runner_2026';
+**与交付文件的一致性说明（2026-09-30 定点修订）**：
+- 上面的片段就是 `docker/postgres/eval-init.sql` 的实际内容；该文件里**不含任何用户、口令或授权语句**（`GRANT`/`CREATE ROLE`/`PASSWORD` 关键字零命中）。
+- 专用用户与最小权限授予在**另一个初始化脚本** `docker/postgres/eval-user.sh` 中，由它作为 `/docker-entrypoint-initdb.d/20-eval-user.sh` 执行，口令只从容器环境变量 `EVAL_RUNNER_PASSWORD` 读取，缺失时脚本立即退出：
 
--- 6. 最小权限授予
+```sql
+-- docker/postgres/eval-user.sh 内的等价语义（口令以占位符表示，仓库中不出现字面量）
+CREATE ROLE eval_runner WITH LOGIN PASSWORD '<EVAL_RUNNER_PASSWORD>';  -- 实际带 WHERE NOT EXISTS 守卫
 GRANT CONNECT ON DATABASE interview_guide_eval TO eval_runner;
 GRANT USAGE ON SCHEMA public TO eval_runner;
 GRANT SELECT ON TABLE eval_instance_identity TO eval_runner;
@@ -165,7 +169,11 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE vector_store TO eval_runner;
 
 ```yaml
 # 评测专用 Postgres 实例
-# 启动：docker compose -f docker-compose-eval.yml up -d
+# 启动前：
+#   1) cp .env.eval.example .env.eval
+#   2) 在 .env.eval 中填入 EVAL_DB_PASSWORD 与 EVAL_RUNNER_PASSWORD
+#   3) 使用 --env-file .env.eval
+# 启动：docker compose -f docker-compose-eval.yml --env-file .env.eval up -d
 # 停止：docker compose -f docker-compose-eval.yml down
 # 清除：docker compose -f docker-compose-eval.yml down -v
 
@@ -175,13 +183,18 @@ services:
     container_name: interview-eval-postgres
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${EVAL_POSTGRES_PASSWORD:-123456}
+      # 强制要求显式设置；缺失时 compose 直接拒绝启动，避免使用弱默认值
+      POSTGRES_PASSWORD: ${EVAL_DB_PASSWORD:?必须在 .env.eval 或环境变量中设置 EVAL_DB_PASSWORD}
       POSTGRES_DB: ${EVAL_POSTGRES_DB:-interview_guide_eval}
+      # 传给 20-eval-user.sh 用于创建 eval_runner
+      EVAL_RUNNER_PASSWORD: ${EVAL_RUNNER_PASSWORD:?必须设置 EVAL_RUNNER_PASSWORD}
     volumes:
       - eval_postgres_data:/var/lib/postgresql/data
-      - ./docker/postgres/eval-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./docker/postgres/eval-init.sql:/docker-entrypoint-initdb.d/10-eval-schema.sql:ro
+      - ./docker/postgres/eval-user.sh:/docker-entrypoint-initdb.d/20-eval-user.sh:ro
     ports:
-      - "${EVAL_POSTGRES_PORT:-5433}:5432"
+      # 显式绑定 127.0.0.1，避免本机局域网 / 容器网络暴露到公网
+      - "127.0.0.1:${EVAL_POSTGRES_PORT:-5433}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -192,9 +205,12 @@ volumes:
   eval_postgres_data:
 ```
 
+**本节示例此前与交付不符，已按实际文件更正（2026-09-30 定点修订）**：旧示例的超管口令变量名与交付不同，且写成 `${...:-<六位弱默认值>}` 形式（带弱默认口令）；端口未绑定 `127.0.0.1`；且只挂一个 `/docker-entrypoint-initdb.d/init.sql`。交付版把两个密码都改成 `:?` 强制、显式回环绑定，并把初始化拆成 `10-eval-schema.sql`（扩展/标记表/`vector_store`/索引）+ `20-eval-user.sh`（角色与授权，口令只取环境变量）。
+
 与生产实例**零共享**：不同容器、不同卷、不同端口、不同数据库名、不同用户、不同 init SQL。
 
-**注意**：`eval-init.sql` 仅在容器首次初始化（volume 为空）时执行。若 volume 已有数据（如上次评测未清理），init SQL **不会重新执行**——此时标记表和用户可能已存在。需通过 `docker compose -f docker-compose-eval.yml down -v` 清除 volume 后重新 `up -d`。
+**注意**：`/docker-entrypoint-initdb.d/` 下的两个脚本**只在数据目录为空（新卷首次初始化）时执行**。若卷已有数据（上次评测未清理或复用旧卷），本次启动**必然**不会重跑 init——此时标记表、`vector_store` 与 `eval_runner` 角色照样存在，但它们是**历史某次**初始化的产物，不能当作「本次启动执行过初始化脚本」的证据；同理，`CREATE ROLE ... WHERE NOT EXISTS` 意味着复用旧卷时**改了 `.env.eval` 的口令也不会轮换角色口令**。两个命题的判据分开写在 `P1C-CONTAINER-CHECKLIST.md` §5（新卷分支/旧卷分支）。
+`down -v` 会**不可逆删除卷**，不属于清单的自动步骤：只有在人工确认卷内无需保留的数据后才可由执行者手工运行，并记录确认人与时间。
 
 ### 首次写入前核实（v1.4：标记表 + 用户身份 + 表状态）
 
@@ -250,7 +266,7 @@ boolean isSuperuser = evalJdbc.queryForObject(
 
 if (isSuperuser) {
     throw new IllegalStateException(
-        "eval_runner 不应具有超级用户权限，请检查 eval-init.sql");
+        "eval_runner 不应具有超级用户权限，请检查 docker/postgres/eval-user.sh");
 }
 
 // 连接身份信息记入报告（分别记录配置值与数据库返回值，供人工比对）
@@ -314,15 +330,16 @@ if (existingRows > 0) {
 3. 若残留 runId 与本次不同：**拒绝启动**，报告残留 runId 和行数
 4. 人工确认后，执行清理：
    ```bash
-   # 方案 A：重建容器（推荐，最干净——重新执行 eval-init.sql）
+   # 方案 A：重建容器（最彻底，但 down -v 会不可逆删除卷——只允许人工确认卷内无需保留内容后手工执行）
    docker compose -f docker-compose-eval.yml down -v
    docker compose -f docker-compose-eval.yml up -d
 
-   # 方案 B：手动删除残留（保留容器和表结构）
-   docker compose -f docker-compose-eval.yml exec eval-postgres \
-       psql -U eval_runner -d interview_guide_eval \
-       -c "DELETE FROM vector_store;"
+   # 方案 B：按残留 runId 精确删除（保留容器与表结构），与交付代码 Phase 5 的清理口径一致
+   docker exec -T interview-eval-postgres \
+       psql -h 127.0.0.1 -p 5432 -U eval_runner -d interview_guide_eval \
+       -c "DELETE FROM vector_store WHERE metadata->>'eval_run_id' = '<残留 runId>';"
    ```
+   不使用无条件 `DELETE FROM vector_store;`：交付代码的清理始终带 `eval_run_id` 谓词，全表删除会把「污染清理」与「环境污染取证」混为一谈。宿主机无 `psql`，两种方案都要经容器执行。
 
 **不自动清理的原因**：残留数据可能是上一次评测的中间结果，自动删除会掩盖问题。强制人工确认保证可追溯。
 
@@ -413,7 +430,9 @@ DriverManagerDataSource evalDs = new DriverManagerDataSource();
 evalDs.setUrl(System.getProperty("eval.datasource.url",
     "jdbc:postgresql://localhost:5433/interview_guide_eval"));
 evalDs.setUsername(System.getProperty("eval.datasource.username", "eval_runner"));
-evalDs.setPassword(System.getProperty("eval.datasource.password", "eval_runner_2026"));
+// 口令：优先环境变量 EVAL_RUNNER_PASSWORD，其次系统属性 eval.datasource.password；
+// 两者都缺失时在任何连接/HTTP 之前立即失败——绝不回退到仓库内可见的默认口令
+evalDs.setPassword(requiredCredential("eval.datasource.password", "EVAL_RUNNER_PASSWORD"));
 JdbcTemplate evalJdbc = new JdbcTemplate(evalDs);
 
 // 2. 评测专用 OpenAIClient：关闭 SDK 重试 + HTTP 计数拦截器
@@ -567,14 +586,14 @@ tasks.register('evalP1cReal', Test) {
 
     filter { includeTestsMatching 'interview.guide.eval.P1cRealRetrievalEvalTest' }
 
-    // 评测数据库连接（专用评测用户）
-    systemProperty 'eval.datasource.url',
-        project.findProperty('eval.datasource.url')
-            ?: 'jdbc:postgresql://localhost:5433/interview_guide_eval'
-    systemProperty 'eval.datasource.username',
-        project.findProperty('eval.datasource.username') ?: 'eval_runner'
-    systemProperty 'eval.datasource.password',
-        project.findProperty('eval.datasource.password') ?: 'eval_runner_2026'
+    // 评测数据库连接：交付版只在显式 -P 时转发，不给任何默认口令
+    ['eval.datasource.url', 'eval.datasource.username',
+     'eval.datasource.password'].each { key ->
+        def val = project.findProperty(key)
+        if (val != null && val.toString() != '') {
+            systemProperty key, val.toString()
+        }
+    }
 
     // Embedding 配置
     systemProperty 'eval.embedding.apiKey',
@@ -595,6 +614,8 @@ tasks.register('evalP1cReal', Test) {
     shouldRunAfter tasks.named('test')
 }
 ```
+
+**交付版 `app/build.gradle` 与该示例的差异（据实记录）**：`eval.p1c.realApi` 的默认值是 `'false'`（真正的门控在 Java 侧）；`eval.datasetDir` 用 `rootProject.file(...)` 注入绝对路径，避免 Test 任务在 `app/` 下工作目录漂移；API Key 与数据库口令**只在显式 `-P` 时转发**，未指定时不设置系统属性——否则空串会覆盖 Java 端 `System.getenv` 的回退路径。推荐的调用方式是把密钥放在环境变量里：`AI_BAILIAN_API_KEY=... EVAL_RUNNER_PASSWORD=... ./gradlew :app:evalP1cReal -Peval.p1c.realApi=true`，**严禁在命令行明文传 API Key**。
 
 ## 6. 调用次数、重试与输入规模限制
 
@@ -837,7 +858,7 @@ v1.4 锁定 `maxRetries(0)` 关闭 SDK 自动重试，但外层操作仍可能�
 | 缺失 `eval_run_id`（完全不带 eval 元数据的行） | **中止整轮** | 无法归属即隔离破坏，回退不静默过滤任何行 |
 | `eval_run_id` 为其他 runId | **中止整轮** | 本条即原"非本次 runId 不静默过滤"规则的落地 |
 | 本次 runId 但 `eval_chunk_id` 缺失或不在冻结 28 ID 内 | **中止整轮** | 冻结集合外的本次行只能来自污染或串号 |
-| 本次 runId 但 `kb_id` 越界或非字符串型 | **中止整轮** | kb 隔离破坏；JSONB 里 kb_id 必须是字符串 `"900001"` |
+| 本次 runId 但 `kb_id` 越界或非字符串型 | **中止整轮** | kb 隔离破坏；`metadata`（交付 schema 为 `json` 列，非 `jsonb`）里 kb_id 的 JSON 值必须是字符串 `"900001"` |
 | 候选列表为 `null` 或含 `null` 元素 | **中止整轮** | 无法归属 |
 
 **回退限制**：
@@ -1260,8 +1281,11 @@ List<RetrievalHit> hits = documents.stream()
 | `app/src/test/java/interview/guide/eval/P1cOfflineUnitTest.java` | test | 假组件离线用例（不含真实 DB / API，随 `:app:test` 运行） |
 | `eval/datasets/devsupport-v0.1/p1c-frozen-artifacts.json` | — | 已提交冻结清单：4 份 P1-B 工件的批准哈希（行尾归一化口径）+ 记录时原始字节哈希与行数 |
 | `app/build.gradle` | — | `test` 任务 `useJUnitPlatform { excludeTags 'real-eval' }` + `evalP1cReal` 任务 |
-| `docker-compose-eval.yml` | — | 独立评测 Postgres 容器，挂载 `eval-init.sql` |
-| `docker/postgres/eval-init.sql` | — | 评测容器初始化：向量扩展 + 标记表 + 预建 vector_store + 专用用户 `eval_runner` |
+| `docker-compose-eval.yml` | — | 独立评测 Postgres 容器，挂载 `10-eval-schema.sql` + `20-eval-user.sh`，端口 `127.0.0.1:5433`，两个口令均 `${...:?}` 强制 |
+| `docker/postgres/eval-init.sql` | — | 向量扩展 + 标记表 + 预建 `vector_store`（`metadata json`）+ HNSW `vector_cosine_ops` 索引；**不含用户、口令或授权语句** |
+| `docker/postgres/eval-user.sh` | — | 创建 `eval_runner` 角色 + 最小权限授予；口令只取环境变量 `EVAL_RUNNER_PASSWORD`，缺失即 `set -u` 退出 |
+| `.env.eval.example` | — | 变量名模板（不含值）。`.env.eval` 由 `.gitignore` 排除，永不提交 |
+| `eval/datasets/devsupport-v0.1/P1C-CONTAINER-CHECKLIST.md` | — | 无 API 容器验证清单 C1–C11（含 §12 实测记录表） |
 | `eval/datasets/devsupport-v0.1/p1c-l1-report.json` | — | 输出报告（运行后生成） |
 
 ### 与现有代码的关系
@@ -1274,19 +1298,21 @@ List<RetrievalHit> hits = documents.stream()
 
 ## 13. 运行前检查清单
 
-| # | 检查项 | 命令 / 方式 | 期望 |
+| # | 检查项 | 命令 / 方式（宿主机无 `psql`，SQL 一律经容器执行） | 期望 |
 |---|--------|-------------|------|
-| 1 | 评测 Postgres 容器运行 | `docker compose -f docker-compose-eval.yml ps` | State = healthy |
-| 2 | 评测数据库可连接（专用用户） | `psql -h localhost -p 5433 -U eval_runner -d interview_guide_eval -c "SELECT 1"` | 连接成功 |
-| 3 | 标记表存在且 UUID 正确 | `psql ... -c "SELECT marker_value FROM eval_instance_identity WHERE marker_key='instance_uuid'"` | `f47ac10b-58cc-4372-a567-0e0283c5d9e7` |
-| 4 | vector 扩展已安装 | `psql ... -c "SELECT extname FROM pg_extension WHERE extname='vector'"` | 一行 `vector` |
-| 5 | vector_store 表已存在且为空 | `psql ... -c "SELECT COUNT(*) FROM vector_store"` | 0 行（`eval-init.sql` 预建表） |
-| 6 | `eval_runner` 权限正确 | `psql -U postgres ... -c "SELECT rolsuper, rolcreatedb FROM pg_roles WHERE rolname='eval_runner'"` | `false, false` |
+| 1 | 评测 Postgres 容器运行 | `docker compose -f docker-compose-eval.yml --env-file .env.eval ps` | State = healthy |
+| 2 | 评测数据库可连接（专用用户，容器内 TCP） | `docker exec -T -e PGPASSWORD="$PGPASSWORD" interview-eval-postgres psql -h 127.0.0.1 -p 5432 -U eval_runner -d interview_guide_eval -X -c "SELECT 1"` | 连接成功，返回 1 |
+| 3 | 标记表存在且 UUID 正确 | 同上包装，`-c "SELECT marker_value FROM eval_instance_identity WHERE marker_key='instance_uuid'"` | `f47ac10b-58cc-4372-a567-0e0283c5d9e7` |
+| 4 | vector 扩展已安装 | 同上包装，`-c "SELECT extname FROM pg_extension WHERE extname='vector'"` | 一行 `vector` |
+| 5 | vector_store 表已存在且为空 | 同上包装，`-c "SELECT COUNT(*) FROM vector_store"` | `0`（`eval-init.sql` 预建表） |
+| 6 | `eval_runner` 权限正确 | `docker exec -T interview-eval-postgres psql -U postgres -d interview_guide_eval -X -c "SELECT rolsuper, rolcreatedb FROM pg_roles WHERE rolname='eval_runner'"` | `f \| f` |
 | 7 | `.env` 中有 API Key | `grep -q AI_BAILIAN_API_KEY .env && echo "已设置" || echo "未设置"` | 输出 `已设置` |
-| 8 | P1-B 工件完整（4 个冻结文件） | `ls eval/datasets/devsupport-v0.1/chunks.jsonl candidate-gold.json corpus-manifest.json chunk-manifest.json` | 4 个文件存在 |
+| 8 | P1-B 工件完整（4 个冻结文件） | `cd` 到仓库根后 `ls eval/datasets/devsupport-v0.1/{chunks.jsonl,candidate-gold.json,corpus-manifest.json,chunk-manifest.json}` | 4 个文件存在（原示例只给第一个文件带了目录前缀，复制执行会误报缺失，已更正） |
 | 8b | 冻结工件与批准哈希一致 | 由 Phase 0 自动执行（比对 `p1c-frozen-artifacts.json` 的 `expectedSha256NormalizedLf`）；离线可在改一个字符后运行 `./gradlew :app:test --tests 'interview.guide.eval.*'` 观察违例 | 4 项 `normalizedLfMatched=true`，违例列表为空 |
-| 9 | 普通 test 不触发评测 | `./gradlew :app:test --no-daemon` | 无 Embedding 调用 |
-| 10 | 装配代码编译通过 | `./gradlew :app:compileTestJava` | BUILD SUCCESSFUL |
+| 9 | 普通 test 不触发评测 | `GRADLE_USER_HOME=/c/temp/gradle-tmp ./gradlew :app:test --no-daemon` | 无 Embedding 调用 |
+| 10 | 装配代码编译通过 | `GRADLE_USER_HOME=/c/temp/gradle-tmp ./gradlew :app:compileTestJava` | BUILD SUCCESSFUL |
+
+**本表 2–6 项的执行环境（2026-09-30 实测）**：目标机是 Windows + Git Bash，**宿主机没有 `psql`**（`command -v psql` → NOT FOUND，`jq` 同样缺失），所以这些检查一律通过 `docker exec -T interview-eval-postgres psql ...` 在容器内执行；表中 `$PGPASSWORD` 由清单 §1 的 `echo` + `read -rs P1C_PW && export PGPASSWORD="$P1C_PW"` 在会话内取值一次（口令不出现在命令行、shell 历史或记录表里），收尾 `unset PGPASSWORD P1C_PW`。以 `eval_runner` 做凭据核验时必须走容器内 TCP（`-h 127.0.0.1 -p 5432`），因为 unix socket 的认证方式可能是 `trust`，socket 登录成功**不能**证明 `.env.eval` 里的口令与卷内角色口令一致。第 6 项用 `-U postgres` 走容器内 unix socket（仅读系统目录，不做凭据结论）。完整命令与判据见 `P1C-CONTAINER-CHECKLIST.md` §1 与 C6/C7/C8。
 
 ## 14. 失败时清理规则
 
@@ -1310,9 +1336,22 @@ List<RetrievalHit> hits = documents.stream()
 | 5 | `eval.embedding.apiKey` 的传递方式 | 通过 Gradle `systemProperty` 从项目属性传入，还是通过环境变量直接读取 |
 | 6 | 是否需要在 CI 中运行 P1-C | 若需要，CI 环境需有评测 Postgres 和 API Key secret |
 | 7 | 报告 JSON 字段是否需要调整 | 当前结构基于 v1.4 反馈设计，实际运行后可能需要增减 |
-| 8 | `eval-init.sql` 中 `eval_runner` 密码策略 | 当前硬编码 `eval_runner_2026`，是否需要改为环境变量传入 |
+| 8 | ~~`eval-init.sql` 中 `eval_runner` 密码策略~~ | **已解决（2026-09-30 定点修订）**：任何提交文件里都不再出现口令字面量。`eval-init.sql` 不含用户/授权语句；角色创建在 `docker/postgres/eval-user.sh`，口令只取容器环境变量 `EVAL_RUNNER_PASSWORD`（`${...:?}` 强制，缺失即拒绝启动/退出）；Gradle 仅在显式 `-P` 时转发；Java 侧 `requireCredential("eval.datasource.password", "EVAL_RUNNER_PASSWORD")` 缺失时在任何连接与 HTTP 之前失败。本文档原示例中的固定字面量已全部移除。**遗留风险（不是口令策略问题，而是卷复用问题）**：`CREATE ROLE` 带 `WHERE NOT EXISTS` 守卫，复用旧卷时口令不会随 `.env.eval` 轮换，必须用当前口令实际 TCP 登录核验，见验证清单 C6/C7 |
 
 ## 16. 变更摘要
+
+### v1.4 文档定点修订（2026-09-30，白天离线文档轮）
+
+只改文档，未启动容器、未连数据库、未调用 Embedding、未运行 `evalP1cReal`、未删任何卷，`reportVersion` 保持 `p1c-l1-v1.4`。
+
+| # | 问题 | 修订 |
+|---|------|------|
+| 1 | 文档示例残留一个固定的评测口令字面量（共 **4** 处：§3 init SQL、§4 装配代码、§5 Gradle 片段、§16 v1.4 变更记录），与交付不符且照抄会给今晚实例设一个仓库内可见弱口令 | 全部移除：§3 改为 `<EVAL_RUNNER_PASSWORD>` 占位并说明角色/授权实际在 `20-eval-user.sh`；§4 改为「只从环境变量/系统属性读取，缺失即在任何连接前失败」；§5 改为交付版的「仅显式 `-P` 转发」形式；变更记录里那条标注为已作废。全仓 `grep` 该字面量现在零命中 |
+| 2 | §3 示例把 `vector_store` 的元数据列写成二进制 JSON 类型，而交付的 `eval-init.sql` 用的是 `json` | 按真实交付 schema 更正为 `json`，并把 §7 回退归属表里对该列类型的描述改为「`metadata`（`json` 列）里 kb_id 的 JSON 值必须是字符串」 |
+| 3 | §2 的 compose 示例是早期版本（超管口令变量名与交付不同且带六位弱默认值、未绑定 `127.0.0.1`、只挂 `init.sql`） | 用交付文件实际内容替换，并列出差异；§3 超级用户报错文案按交付代码改为指向 `eval-user.sh` |
+| 4 | §15 #8 仍把口令策略列为「待人工确认」 | 标为已解决并写清各层强制点；同时把真正的遗留风险改记为「旧卷复用不轮换口令」，指向验证清单 C6/C7 |
+| 5 | §3 init 只在空卷执行的说明不足；§12 文件清单把用户创建归给 `eval-init.sql`；§13 第 8 项 `ls` 缺目录前缀；§14 方案 B 是无条件全表 DELETE | 分别更正为：新卷/旧卷两命题与证据分离、文件清单补 `eval-user.sh` 与 `.env.eval.example` 并声明 init.sql 不含用户/授权、`ls` 用花括号展开、方案 B 按 `eval_run_id` 谓词删除。§13 末尾补记目标机实测环境（宿主无 `psql`/`jq`，psql 一律容器内执行且凭据核验走容器内 TCP） |
+| 6 | §13 的 2–6 项命令仍是「宿主机直接 `psql -h localhost -p 5433`」形态，在目标机上必然 `command not found`；第 1/9/10 项缺 `--env-file` 与 `GRADLE_USER_HOME` | 表格命令改为可直接复制执行：第 1 项补 `--env-file .env.eval`，2–6 项包装成 `docker exec -T interview-eval-postgres psql …`（凭据核验用容器内 TCP，`-U postgres` 只用于读系统目录），9/10 项补 `GRADLE_USER_HOME=/c/temp/gradle-tmp`；表头与说明同步。修订后的命令经 `bash -n` 语法核验（0 失败），期望值也按容器输出改写（`0` 而不是「0 行」、`f \| f` 而不是 `false, false`） |
 
 ### v1.4 实现期定点修订（2026-09-30，白天离线修复轮）
 
@@ -1342,7 +1381,7 @@ List<RetrievalHit> hits = documents.stream()
 - `eval-init.sql` 新增文件：创建标记表、预建 `vector_store` 表 + HNSW 索引、创建 `eval_runner` 用户
 - `docker-compose-eval.yml` 挂载 `eval-init.sql` 替代 `init.sql`
 - §4 装配代码：评测专用 `OpenAIClient` 构建（`maxRetries(0)` + OkHttp 拦截器）；`PgVectorStore` 使用 `eval_runner` 凭据 + `initializeSchema(false)`
-- §5 Gradle 默认用户名改为 `eval_runner`、密码改为 `eval_runner_2026`
+- §5 Gradle 默认用户名改为 `eval_runner`、密码曾以固定字面量作为默认值（**该做法已作废**，见 §15 #8：现只在显式 `-P` 时转发，仓库内不保留口令字面量）
 - §6 限制表：新增 `sdkMaxRetries=0` 行；费用估算补充 `maxRetries(0)` 与 `maxRetries(2)` 对比
 - §7 Phase 0：从 9 步增加到 10 步（新增标记表验证、`eval_runner` 连接、4 个工件 SHA-256）
 - §10 报告：`connectionIdentity` 增加 `markerType`/`markerUuid`/`superuser` 字段；`callGuard` 拆为两个对象；`queryCounts` 从 3 字段扩为 7 字段；`vectorStore.initializeSchema=false`
