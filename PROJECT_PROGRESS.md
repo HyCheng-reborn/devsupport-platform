@@ -135,6 +135,7 @@
 
 ## 7. 变更记录（简短，倒序）
 
+- 2026-09-30 — Phase 1 编码启动（见下方 §8）。
 - 2026-09-30 — **`docs/devsupport-phase1-plan.md` 第二轮定点修订（Codex 复核 6 点意见落实，P0×2 + P1×3 + P2×1）**，只改两份文档（方案文档 + 本文件），零代码改动、零容器、零网络。修订内容：
   ① **来源字段明确（P0）**：`SourceReference` DTO 的 `kbName` 改为 `documentName`（取自 `KnowledgeBaseEntity.originalFilename`，不可被用户修改），获取方式为通过 `Document.getMetadata()` 中的 `kb_id` 反查 `knowledge_bases` 表；新增 `score: Double` 字段（依据：Spring AI 2.0.0 `Document.getScore()` 返回 `Double`，P1-C 测试已实际调用）；删除所有"不含 score"表述。
   ② **调用链重设计（P0）**：SSE 事件协议与实现位置重写——现有调用链中检索结果 `List<Document>` 在 `KnowledgeBaseQueryService.answerQuestionStream()` 内部被消费为纯文本 context（metadata 丢弃），新增 `RetrievalResult` record 契约（`contentStream` + `sourceDocuments`），级联修改返回类型，使 Controller 层可获取检索来源。
@@ -166,3 +167,33 @@
 - 2026-09-30 17:12 — 新增本文件（同轮一次自引用修订：交接区改为现场核对 HEAD，避免被自身提交作废）；同步 `f6aa629` 后的真实状态（B1–B4 记为待复核，非已解决），并记录生产检索与 L1 的参数差异、CI 结果未核对、`status.txt` 陈旧。
 - 2026-09-30 16:56 — `f6aa629`：三项复核 finding 的离线实现 + 81 条 P1-C 离线用例；设计文档同步至实现口径；推送 `devsupport`。
 - 2026-09-30 — `caf05cf`：P1-C 数据与失败契约（62 条离线用例）；Codex 复核指出三项问题（见 §3）。
+
+## 8. Phase 1 编码启动
+
+**时间**: 2026-09-30
+**基于提交**: `3dc6e1a`
+
+### 已完成模块
+
+| 任务 | 内容 | 状态 |
+|------|------|------|
+| Task 1+2 | 前端展示层改名 + 导航清理 | 编译通过 |
+| Task 4 | DevSupport Prompt 模板适配 | 编译通过 |
+| Task 3 后端 | RetrievalResult 契约 + Flyway 迁移 + 消息状态区分 | 编译通过 |
+| Task 3 前端 | stream.ts/ragChat.ts/QueryPage 来源展示 | 编译通过 |
+| Task 3 测试 | 13 个新测试（SourceReference + SessionService + QueryService） | 全部通过 |
+
+### 关键改动
+
+- 新增 `RetrievalResult` record 解决来源传递断裂
+- 新增 `MessageStatus` 枚举区分 4 种完成态
+- Flyway `V20260930` 为 `rag_chat_messages` 增列 `sources_json` + `status`
+- SSE 新增 `event: sources` + `event: done`
+- 前端 `stream.ts` 支持 `onSources`/`onDone` 事件分发
+- 错误处理从字符串前缀改为 `Flux.error()` 传播
+
+### 未完成
+
+- Gate 0a-0d（P1-C 真实环境门槛）
+- Task 7a（E2E 功能冒烟）
+- 代码审查与 diff 复核
