@@ -2,7 +2,7 @@
 
 > 本项目（远程仓库 `HyCheng-reborn/devsupport-platform`，本地目录名仍为 `interview-guide`）的进度事实源。
 > 新会话接手时先读本文件，再读「交接区」列出的文件。
-> 最近更新：**2026-09-30 17:48（北京时间）**，作者 Qoder。
+> 最近更新：**2026-09-30 17:52（北京时间）**，作者 Qoder。
 
 ## 0. 维护规则
 
@@ -86,6 +86,7 @@
 
 - **最新已知 HEAD**：本文件与进度变更一起提交，所以「最新 HEAD」请用 `git log -1 --oneline` 现场核对（本文件最后一次被提交的记录见 §7 首行）。**最后一次代码改动提交是 `f6aa629`**（`fix: P1-C 白天离线定点修复…`），已与 `devsupport/master` 同步（`git rev-list --left-right --count devsupport/master...master` = `0 0`）。推送目标是 `devsupport`（`HyCheng-reborn/devsupport-platform`），**从不推 `origin`**（`Snailclimb/interview-guide`，上游只读）。
 - **工作区状态**：`gradle/wrapper/gradle-wrapper.properties` 有刻意保留的本机改动（离线分发地址），永不提交、永不还原；未跟踪残留 `devsupport-p1b-v3-review.zip`、`eval/datasets/devsupport-p1b-v3.1-review.zip`、3 个 `eval/datasets/*.tar.gz`、`status.txt`、`interview-guide_本机环境与启动关闭说明.md` —— 均不属于进度改动，保持原样。已跟踪的进度类文件：`PROJECT_PROGRESS.md`（`9255dc9` 起）与 `eval/datasets/devsupport-v0.1/P1C-CONTAINER-CHECKLIST.md`（本轮新增）。本轮**未改任何代码**（`src/main` 与 `src/test` 均无改动）。
+- **推送安全陷阱（重要，2026-09-30 实测确认）**：`branch.master.remote = origin`、`push.default` 未设置（即 git 默认 `simple`）、且没有配 `remote.pushDefault` / `branch.master.pushRemote`。因此**裸跑 `git push` 会把提交推到上游开源仓库 `Snailclimb/interview-guide`**，那是绝对禁止的方向。规则：推送必须写全 `git push devsupport master`；`git status -sb` 显示的 `ahead N` 是相对 `origin/master` 的，**不是**复核基线，判断是否同步只认 `git rev-list --left-right --count devsupport/master...master`（应为 `0 0`）。本仓库约定不改 git config（含不加 pushDefault），所以这个陷阱长期存在。
 - **下一位助手先读什么（按顺序）**：
   1. `AGENTS.md`（工程约束）+ 本文件 §3、§5；
   2. `eval/datasets/devsupport-v0.1/P1C-CONTAINER-CHECKLIST.md`（今晚要执行的清单，含 §1 执行边界与 §12 记录表）；
@@ -99,6 +100,7 @@
 
 ## 7. 变更记录（简短，倒序）
 
+- 2026-09-30 17:52 — §6 新增推送安全陷阱：`branch.master.remote=origin` + `push.default` 未设 → 裸跑 `git push` 会推到上游 `Snailclimb/interview-guide`；规则改为写全 `git push devsupport master`，同步判据只认 `devsupport/master...master` 的 `0 0`。
 - 2026-09-30 17:48 — 清单交付前自审，修正 4 处会让今晚执行者误判的地方：C3 的 `compose config` 是长格式（不能按 `127.0.0.1:5433:5432` 短语法 grep）、C5 明确「日志是线索、C6 对象存在性才是权威判据」、C6 补齐容器内可执行命令行、C8 说明 `CREATE TABLE` 意外成功时不要自行 DROP、C9 残留判定改用 `starts_with()`（`LIKE '__…'` 里下划线是通配符）。
 - 2026-09-30 17:42 — 收到 Codex 对 `f6aa629` 的定点复核：B1–B3 通过、四个归一化哈希独立验算匹配；B1–B4 状态改为 `源码定点复核通过 · 真实环境待验证`。新增 `P1C-CONTAINER-CHECKLIST.md`（C1–C11 无 API 验证清单 + §12 记录表）并做 26 项配置静态核对（全 PASS）。修正 B4 的快照表述（阶段边界 5 次 `snapshot(ctx)`；阶段内异常时报告读 `RunState`，非逐步快照）。新发现 B7：设计文档残留 `eval_runner_2026` 口令字面量且 §15 #8 陈旧，待批准后清理。本轮无代码改动。
 - 2026-09-30 17:12 — 新增本文件（同轮一次自引用修订：交接区改为现场核对 HEAD，避免被自身提交作废）；同步 `f6aa629` 后的真实状态（B1–B4 记为待复核，非已解决），并记录生产检索与 L1 的参数差异、CI 结果未核对、`status.txt` 陈旧。
