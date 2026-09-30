@@ -1,6 +1,7 @@
--- P1-C 评测专用 Postgres 初始化脚本
--- 由 docker-compose-eval.yml 挂载到 /docker-entrypoint-initdb.d/init.sql
+-- P1-C 评测专用 Postgres 初始化：schema 与身份标记（不含用户/密码）
+-- 由 docker-compose-eval.yml 挂载到 /docker-entrypoint-initdb.d/10-eval-schema.sql
 -- 仅在容器首次初始化（volume 为空）时执行
+-- 用户与权限在同目录 20-eval-user.sh 中从 EVAL_RUNNER_PASSWORD 环境变量创建
 
 -- 1. 向量扩展
 CREATE EXTENSION IF NOT EXISTS vector;
@@ -29,22 +30,3 @@ CREATE TABLE IF NOT EXISTS vector_store (
 CREATE INDEX IF NOT EXISTS spring_ai_vector_index
     ON vector_store
     USING hnsw (embedding vector_cosine_ops);
-
--- 4. 专用评测用户（最小权限）
--- 密码与 Gradle systemProperty 默认值一致；生产环境应通过环境变量覆盖
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'eval_runner') THEN
-        CREATE ROLE eval_runner WITH LOGIN PASSWORD 'eval_runner_2026';
-    END IF;
-END
-$$;
-
--- eval_runner 权限：仅对评测所需表有 DML 权限
-GRANT CONNECT ON DATABASE interview_guide_eval TO eval_runner;
-GRANT USAGE ON SCHEMA public TO eval_runner;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE vector_store TO eval_runner;
-GRANT SELECT ON TABLE eval_instance_identity TO eval_runner;
-
--- 显式声明：eval_runner 不具有超级用户或建库权限
--- （CREATE ROLE 默认 rolsuper=false, rolcreatedb=false，此处无需额外设置）

@@ -11,7 +11,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  * 不是底层 HTTP 请求数。两者可能不等——外层操作可能在发送前失败（0 HTTP），
  * SDK 内部也可能拆成多个请求。实际 HTTP 请求数由 OkHttp 拦截器独立观测。
  *
- * <p>{@code tryAcquire()} 达到上限时拒绝递增，避免报告出现未执行的 attempt。
+ * <p>{@code tryAcquire()} 原子地检查上限并递增：未达上限时递增并返回，达上限时不递增并抛出。
+ * 使用 {@code compareAndSet} 循环保证并发安全，不存在 TOCTOU 竞态。
  */
 public final class P1cEvalCallBudget {
 
@@ -25,19 +26,24 @@ public final class P1cEvalCallBudget {
   }
 
   /**
-   * 外层操作发送前调用：检查预算 + 递增尝试计数。
+   * 外层操作发送前调用：原子地检查预算 + 递增尝试计数。
    *
    * @return 本次 attempt 编号（从 1 开始）
    * @throws IllegalStateException 预算耗尽时抛出，本次未递增、未执行
    */
   public int tryAcquire() {
-    int current = attempts.get();
-    if (current >= hardLimit) {
-      throw new IllegalStateException(
-          "外层操作预算耗尽: 已完成 " + current + " 次，上限 " + hardLimit
-          + "（本次未递增，未执行）");
+    while (true) {
+      int current = attempts.get();
+      if (current >= hardLimit) {
+        throw new IllegalStateException(
+            "外层操作预算耗尽: 已完成 " + current + " 次，上限 " + hardLimit
+            + "（本次未递增，未执行）");
+      }
+      if (attempts.compareAndSet(current, current + 1)) {
+        return current + 1;
+      }
+      // CAS 失败说明有并发递增，重试即可
     }
-    return attempts.incrementAndGet();
   }
 
   public void recordSuccess() {

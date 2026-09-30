@@ -144,7 +144,14 @@ tasks.register('evalVerifyTika', JavaExec) {
 }
 
 // P1-C L1 真实向量检索评测（付费 API 调用，需显式启用）
-// 运行命令: ./gradlew :app:evalP1cReal -Peval.p1c.realApi=true -Peval.embedding.apiKey=xxx
+//
+// API Key 与 DB 密码优先级：
+//   1) Java 端读取环境变量（AI_BAILIAN_API_KEY / EVAL_RUNNER_PASSWORD 等）
+//   2) Gradle 只在显式指定 -Pxxx 时才通过 systemProperty 传递；未指定则不设置该属性
+//      ——这样 Java 端的 getenv 回退路径不会被空字符串覆盖
+//   3) 缺失时 Java 在任何 HTTP 之前立即失败
+// 严禁命令行明文传 API Key；示例：
+//   AI_BAILIAN_API_KEY=xxx EVAL_RUNNER_PASSWORD=yyy ./gradlew :app:evalP1cReal -Peval.p1c.realApi=true
 tasks.register('evalP1cReal', Test) {
     group = 'evaluation'
     description = 'Run P1-C L1 real vector retrieval evaluation (requires paid API key)'
@@ -153,20 +160,18 @@ tasks.register('evalP1cReal', Test) {
     }
     systemProperty 'eval.p1c.realApi',
         project.findProperty('eval.p1c.realApi') ?: 'false'
-    systemProperty 'eval.embedding.apiKey',
-        project.findProperty('eval.embedding.apiKey') ?: ''
-    systemProperty 'eval.embedding.baseUrl',
-        project.findProperty('eval.embedding.baseUrl') ?: 'https://dashscope.aliyuncs.com/compatible-mode/v1'
-    systemProperty 'eval.embedding.model',
-        project.findProperty('eval.embedding.model') ?: 'text-embedding-v3'
-    systemProperty 'eval.embedding.dimensions',
-        project.findProperty('eval.embedding.dimensions') ?: '1024'
-    systemProperty 'eval.datasource.url',
-        project.findProperty('eval.datasource.url') ?: 'jdbc:postgresql://localhost:5433/interview_guide_eval'
-    systemProperty 'eval.datasource.username',
-        project.findProperty('eval.datasource.username') ?: 'eval_runner'
-    systemProperty 'eval.datasource.password',
-        project.findProperty('eval.datasource.password') ?: 'eval_runner_2026'
+    // 数据集路径：显式指向仓库根目录的绝对路径，避免 Test 任务在 app/ 下运行时相对路径失效
+    systemProperty 'eval.datasetDir', rootProject.file('eval/datasets/devsupport-v0.1').absolutePath
+
+    // 只有用户在命令行显式 -P 时才转发；否则 Java 端从环境变量读取
+    ['eval.embedding.apiKey', 'eval.embedding.baseUrl', 'eval.embedding.model',
+     'eval.embedding.dimensions', 'eval.datasource.url', 'eval.datasource.username',
+     'eval.datasource.password'].each { key ->
+        def val = project.findProperty(key)
+        if (val != null && val.toString() != '') {
+            systemProperty key, val.toString()
+        }
+    }
     jvmArgs '--enable-native-access=ALL-UNNAMED'
 }
 

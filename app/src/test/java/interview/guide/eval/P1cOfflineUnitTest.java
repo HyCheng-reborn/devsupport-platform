@@ -2,11 +2,23 @@ package interview.guide.eval;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
+import java.io.BufferedReader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * P1-C 离线单元测试：用纯计算验证预算门控、APC/FC 指标、HTTP 计数器的正确性。
@@ -256,6 +268,325 @@ class P1cOfflineUnitTest {
       assertThat(report.callGuard().status()).isEqualTo("WITHIN_LIMIT");
       assertThat(report.macroMetrics().macroHitAtK()).isEqualTo(0.8);
       assertThat(report.totalAnswerPoints()).isEqualTo(30);
+    }
+  }
+
+  @Nested
+  @DisplayName("P1cEvalCallBudget 并发原子性")
+  class BudgetConcurrencyTest {
+
+    @Test
+    @DisplayName("多线程争用：成功次数不超过 hardLimit，达到后一致抛异常")
+    void tryAcquire_concurrent_staysWithinLimit() throws Exception {
+      final int hardLimit = 20;
+      final int threadCount = 64;
+      P1cEvalCallBudget budget = new P1cEvalCallBudget(hardLimit);
+
+      AtomicInteger successCount = new AtomicInteger();
+      AtomicInteger rejectCount = new AtomicInteger();
+      CountDownLatch start = new CountDownLatch(1);
+      ExecutorService pool = Executors.newFixedThreadPool(threadCount);
+      try {
+        List<java.util.concurrent.Future<?>> futures = new ArrayList<>();
+        for (int i = 0; i < threadCount; i++) {
+          futures.add(pool.submit(() -> {
+            try {
+              start.await();
+              budget.tryAcquire();
+              successCount.incrementAndGet();
+            } catch (IllegalStateException expected) {
+              rejectCount.incrementAndGet();
+            } catch (InterruptedException ie) {
+              Thread.currentThread().interrupt();
+            }
+          }));
+        }
+        start.countDown();
+        for (var f : futures) {
+          f.get(5, TimeUnit.SECONDS);
+        }
+      } finally {
+        pool.shutdownNow();
+      }
+
+      assertThat(successCount.get()).isEqualTo(hardLimit);
+      assertThat(rejectCount.get()).isEqualTo(threadCount - hardLimit);
+      assertThat(budget.getAttempts()).isEqualTo(hardLimit);
+    }
+
+    @Test
+    @DisplayName("并发递增返回唯一编号 1..hardLimit")
+    void tryAcquire_concurrent_returnsUniqueAttemptNumbers() throws Exception {
+      final int hardLimit = 50;
+      final int threadCount = 200;
+      P1cEvalCallBudget budget = new P1cEvalCallBudget(hardLimit);
+
+      java.util.Set<Integer> returned = java.util.concurrent.ConcurrentHashMap
+          .newKeySet();
+      CountDownLatch start = new CountDownLatch(1);
+      ExecutorService pool = Executors.newFixedThreadPool(16);
+      try {
+        List<java.util.concurrent.Future<?>> futures = new ArrayList<>();
+        for (int i = 0; i < threadCount; i++) {
+          futures.add(pool.submit(() -> {
+            try {
+              start.await();
+              returned.add(budget.tryAcquire());
+            } catch (IllegalStateException expected) {
+              // rejected
+            } catch (InterruptedException ie) {
+              Thread.currentThread().interrupt();
+            }
+          }));
+        }
+        start.countDown();
+        for (var f : futures) {
+          f.get(5, TimeUnit.SECONDS);
+        }
+      } finally {
+        pool.shutdownNow();
+      }
+
+      assertThat(returned).hasSize(hardLimit);
+      for (int n = 1; n <= hardLimit; n++) {
+        assertThat(returned).contains(n);
+      }
+    }
+  }
+
+  @Nested
+  @DisplayName("P1cEvalResultValidator 检索结果隔离核对")
+  class ResultValidatorTest {
+
+    private P1cEvalResultValidator.HitMetadata hit(int rank, String runId, String kb, String chunk) {
+      return new P1cEvalResultValidator.HitMetadata(rank, runId, kb, chunk);
+    }
+
+    @Test
+    @DisplayName("合法命中：全部通过校验")
+    void validate_allPass_returnsList() {
+      var hits = List.of(
+          hit(1, "run-x", "900001", "chunk-a"),
+          hit(2, "run-x", "900001", "chunk-b"));
+
+      var result = P1cEvalResultValidator.validate(hits, "run-x");
+
+      assertThat(result).hasSize(2);
+      assertThat(P1cEvalResultValidator.extractEvalChunkIds(result))
+          .containsExactly("chunk-a", "chunk-b");
+    }
+
+    @Test
+    @DisplayName("空命中列表通过（NO_ANSWER 或空检索）")
+    void validate_emptyList_passes() {
+      assertThatCode(() ->
+          P1cEvalResultValidator.validate(List.of(), "run-x")).doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("缺失 eval_run_id 抛隔离失败")
+    void validate_missingRunId_throws() {
+      var hits = List.of(hit(1, null, "900001", "chunk-a"));
+      assertThatThrownBy(() -> P1cEvalResultValidator.validate(hits, "run-x"))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("rank=1")
+          .hasMessageContaining("缺失 eval_run_id");
+    }
+
+    @Test
+    @DisplayName("eval_run_id 与期望 runId 不一致抛隔离失败")
+    void validate_runIdMismatch_throws() {
+      var hits = List.of(hit(1, "other-run", "900001", "chunk-a"));
+      assertThatThrownBy(() -> P1cEvalResultValidator.validate(hits, "run-x"))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("other-run")
+          .hasMessageContaining("隔离失败");
+    }
+
+    @Test
+    @DisplayName("kb_id 缺失或不等于 900001 都抛隔离失败")
+    void validate_kbIdBad_throws() {
+      var missing = List.of(hit(1, "run-x", null, "chunk-a"));
+      assertThatThrownBy(() -> P1cEvalResultValidator.validate(missing, "run-x"))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("缺失 kb_id");
+
+      var wrong = List.of(hit(1, "run-x", "12345", "chunk-a"));
+      assertThatThrownBy(() -> P1cEvalResultValidator.validate(wrong, "run-x"))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("kb_id=12345")
+          .hasMessageContaining("900001");
+    }
+
+    @Test
+    @DisplayName("缺失 eval_chunk_id 抛隔离失败")
+    void validate_missingChunkId_throws() {
+      var hits = List.of(hit(1, "run-x", "900001", "  "));
+      assertThatThrownBy(() -> P1cEvalResultValidator.validate(hits, "run-x"))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("缺失 eval_chunk_id");
+    }
+  }
+
+  @Nested
+  @DisplayName("P1cRealRetrievalEvalTest 数据集路径解析（离线）")
+  class DatasetPathTest {
+
+    @Test
+    @DisplayName("未指定 eval.datasetDir 时抛 IllegalStateException")
+    void resolveDatasetDir_missingProp_throws() {
+      String prev = System.getProperty("eval.datasetDir");
+      try {
+        System.clearProperty("eval.datasetDir");
+        assertThatThrownBy(P1cRealRetrievalEvalTest::resolveDatasetDir)
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("eval.datasetDir");
+      } finally {
+        if (prev != null) {
+          System.setProperty("eval.datasetDir", prev);
+        }
+      }
+    }
+
+    @Test
+    @DisplayName("指定不存在的目录抛 IllegalStateException")
+    void resolveDatasetDir_missingDir_throws(@TempDir Path tmp) {
+      String prev = System.getProperty("eval.datasetDir");
+      try {
+        System.setProperty("eval.datasetDir", tmp.resolve("nope").toString());
+        assertThatThrownBy(P1cRealRetrievalEvalTest::resolveDatasetDir)
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("数据集目录不存在");
+      } finally {
+        if (prev != null) {
+          System.setProperty("eval.datasetDir", prev);
+        } else {
+          System.clearProperty("eval.datasetDir");
+        }
+      }
+    }
+
+    @Test
+    @DisplayName("读取仓库内已提交的 P1-B 工件：28 行 chunks + 20 条 entries")
+    void committedArtifacts_haveExpectedCounts() throws Exception {
+      Path datasetDir = locateRepoDatasetDir();
+      Path chunks = datasetDir.resolve("chunks.jsonl");
+      Path gold = datasetDir.resolve("candidate-gold.json");
+      assertThat(chunks).exists();
+      assertThat(gold).exists();
+
+      int chunkLines = 0;
+      try (BufferedReader r = Files.newBufferedReader(chunks, StandardCharsets.UTF_8)) {
+        String line;
+        while ((line = r.readLine()) != null) {
+          if (!line.isBlank()) {
+            chunkLines++;
+          }
+        }
+      }
+      assertThat(chunkLines).as("chunks.jsonl 非空行数").isEqualTo(28);
+
+      tools.jackson.databind.ObjectMapper mapper =
+          tools.jackson.databind.json.JsonMapper.builder().build();
+      var root = mapper.readTree(gold.toFile());
+      var entries = root.get("entries");
+      assertThat(entries.isArray()).isTrue();
+      assertThat(entries.size()).as("candidate-gold.json entries 数量").isEqualTo(20);
+    }
+
+    /**
+     * 从 {@code user.dir}（{@code :app:test} 的 workingDir）出发定位仓库内数据集；
+     * 若上层 Gradle 已注入 {@code eval.datasetDir}，优先使用它。
+     */
+    private Path locateRepoDatasetDir() {
+      String prop = System.getProperty("eval.datasetDir");
+      if (prop != null && !prop.isBlank() && Files.isDirectory(Path.of(prop))) {
+        return Path.of(prop);
+      }
+      Path fromApp = Path.of("..").resolve("eval/datasets/devsupport-v0.1").normalize();
+      if (Files.isDirectory(fromApp)) {
+        return fromApp;
+      }
+      Path fromRoot = Path.of("eval/datasets/devsupport-v0.1").normalize();
+      if (Files.isDirectory(fromRoot)) {
+        return fromRoot;
+      }
+      throw new IllegalStateException("无法定位 P1-B 数据集目录（user.dir="
+          + System.getProperty("user.dir") + "）");
+    }
+  }
+
+  @Nested
+  @DisplayName("P1cRealRetrievalEvalTest 凭据优先级（离线）")
+  class CredentialTest {
+
+    @Test
+    @DisplayName("sysProp 非空即返回，不看环境变量")
+    void requireCredential_sysPropWins() {
+      String prev = System.getProperty("eval.embedding.apiKey");
+      try {
+        System.setProperty("eval.embedding.apiKey", "sk-from-sysprop");
+        String got = P1cRealRetrievalEvalTest.requireCredential(
+            "eval.embedding.apiKey", "AI_BAILIAN_API_KEY", "Embedding API Key");
+        assertThat(got).isEqualTo("sk-from-sysprop");
+      } finally {
+        if (prev != null) {
+          System.setProperty("eval.embedding.apiKey", prev);
+        } else {
+          System.clearProperty("eval.embedding.apiKey");
+        }
+      }
+    }
+
+    @Test
+    @DisplayName("sysProp 空串时不视为已提供，回退环境变量（若无则失败）")
+    void requireCredential_blankFallsBack() {
+      String prev = System.getProperty("eval.embedding.apiKey");
+      try {
+        System.setProperty("eval.embedding.apiKey", "");
+        // 本机没有 AI_BAILIAN_API_KEY 时抛异常；有的话返回环境变量值——两者都是合法结果
+        if (System.getenv("AI_BAILIAN_API_KEY") == null) {
+          assertThatThrownBy(() -> P1cRealRetrievalEvalTest.requireCredential(
+              "eval.embedding.apiKey", "AI_BAILIAN_API_KEY", "Embedding API Key"))
+              .isInstanceOf(IllegalStateException.class)
+              .hasMessageContaining("Embedding API Key")
+              .hasMessageContaining("AI_BAILIAN_API_KEY")
+              // 消息不应泄漏真实值
+              .hasMessageNotContaining("sk-");
+        }
+      } finally {
+        if (prev != null) {
+          System.setProperty("eval.embedding.apiKey", prev);
+        } else {
+          System.clearProperty("eval.embedding.apiKey");
+        }
+      }
+    }
+
+    @Test
+    @DisplayName("sysProp 与 env 都缺失时在 HTTP 客户端构造前抛出")
+    void requireCredential_allMissing_throwsBeforeHttp() {
+      String prevKey = System.getProperty("eval.embedding.apiKey");
+      String prevPw = System.getProperty("eval.datasource.password");
+      try {
+        // 用一个几乎不可能存在的环境变量名，保证失败路径
+        System.clearProperty("eval.embedding.apiKey");
+        assertThatThrownBy(() -> P1cRealRetrievalEvalTest.requireCredential(
+            "eval.embedding.apiKey", "P1C_TEST_DEFINITELY_NOT_SET_XYZ", "Embedding API Key"))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("拒绝使用默认值");
+        assertThatThrownBy(() -> P1cRealRetrievalEvalTest.requireCredential(
+            "eval.datasource.password", "P1C_TEST_DEFINITELY_NOT_SET_XYZ", "评测数据库密码"))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("评测数据库密码");
+      } finally {
+        if (prevKey != null) {
+          System.setProperty("eval.embedding.apiKey", prevKey);
+        }
+        if (prevPw != null) {
+          System.setProperty("eval.datasource.password", prevPw);
+        }
+      }
     }
   }
 }

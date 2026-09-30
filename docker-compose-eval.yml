@@ -1,5 +1,9 @@
 # 评测专用 Postgres 实例
-# 启动：docker compose -f docker-compose-eval.yml up -d
+# 启动前：
+#   1) cp .env.eval.example .env.eval
+#   2) 在 .env.eval 中填入 EVAL_DB_PASSWORD 与 EVAL_RUNNER_PASSWORD
+#   3) 使用 --env-file .env.eval
+# 启动：docker compose -f docker-compose-eval.yml --env-file .env.eval up -d
 # 停止：docker compose -f docker-compose-eval.yml down
 # 清除：docker compose -f docker-compose-eval.yml down -v
 
@@ -9,13 +13,18 @@ services:
     container_name: interview-eval-postgres
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${EVAL_POSTGRES_PASSWORD:-123456}
+      # 强制要求显式设置；缺失时 compose 直接拒绝启动，避免使用弱默认值
+      POSTGRES_PASSWORD: ${EVAL_DB_PASSWORD:?必须在 .env.eval 或环境变量中设置 EVAL_DB_PASSWORD}
       POSTGRES_DB: ${EVAL_POSTGRES_DB:-interview_guide_eval}
+      # 传给 20-eval-user.sh 用于创建 eval_runner
+      EVAL_RUNNER_PASSWORD: ${EVAL_RUNNER_PASSWORD:?必须设置 EVAL_RUNNER_PASSWORD}
     volumes:
       - eval_postgres_data:/var/lib/postgresql/data
-      - ./docker/postgres/eval-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./docker/postgres/eval-init.sql:/docker-entrypoint-initdb.d/10-eval-schema.sql:ro
+      - ./docker/postgres/eval-user.sh:/docker-entrypoint-initdb.d/20-eval-user.sh:ro
     ports:
-      - "${EVAL_POSTGRES_PORT:-5433}:5432"
+      # 显式绑定 127.0.0.1，避免本机局域网 / 容器网络暴露到公网
+      - "127.0.0.1:${EVAL_POSTGRES_PORT:-5433}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
