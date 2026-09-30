@@ -2,7 +2,7 @@
 
 > 本项目（远程仓库 `HyCheng-reborn/devsupport-platform`，本地目录名仍为 `interview-guide`）的进度事实源。
 > 新会话接手时先读本文件，再读「交接区」列出的文件。
-> 最近更新：**2026-09-30 17:07（北京时间）**，作者 Qoder。
+> 最近更新：**2026-09-30 17:12（北京时间）**，作者 Qoder。
 
 ## 0. 维护规则
 
@@ -77,7 +77,7 @@
 
 ## 6. 交接区
 
-- **最新已知 HEAD**：`f6aa629`（`fix: P1-C 白天离线定点修复…`），已与 `devsupport/master` 同步（`git rev-list --left-right --count devsupport/master...master` = `0 0`）。推送目标是 `devsupport`（`HyCheng-reborn/devsupport-platform`），**从不推 `origin`**（`Snailclimb/interview-guide`，上游只读）。
+- **最新已知 HEAD**：本文件与进度变更一起提交，所以「最新 HEAD」请用 `git log -1 --oneline` 现场核对（本文件最后一次被提交的记录见 §7 首行）。**最后一次代码改动提交是 `f6aa629`**（`fix: P1-C 白天离线定点修复…`），已与 `devsupport/master` 同步（`git rev-list --left-right --count devsupport/master...master` = `0 0`）。推送目标是 `devsupport`（`HyCheng-reborn/devsupport-platform`），**从不推 `origin`**（`Snailclimb/interview-guide`，上游只读）。
 - **工作区状态**：`gradle/wrapper/gradle-wrapper.properties` 有刻意保留的本机改动（离线分发地址），永不提交、永不还原；未跟踪残留 `devsupport-p1b-v3-review.zip`、`eval/datasets/devsupport-p1b-v3.1-review.zip`、3 个 `eval/datasets/*.tar.gz`、`status.txt`、`interview-guide_本机环境与启动关闭说明.md` —— 均不属于本轮改动，保持原样。`PROJECT_PROGRESS.md` 为本轮新增。
 - **下一位助手先读什么（按顺序）**：
   1. `AGENTS.md`（工程约束）+ 本文件 §3、§5；
@@ -90,6 +90,6 @@
 
 ## 7. 变更记录（简短，倒序）
 
-- 2026-09-30 17:07 — 新增本文件；同步 `f6aa629` 后的真实状态（B1–B4 记为待复核，非已解决），并记录生产检索与 L1 的参数差异、CI 结果未核对、`status.txt` 陈旧。
+- 2026-09-30 17:12 — 新增本文件（同轮一次自引用修订：交接区改为现场核对 HEAD，避免被自身提交作废）；同步 `f6aa629` 后的真实状态（B1–B4 记为待复核，非已解决），并记录生产检索与 L1 的参数差异、CI 结果未核对、`status.txt` 陈旧。
 - 2026-09-30 16:56 — `f6aa629`：三项复核 finding 的离线实现 + 81 条 P1-C 离线用例；设计文档同步至实现口径；推送 `devsupport`。
 - 2026-09-30 — `caf05cf`：P1-C 数据与失败契约（62 条离线用例）；Codex 复核指出三项问题（见 §3）。
