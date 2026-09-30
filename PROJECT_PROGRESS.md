@@ -2,7 +2,7 @@
 
 > 本项目（远程仓库 `HyCheng-reborn/devsupport-platform`，本地目录名仍为 `interview-guide`）的进度事实源。
 > 新会话接手时先读本文件，再读「交接区」列出的文件。
-> 最近更新：**2026-09-30 19:53（北京时间）**，作者 Qoder。
+> 最近更新：**2026-09-30 23:30（北京时间）**，作者 Qoder。
 
 ## 0. 维护规则
 
@@ -134,6 +134,15 @@
 - **环境提醒**：Gradle 命令必须带 `GRADLE_USER_HOME=/c/temp/gradle-tmp`（默认用户目录含非 ASCII 字符会让 test worker 启动失败）；Jackson 是 3.x（`tools.jackson.databind`）。从 Windows Python 里 `subprocess.run(['bash', …])` 会解析到 `C:\WINDOWS\System32\bash.exe`（WSL 启动器）而不是 Git Bash，会返回一堆 UTF-16 的 WSL 网络提示而把每个块都判成失败——要显式用 `C:\Program Files\Git\bin\bash.exe`；Python 读子进程输出别用 `text=True`（GBK 解码崩），用字节模式 + `errors='replace'`。宿主机无 `psql` / `jq`。**本轮 R4 新增三条**：① **`docker exec` 没有 `-T` 旗标**（真机 `Docker version 29.7.2, build a7dcaa6` 实测：带 `-T` 报 `unknown shorthand flag: 'T' in -T`、exit 125，且 flag 解析先于 daemon 调用，所以**daemon 停止也能测**）；`docker compose exec` 才有 `-T/--no-tty`。② **文档里不要写出真围栏标记**（三个反引号 + `bash`）——清单 §0 的核验脚本按围栏提取正文，围栏字面量会截断它自己的正则，让新增断言静默不执行却仍报 exit 0；断言里用 `chr(96)*3` 拼。同理「旧写法」一律用文字描述，原样粘贴会被自己的断言判成违例（本轮实测：贴进一行 → 38 PASS / 1 FAIL）。③ **`ok()` 只 print 的断言脚本没有失败信号**——退出码恒 0，「exit=0」不证明通过；已改为收集失败项并 `raise SystemExit(1 if BAD else 0)`。
 
 ## 7. 变更记录（简短，倒序）
+
+- 2026-09-30 23:30 — **`docs/devsupport-phase1-plan.md` 定点修订（6 点修订意见落实）**，只改两份文档（方案文档 + 本文件），零代码改动、零容器、零网络。修订内容：
+  ① **核实调研基线**：替换所有 `file:///` 链接为仓库相对路径；为“100% 复用”能力表每项附源码依据（类名+方法名）；端点数量改为已核实精确数字（KB 14 + RagChat 8 + KB Interview 10 = 32）；表数量改为已核实 14 张（含 vector_store 由 Spring AI 管理）。
+  ② **拆分迁移策略**：Task 1 改为“产品展示层改名”，Phase 1 只做前端 package name / 页面标题 / 导航标题 / 文件头注释；主库名、S3 bucket、容器名前缀、Java 包名、JPA 表名、P1-C 评测实例名全部保留不改；删除“机械替换”“直接 drop 表重建”表述；修正迁移策略：`ddl-auto: validate` + Flyway 已启用，所有 schema 变更必须通过 Flyway 迁移脚本。
+  ③ **P1-C 分段门槛**：原单一 Task 0 拆为 4 个独立 Gate（0a 无 API 容器核验 / 0b 离线复核 / 0c 付费冒泡 / 0d 正式 L1），每个有明确前置条件和验收标准，独立记录通过/未通过状态。
+  ④ **来源标注增强契约**：为 Task 3 补充详细后端/前端契约——`SourceReference` DTO（kbId/kbName/content，不含 score）、SSE `event: sources` 事件协议、`sources_json TEXT` 列持久化、断流/无结果/多文档边界处理、前端 `Message` 接口扩展。
+  ⑤ **最小 DevSupport 数据与交互能力**：新增 §2.4，明确分类字段保持自由文本现状（不新增分类体系）、5 个可验收例子、验收标准。
+  ⑥ **前后端禁用方案与验收分离**：前端导航移除面试入口 + 旧路由重定向到首页（不删除页面组件）；后端 Phase 1 不禁用任何端点（保留 32 个端点可用）；Task 7 拆分为 7a（E2E 功能冒烟，不依赖 P1-C）和 7b（P1-C 检索质量评测，独立于 E2E）。
+  **当前状态：方案修订完成，待 Codex 复核。**
 
 - 2026-09-30 21:52 — **清单 + 设计文档第三轮定点修订（T9 / R4，基线 `27c0afb`，本轮文档修订提交 `42124ff`）**，只改三份文档（清单 / 设计文档 / 本文件），零代码、零容器、零网络、未运行 `evalP1cReal`、未删任何卷、未启动 Docker Desktop。① **`docker exec` 的 `-T` 全部删除并就地实测**：`docker exec --help` 无 `-T`、`docker exec -T … true` → `unknown shorthand flag: 'T' in -T` + **exit 125**（旗标解析先于 daemon 调用，daemon 停止即可判定），`docker compose exec --help` 有 `-T/--no-tty` → 正文 18 条改为 14 条 `docker exec -i` + 4 条裸 `docker exec`，C4 的 `compose … exec -T` 保持；§1 那两处「今晚再看 CLI 是否收 `-T`」的推导级存疑换成实测事实块，**「不加 `-i` 则 here-doc 到不了容器」仍标注为推理、留给 C5.1 证伪**（不改判据凑过）。若这条没测，今晚**每一条** SQL 都会在解析层 125 死掉。② **C4 时间记录改为窗口**：`UP_START` 在 `up -d` 之前、`UP_END` 在 `ps`/`pg_isready` 之后，分支 A 判据 1 由「晚于单个 up 时刻」（数学上不可能成立，且更晚的记录值能让旧卷意外「通过」）改为 [开始, 结束] 区间核对（含等号），分支 B/B2、§1 口令新鲜度、§11、§12（开始/结束 + 区间核对格）同步。③ **设计文档同步**：§13 第 2 项改 `docker exec -i` + 容器内展开 + here-doc、第 6 项改裸 `docker exec`、表下段落删除宿主机 `read -rs`/`export`/`unset` 教学并补 `-T` 实测注记；扫描 HEAD 另发现 §14「失败时清理规则」的方案 A/B 也旧（缺 `--env-file`、`-T`、`-e` 口令透传、`-c "DELETE …"`）→ 一并改为清单口径（`DELETE` 带 `metadata->>'eval_run_id'` 谓词 + `remaining_for_run_id=` 复核，`down -v` 仍为人工确认后手工动作且要求把确认记进 §12）；§16 新增第 7、8 行。④ **取证工具自身的两处缺陷**（本轮自查发现，非复核意见）：新加的 5 条设计文档断言最初含真围栏标记，会截断核验脚本自己的提取正则 → 断言静默不执行却仍报 exit 0（虚报 34），改 `chr(96)*3` 后真实计数 **39**；`ok()` 原本只 print、**FAIL 不影响退出码**，「重跑 exit=0」从来不是通过判据 → 改为收集失败项并以 exit 1 退出（对照实测：注入假断言 → exit 1；模拟旧形状 → 1 FAIL 仍 exit 0）。验证（零容器、零网络）：§0 断言 **39 / 39 PASS / 0 FAIL / exit 0**；清单 **24 个 bash 块 `bash -n` 0 失败**、设计文档 **1 个块 0 失败**；here-doc `14/14` 与设计侧 `1/1`；形态清点 `docker exec` 18 条 = 14 带 `-i` + 4 裸、带 `-T` **0**；`--env-file` 违例（两文档可复制面）= 无；**反向突变全部非恒真**——恢复旧旗标组合 → 「零 `-T`」报 **18** 条违例（干净 0）、只删 `-i` → 报 **14** 条、设计侧 5 条（回潜 `-T` / 回潜 `-e` 透传 / 加宿主机静默录入 / 加缺 `--env-file` 的 compose / 改掉 here-doc）分别且互不串台地立刻响；写本轮记录时把旧写法原样贴进 §14.1 一行 → 立刻 **38 PASS / 1 FAIL**，改文字描述后回 39/39。C1–C11 **仍全部未实测**（§5 未验证清单不变，仅形态判据由「待今晚核验」升级为「已实测」）。本轮未动的同形态书面残留已在 §2/§5 逐条列出行号待批。本条行首的 `42124ff` 就是本轮文档修订提交本身，由紧随其后的「登记提交号」提交写入（不在同一提交里写死自身哈希：那会被该提交自身作废，见 §6）。
 

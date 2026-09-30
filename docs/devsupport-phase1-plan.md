@@ -1,7 +1,7 @@
 # DevSupport 第一阶段改造方案
 
-> 当前 HEAD: `5cd99949` (master)，远程 `HyCheng-reborn/devsupport-platform`
-> 本方案只读调研产出，未修改任何代码。
+> 当前 HEAD: `4fd2de0`
+> 本方案只读调研产出，未修改任何代码。所有结论均有源码核实依据。
 
 ---
 
@@ -20,11 +20,11 @@
 ```
 
 **涉及核心类**:
-- [KnowledgeBaseUploadService](file:///c:/IdeaProjects/interview-guide/app/src/main/java/interview/guide/modules/knowledgebase/service/KnowledgeBaseUploadService.java)
-- [KnowledgeBaseVectorService](file:///c:/IdeaProjects/interview-guide/app/src/main/java/interview/guide/modules/knowledgebase/service/KnowledgeBaseVectorService.java)
-- [DocumentParseService](file:///c:/IdeaProjects/interview-guide/app/src/main/java/interview/guide/infrastructure/file/DocumentParseService.java)
-- [VectorizeStreamConsumer](file:///c:/IdeaProjects/interview-guide/app/src/main/java/interview/guide/modules/knowledgebase/listener/VectorizeStreamConsumer.java)
-- [VectorRepository](file:///c:/IdeaProjects/interview-guide/app/src/main/java/interview/guide/modules/knowledgebase/repository/VectorRepository.java)
+- [KnowledgeBaseUploadService](app/src/main/java/interview/guide/modules/knowledgebase/service/KnowledgeBaseUploadService.java)
+- [KnowledgeBaseVectorService](app/src/main/java/interview/guide/modules/knowledgebase/service/KnowledgeBaseVectorService.java)
+- [DocumentParseService](app/src/main/java/interview/guide/infrastructure/file/DocumentParseService.java)
+- [VectorizeStreamConsumer](app/src/main/java/interview/guide/modules/knowledgebase/listener/VectorizeStreamConsumer.java)
+- [VectorRepository](app/src/main/java/interview/guide/modules/knowledgebase/repository/VectorRepository.java)
 
 ### 1.2 RAG 问答调用链（可复用，需增强来源标注）
 
@@ -39,25 +39,25 @@ RagChatController.sendMessageStream()
 ```
 
 **涉及核心类**:
-- [KnowledgeBaseQueryService](file:///c:/IdeaProjects/interview-guide/app/src/main/java/interview/guide/modules/knowledgebase/service/KnowledgeBaseQueryService.java)
-- [RagChatSessionService](file:///c:/IdeaProjects/interview-guide/app/src/main/java/interview/guide/modules/knowledgebase/service/RagChatSessionService.java)
-- [KnowledgeBaseQueryProperties](file:///c:/IdeaProjects/interview-guide/app/src/main/java/interview/guide/modules/knowledgebase/service/KnowledgeBaseQueryProperties.java)
+- [KnowledgeBaseQueryService](app/src/main/java/interview/guide/modules/knowledgebase/service/KnowledgeBaseQueryService.java)
+- [RagChatSessionService](app/src/main/java/interview/guide/modules/knowledgebase/service/RagChatSessionService.java)
+- [KnowledgeBaseQueryProperties](app/src/main/java/interview/guide/modules/knowledgebase/service/KnowledgeBaseQueryProperties.java)
 
 ### 1.3 可直接复用的能力清单
 
-| 能力 | 实现位置 | 复用程度 |
-|------|----------|----------|
-| 文档上传/解析/去重 | `KnowledgeBaseUploadService` + `infrastructure/file/` | 100% 复用 |
-| 异步向量化 (Redis Stream) | `VectorizeStreamProducer/Consumer` | 100% 复用 |
-| pgvector 向量检索 | `KnowledgeBaseVectorService` + `VectorRepository` | 100% 复用 |
-| RAG 流式问答 | `KnowledgeBaseQueryService` + `RagChatSessionService` | 需增强来源返回 |
-| 多会话聊天管理 | `rag_chat_sessions` + `rag_chat_messages` | 100% 复用 |
-| 知识库 CRUD/分类/搜索 | `KnowledgeBaseListService/DeleteService` | 100% 复用 |
-| LLM 多 Provider 管理 | `LlmProviderRegistry` | 100% 复用 |
-| 前端知识库管理页 | `KnowledgeBaseManagePage` | 100% 复用 |
-| 前端 RAG 聊天页 | `KnowledgeBaseQueryPage` | 需改 UI 文案 |
-| 前端上传页 | `KnowledgeBaseUploadPage` | 100% 复用 |
-| Prompt 模板 (3个KB相关) | `prompts/knowledgebase-*.st` | 需改写为 DevSupport 场景 |
+| 能力 | 实现位置 | 复用程度 | 源码依据 |
+|------|----------|----------|----------|
+| 文档上传/解析/去重 | `KnowledgeBaseUploadService` + `infrastructure/file/` | 100% 复用 | `KnowledgeBaseUploadService.uploadKnowledgeBase()` |
+| 异步向量化 (Redis Stream) | `VectorizeStreamProducer/Consumer` | 100% 复用 | `VectorizeStreamConsumer.consume()` → `KnowledgeBaseVectorService.vectorizeAndStore()` |
+| pgvector 向量检索 | `KnowledgeBaseVectorService` + `VectorRepository` | 100% 复用 | `KnowledgeBaseVectorService.similaritySearch()` 返回 `List<Document>` |
+| RAG 流式问答 | `KnowledgeBaseQueryService` + `RagChatSessionService` | 需增强来源返回 | `KnowledgeBaseQueryService.answerQuestionStream()` → `ChatClient.prompt().stream().content()` |
+| 多会话聊天管理 | `rag_chat_sessions` + `rag_chat_messages` | 100% 复用 | `RagChatSessionService.completeStreamMessage()` |
+| 知识库 CRUD/分类/搜索 | `KnowledgeBaseListService/DeleteService` | 100% 复用 | `KnowledgeBaseController`（14 个端点），分类：`getAllCategories()` → `SELECT DISTINCT k.category` |
+| LLM 多 Provider 管理 | `LlmProviderRegistry` | 100% 复用 | `LlmProviderRegistry.getChatClientOrDefault()` |
+| 前端知识库管理页 | `KnowledgeBaseManagePage` | 100% 复用 | `frontend/src/pages/KnowledgeBaseManagePage.tsx` |
+| 前端 RAG 聊天页 | `KnowledgeBaseQueryPage` | 需改 UI 文案 | `frontend/src/pages/KnowledgeBaseQueryPage.tsx` |
+| 前端上传页 | `KnowledgeBaseUploadPage` | 100% 复用 | `frontend/src/pages/KnowledgeBaseUploadPage.tsx` |
+| Prompt 模板 (3个KB相关) | `prompts/knowledgebase-*.st` | 需改写为 DevSupport 场景 | `resources/prompts/knowledgebase-query-system.st` 等 |
 
 ### 1.4 不可复用的能力（第一阶段移除）
 
@@ -81,13 +81,13 @@ RagChatController.sendMessageStream()
 - 研发文档/故障现象/排查步骤的知识库上传与管理
 - 基于知识库的 RAG 检索问答（带来源引用）
 - 多会话聊天（支持绑定多个知识库、历史记录、置顶）
-- 文档分类管理（按项目/模块/故障类型分类）
+- 文档分类管理（保留现有 category 字段，自由文本，不新增分类体系）
 
 **明确排除**:
 - 面试/简历/语音相关功能（仅隐藏入口，不删除代码）
 - 题目生成与题库管理（隐藏入口）
 - 工单/事件系统、runbook、oncall（后续阶段）
-- P1-C 真实 L1 评测执行（需用户手动启动 Docker + 配置 `.env.eval`）
+- P1-C 真实 L1 评测执行（独立于 E2E 冒烟，需 Gate 0a-0d 全部通过）
 
 ### 2.2 用户操作流程
 
@@ -114,76 +114,195 @@ RagChatController.sendMessageStream()
 
 | 维度 | 原 interview-guide | 改造后 DevSupport Phase 1 |
 |------|--------------------|---------------------------|
-| **数据模型** | 14张表（含面试/简历/语音6张表），`knowledge_base_questions` 含大量面试题目字段 | 核心使用4张表：`knowledge_bases`、`vector_store`、`rag_chat_sessions`、`rag_chat_messages`；面试相关表保留但不写入新数据 |
-| **后端接口** | 3个KB Controller（含面试/题目生成共 ~25 个端点） | 保留 `KnowledgeBaseController`（14端点）+ `RagChatController`（8端点）= 22个活跃端点；移除面试/题目端点的路由暴露 |
+| **数据模型** | 14张表（含面试/简历/语音6张表），`knowledge_base_questions` 含大量面试题目字段 | 核心使用4张表：`knowledge_bases`、`vector_store`（Spring AI 管理，无 JPA Entity）、`rag_chat_sessions`、`rag_chat_messages`；共 14 张表（14 个 @Entity + @Table 类 + vector_store）；面试相关表保留但不写入新数据 |
+| **后端接口** | 3个KB Controller（含面试/题目生成共 ~25 个端点） | 保留 `KnowledgeBaseController`（14 个端点）+ `RagChatController`（8 个端点）+ `KnowledgeBaseInterviewController`（10 个端点）= 32 个活跃端点；前端不再访问面试相关端点，后端保持原样 |
 | **检索流程** | RAG 问答 + 查询改写 + 动态 topK/minScore | 完全复用，无变化；Prompt 模板从"面试知识问答"改为"研发知识/故障排查问答" |
-| **来源标注** | Prompt 中有"引用来源"指令，但 API 响应不返回结构化来源 | **新增**: API 响应增加 `sources[]` 字段（文档名、chunk 内容、相似度分数） |
+| **来源标注** | Prompt 中有"引用来源"指令（`system.st` 第 60 行），但 API 响应不返回结构化来源；`Message` 接口只有 id/type/content/timestamp | **新增**: SSE 流结束后发送 `event: sources` 事件，data 为 `List<SourceReference>` JSON（kbId、kbName、content）；注意当前 `similaritySearch()` 返回的 `List<Document>` 不含 score 字段 |
 | **权限** | 无认证（单机部署） | 第一阶段不变，保持无认证 |
-| **前端交互** | 导航含面试中心、简历上传、语音面试、知识库、设置 | 导航简化为：知识库管理 + 问答助手 + 设置；面试相关页面从路由表移除 |
+| **前端交互** | 导航含面试中心、简历上传、语音面试、知识库、设置 | 导航简化为：知识库管理 + 问答助手 + 设置；面试相关页面从导航移除，旧路由重定向到首页 |
 | **项目命名** | `interview-guide` / `interview.guide` / `ai-interview-platform` | 见第四节迁移策略 |
-| **Prompt 语义** | "你是一个面试知识助手" | "你是一个研发团队知识与故障排查助手" |
+| **Prompt 语义** | “你是一个面试知识助手” | “你是一个研发团队知识与故障排查助手” |
+
+### 2.4 最小 DevSupport 数据与交互能力
+
+#### 最小数据模型
+
+- 知识库上传：文件 + 可选名称（已有）
+- 分类：保留现有 category 字段（`String(100)`, nullable, 有普通索引 `idx_kb_category`），但**不新增分类体系**
+  - Phase 1 的分类仍是自由文本，用户自行约定命名（如“故障排查”、“部署文档”、“API 参考”）
+  - 不引入预定义分类枚举、不新增分类层级
+  - 上传时仍无分类输入（`uploadKnowledgeBase(file, name)` 无 category 参数），分类在管理页面事后编辑（保持现状）
+  - 筛选是下拉 `<select>`，选项来自 `findAllCategories()` 动态查询
+  - 如果后续需要“项目/模块/故障类型”结构化分类，作为独立任务在 Phase 1 之后
+
+#### 最小交互能力（可验收例子）
+
+1. 上传 `eval/datasets/devsupport-v0.1/corpus/ig-readme-root.md`（README.md），等待向量化完成
+2. 在问答助手中提问：“项目的后端端口是多少？” → 回答应包含“8080”并标注来源为 README.md
+3. 提问：“如何启动开发环境的数据库？” → 回答应包含 docker compose 命令并标注来源
+4. 上传第二份文档（如 ig-voice-arch.md），提问跨文档问题：“语音面试的架构设计是什么？” → 来源应指向 voice-interview-architecture.md
+5. 切换会话、删除会话、修改标题 → 正常工作
+
+#### 验收标准
+
+- 来源标注在 AI 回答下方可见
+- 来源面板显示文档名和相关文本片段
+- 点击来源可展开查看完整 chunk
 
 ---
 
 ## 三、按依赖排序的改造任务
 
-### Task 0: P1-C 真实环境验证（前置条件，手动操作）
+### Task 0: P1-C 分段门槛（4 个独立 Gate，每个独立记录通过/未通过）
 
-- **内容**: 用户手动启动 Docker Desktop → 创建 `.env.eval` → 运行 `docker-compose-eval.yml` → 执行 `evalP1cReal` 获取 L1 基线数字
+#### Gate 0a: 无 API 容器核验
+
+- **前置**: 用户手动启动 Docker Desktop
+- **操作**: `docker compose -f docker-compose-eval.yml --env-file .env.eval up -d`
+- **验收**: 容器健康检查通过、`eval_instance_identity` 表存在、`vector_store` 表存在（1024维）
+- **不涉及**: Embedding API、付费调用
 - **涉及文件**: `docker-compose-eval.yml`, `docker/postgres/eval-init.sql`, `.env.eval.example`
-- **验收**: `p1c-l1-report.json` 生成，含非 null 的 Hit@K / MRR@K / APC@K 指标
-- **工作量**: 约 30 分钟（含费用约 0.02 元）
-- **依赖**: 无，但需要用户手动执行
-- **阻塞**: Task 7（端到端评测验证）
+- **工作量**: 约 10 分钟
 
-### Task 1: 项目命名与配置迁移（基础层，无运行时依赖）
+#### Gate 0b: 离线复核
 
-- **内容**: 改名不改逻辑，纯机械替换
-- **涉及文件与改动**:
+- **前置**: Gate 0a 通过
+- **操作**: 确认 114 条离线用例在新容器环境下仍全绿（`./gradlew :app:test --no-daemon`，不含 real-eval tag）
+- **验收**: 离线测试全绿
+- **不涉及**: 真实 Embedding
+- **工作量**: 约 10 分钟
+
+#### Gate 0c: 付费冒泡
+
+- **前置**: Gate 0b 通过 + 用户手动创建 `.env.eval` 填入 `AI_BAILIAN_API_KEY` 和 `EVAL_RUNNER_PASSWORD`
+- **操作**: 运行 1 道 exact_lookup 题的真实 Embedding + 检索，验证端到端通路
+- **验收**: 返回非空检索结果，确认 Embedding API 可达、pgvector 写入成功
+- **费用**: 约 0.002 元
+- **工作量**: 约 5 分钟
+
+#### Gate 0d: 正式 L1
+
+- **前置**: Gate 0c 通过
+- **操作**: 执行完整 20 题 L1 评测（`-Peval.p1c.realApi=true`）
+- **验收**: `p1c-l1-report.json` 生成，含非 null 的 Hit@K / MRR@K / APC@K
+- **费用**: 约 0.02 元
+- **工作量**: 约 15 分钟
+
+**P1-C 技术事实**:
+- 14 个 P1c 测试文件，入口 `P1cRealRetrievalEvalTest.java` (869行)
+- 入口方法有 `assumeTrue("true".equals(System.getProperty("eval.p1c.realApi")))` 门控
+- 类标注 `@Tag("real-eval")`，被 `build.gradle` `excludeTags` 排除
+- 前置条件：评测容器启动 + `eval.p1c.realApi=true` + `AI_BAILIAN_API_KEY` + `EVAL_RUNNER_PASSWORD`
+- `docker-compose-eval.yml` 容器名 `interview-eval-postgres`，端口 5433
+
+**依赖**: 无，但需要用户手动执行
+**阻塞**: Task 7b（P1-C 检索质量评测）
+
+### Task 1: 产品展示层改名（基础层，无运行时依赖）
+
+- **内容**: Phase 1 只改展示层名称，保留所有数据面/基础设施名称不变
+- **Phase 1 执行的改名**:
 
 | 改动项 | 文件 | 当前值 → 新值 |
 |--------|------|----------------|
-| Gradle rootProject.name | `settings.gradle:22` | `interview-guide` → `devsupport-platform` |
-| Gradle group | `app/build.gradle:12` | `com.interview` → `com.devsupport` |
-| Spring application.name | `application.yml:32` | `ai-interview-platform` → `devsupport-platform` |
 | 前端 package name | `frontend/package.json:2` | `ai-interview-frontend` → `devsupport-frontend` |
 | 前端页面标题 | `frontend/index.html:7` | `AI智能面试官` → `DevSupport - 研发知识平台` |
-| S3 bucket 默认值 | `application.yml:196`, `.env`, `.env.example` | `interview-guide` → `devsupport` |
-| 容器名前缀 | 3个 compose 文件 | `interview-*` → `devsupport-*` |
-| 数据库名 | `application.yml:42`, compose 文件, `.env*` | `interview_guide` → `devsupport` |
-| 本地配置路径 | `application.yml:108-109` | `.interview-guide/` → `.devsupport/` |
+| Layout 导航标题 | `frontend/src/components/Layout.tsx` | 更新为 DevSupport |
+| App 标题 | `frontend/src/App.tsx` | 更新为 DevSupport |
 | 文件头注释 | `app/build.gradle`, `application.yml`, `App.java` | 更新为 DevSupport |
 
-- **暂不改动（高成本，单独迁移任务）**:
-  - Java 包名 `interview.guide` → 涉及数百文件，建议用 IDE Refactor → Rename Package 单独处理
-  - JPA 表名 → 需要 Flyway 迁移脚本 + 数据迁移
-  - 评测数据库名 `interview_guide_eval` → 跟随主库一起改
-- **验收**: `./gradlew :app:compileJava` 通过；`docker compose -f docker-compose.dev.yml up -d` 容器名正确；前端 `pnpm run build` 通过
-- **工作量**: 2-3 小时
+- **以下迁移明确延后到后续阶段**（Phase 1 不改）:
+  - 主库名 `interview_guide` → 保留
+  - S3 bucket `interview-guide` → 保留
+  - 容器名前缀 `interview-*` → 保留
+  - Java 包名 `interview.guide` → 保留（涉及数百文件，需单独 PR）
+  - JPA 表名 → 保留（需 Flyway 迁移脚本）
+  - P1-C 评测实例名 → 保留
+  - Gradle rootProject.name / group → 保留
+  - Spring application.name → 保留
+  - 本地配置路径 `.interview-guide/` → 保留
+
+- **迁移策略说明**:
+  - 当前 `ddl-auto: validate`（`application.yml` 第 50 行），Hibernate 只校验不建表
+  - Flyway 已启用（`baseline-on-migrate: true`, `baseline-version: 1`），所有 schema 变更必须通过 Flyway 迁移脚本
+  - `initialize-schema: false`（pgvector schema 由 Flyway 管理）
+  - 现有 Flyway 迁移文件 5 个：V1__init_schema.sql (306行), V20260722, V20260723, V20260724, V20260803
+  - 如果后续阶段需要改表名，必须写 `ALTER TABLE RENAME` 迁移脚本（新增 `V20260XXX__xxx.sql`）
+
+- **验收**: `./gradlew :app:compileJava` 通过；前端 `pnpm run build` 通过；页面标题和导航显示 DevSupport
+- **工作量**: 1 小时
 - **依赖**: 无
 
 ### Task 2: 前端导航与路由精简
 
-- **内容**: 从导航和路由表中移除面试相关入口，保留知识库管理 + RAG 问答 + 设置
+- **内容**: 从导航中移除面试相关入口，保留知识库管理 + RAG 问答 + 设置；旧路由重定向到首页
+- **前端隐藏入口**（不用“注释路由”）:
+  - `Layout.tsx` 导航菜单：移除“面试准备”分组全部 4 项 + “知识库”分组中的“知识库面试”
+  - `App.tsx` 路由表：保留路由定义但添加重定向 — 访问 `/interview-hub`、`/voice-interview` 等旧路由时重定向到 `/knowledgebase`（首页）
+  - 不删除任何页面组件文件，只是从导航入口移除
 - **涉及文件**:
-  - `frontend/src/App.tsx` — 移除 `/interview-hub`, `/interview/*`, `/voice-interview`, `/knowledgebase-interview/*`, `/resumes/*`, `/interview-schedule/*` 路由
+  - `frontend/src/App.tsx` — 旧路由添加重定向到 `/knowledgebase`
   - `frontend/src/components/Layout.tsx` — 导航菜单简化为：知识库管理、问答助手、设置
-  - `frontend/src/constants/routes.ts` — 移除面试相关路由常量
-  - `frontend/src/pages/KnowledgeBaseManagePage.tsx` — 移除"面试"相关导航按钮（如有）
-- **验收**: 前端构建通过；浏览器访问只有知识库管理 + 问答助手 + 设置三个入口
+  - `frontend/src/constants/routes.ts` — 保留常量定义（不删除）
+  - `frontend/src/pages/KnowledgeBaseManagePage.tsx` — 移除“面试”相关导航按钮（如有）
+- **验收**: 前端构建通过；导航只有知识库管理 + 问答助手 + 设置三个入口；访问旧路由重定向到首页
 - **工作量**: 1-2 小时
 - **依赖**: 无（可与 Task 1 并行）
 
 ### Task 3: RAG 来源标注增强（核心新功能）
 
 - **内容**: 让 RAG 回答返回结构化的来源信息
-- **涉及文件**:
-  - 后端 `KnowledgeBaseQueryService.java` — 在检索阶段收集 `sources` 列表（kb_id → 查 `knowledge_bases` 表获取 name，chunk content，similarity score）
-  - 后端 `RagChatSessionService.java` — SSE 流结束后附加 `sources` 元数据事件
-  - 新增 DTO: `SourceReference`（kbId, kbName, content, score）
-  - 前端 `KnowledgeBaseQueryPage.tsx` — 在 AI 回答下方渲染来源引用列表（可折叠展示文档名和相关片段）
-  - 前端 `api/ragChat.ts` — 解析 SSE 中的 sources 事件
-- **验收**: 提问后回答下方显示引用来源（文档名 + 相关文本片段 + 相似度分数）
+
+#### 后端 DTO 设计
+
+```
+SourceReference {
+  kbId: Long          // 知识库 ID
+  kbName: String      // 知识库名称（从 KnowledgeBaseEntity 查询）
+  content: String     // chunk 文本片段（截断至 200 字符）
+  // 注意：当前 similaritySearch 返回的 List<Document> 不含 score
+  // 如需 score，需改用 VectorStore 底层 API 或自行计算
+}
+```
+
+#### SSE 事件协议
+
+- 当前 `RagChatController.sendMessageStream()` 返回 `Flux<ServerSentEvent<String>>`
+- 现有事件类型：只有 `data` 事件（文本 chunk）
+- 新增事件类型：`sources` 事件（流结束后发送）
+  - event: `sources`
+  - data: JSON 序列化的 `List<SourceReference>`
+- 实现位置：在 `RagChatSessionService` 的 `.doOnComplete()` 之前，将检索到的文档列表转换为 `SourceReference` 列表，作为额外的 SSE 事件发送
+- 具体做法：在 `RagChatSessionService` 中缓存检索结果（`List<Document>`），流完成后通过新的 SSE 事件类型发送
+
+#### 消息持久化
+
+- `rag_chat_messages` 表新增列 `sources_json TEXT`（nullable），存储 JSON 序列化的来源列表
+- `completeStreamMessage()` 方法增加 sources 参数
+- 历史消息回显：`getSessionDetail()` 返回的消息中包含 sources_json，前端解析后显示
+
+#### 边界情况处理
+
+- **断流**: `.doOnError()` 中仍调用 `completeStreamMessage`，sources 照常保存（检索已完成，只是 LLM 生成中断）
+- **无检索结果**: sources 为空列表 `[]`，Prompt 中已有“无法回答时如实说明”指令，前端显示“未找到相关文档”
+- **多文档来源**: sources 列表按检索排序展示，前端限制最多显示 5 条，超出折叠
+
+#### 前端改动
+
+- `Message` 接口新增 `sources?: SourceReference[]` 字段
+- SSE 接收逻辑解析 `event: sources` 事件
+- AI 消息渲染组件在内容下方显示来源引用面板（可折叠）
+
+#### 涉及文件
+
+- 后端 `KnowledgeBaseQueryService.java` — 在检索阶段收集 `sources` 列表
+- 后端 `RagChatSessionService.java` — SSE 流结束后发送 `sources` 事件
+- 新增 DTO: `SourceReference`（kbId, kbName, content）
+- Flyway 迁移脚本：`rag_chat_messages` 新增 `sources_json` 列
+- 前端 `KnowledgeBaseQueryPage.tsx` — 在 AI 回答下方渲染来源引用列表
+- 前端 `api/ragChat.ts` — 解析 SSE 中的 sources 事件
+
+- **验收**: 提问后回答下方显示引用来源（文档名 + 相关文本片段）
 - **工作量**: 4-6 小时
 - **依赖**: 无（可与 Task 1、2 并行）
 
@@ -198,18 +317,16 @@ RagChatController.sendMessageStream()
 - **工作量**: 1-2 小时
 - **依赖**: 无（可与 Task 1-3 并行）
 
-### Task 5: 后端接口清理与分类标注
+### Task 5: 后端接口处理（Phase 1 不禁用）
 
-- **内容**: 不删除面试模块代码，但通过配置或路由调整使其不在 DevSupport 中暴露
-- **方案选择**:
-  - **方案 A（推荐）**: 在 `KnowledgeBaseController` 中移除题目生成相关端点的 `@RequestMapping`（注释保留），前端已不访问这些端点
-  - **方案 B**: 添加 `@Profile("interview")` 注解，默认不激活面试模块
-- **涉及文件**:
-  - `KnowledgeBaseInterviewController.java` — 禁用或 Profile 隔离
-  - 题目生成相关端点 — 同上
-- **验收**: 启动后访问 `/api/knowledgebase-interviews/*` 返回 404；`/api/knowledgebase/*` 和 `/api/rag-chat/*` 正常工作
-- **工作量**: 1 小时
-- **依赖**: Task 1（命名迁移完成后统一调整）
+- **内容**: Phase 1 **不禁用任何后端端点** — 保留所有 32 个端点可用
+- **方案说明**:
+  - 面试相关端点（10 个 KB Interview + 其他面试模块端点）只是前端不再访问，后端保持原样
+  - 项目无 Spring Security，无认证机制，无 `@Profile` 使用，无 `SecurityFilterChain` / `@EnableWebSecurity`
+  - 后端端点暴露不影响功能；后续如需禁用可通过 `@Profile` 或 `@ConditionalOnProperty` 实现
+- **验收**: `/api/knowledgebase/*` 和 `/api/rag-chat/*` 正常工作；面试相关端点保持可用但前端不访问
+- **工作量**: 0（无需改动）
+- **依赖**: 无
 
 ### Task 6: 文档更新
 
@@ -223,50 +340,66 @@ RagChatController.sendMessageStream()
 - **工作量**: 2-3 小时
 - **依赖**: Task 1（命名确定后更新文档）
 
-### Task 7: 端到端验证
+### Task 7a: E2E 功能冒烟
 
 - **内容**: 启动完整 dev 环境，执行端到端流程验证
 - **步骤**:
-  1. `docker compose -f docker-compose.dev.yml up -d`（新容器名）
+  1. `docker compose -f docker-compose.dev.yml up -d`
   2. 上传 devsupport-v0.1 corpus 中的 2-3 份文档
   3. 等待向量化完成
-  4. 在问答助手中提问（参考 eval 的 20 道题中 2-3 道）
+  4. 在问答助手中提问（参考修订 5 的 5 个验收例子）
   5. 验证来源标注正确显示
-- **验收**: 完整流程走通，回答带来源
+- **验收**: 5 个验收例子全部通过（详见修订 5）
+- **不涉及**: P1-C 评测、付费 API
 - **工作量**: 1-2 小时
-- **依赖**: Task 1-6 全部完成；Task 0（P1-C 真实 L1 结果用于对比检索质量）
+- **依赖**: Task 1-6 全部完成
+
+### Task 7b: P1-C 检索质量评测（独立于 E2E）
+
+- **内容**: 执行完整 L1 评测
+- **前置**: Gate 0a-0d 全部通过
+- **操作**: 执行完整 20 题 L1 评测（`-Peval.p1c.realApi=true`）
+- **验收**: `p1c-l1-report.json` 含非 null 指标
+- **与 E2E 冒烟独立执行、独立报告**
+- **工作量**: 约 15 分钟（费用约 0.02 元）
+- **依赖**: Task 0 Gate 0a-0d 全部通过
 
 ### 依赖关系图
 
 ```
-Task 0 (P1-C 验证, 手动) ──────────────────────────────┐
-                                                         │
-Task 1 (命名迁移) ──→ Task 5 (接口清理) ──→ Task 6 (文档) │
-                                                         │
-Task 2 (前端精简) ──────────────────────────→ Task 7 (E2E 验证)
-                                                         │
-Task 3 (来源标注) ──────────────────────────→ Task 7     │
-                                                         │
-Task 4 (Prompt适配) ────────────────────────→ Task 7     │
-                                                         │
-Task 0 ─────────────────────────────────────→ Task 7 ───┘
+Task 0a-0d (P1-C 门槛, 手动) ────────────────────────┐
+                                                       │
+Task 1 (展示层改名) ─────────────────────→ Task 6 (文档) │
+                                                       │
+Task 2 (前端精简) ────────────────────────→ Task 7a (E2E 冒烟)
+                                                       │
+Task 3 (来源标注) ────────────────────────→ Task 7a    │
+                                                       │
+Task 4 (Prompt适配) ────────────────────────→ Task 7a  │
+                                                       │
+Task 0a-0d ───────────────────────────────→ Task 7b (P1-C 评测) ─┘
 ```
 
 ### 并行策略
 
 **可并行的任务组**:
-- **Group A**（基础设施层）: Task 1（命名迁移）
-- **Group B**（前端层）: Task 2（导航精简）、Task 3（来源标注前端部分）
-- **Group C**（后端层）: Task 3（来源标注后端部分）、Task 4（Prompt 适配）
-- **Group D**（手动操作）: Task 0（P1-C 验证）
+- **Group A**（基础设施层）: Task 1（展示层改名）
+- **Group B**（前端层）: Task 2（导航精简）
+- **Group C**（后端层）: Task 3（来源标注）、Task 4（Prompt 适配）
+- **Group D**（手动操作）: Task 0（P1-C 门槛 Gate 0a-0d）
 
-Group A/B/C/D 四组可同时开工。Task 5 等 Task 1 完成后执行。Task 6 等 Task 1 + Task 5 完成后执行。Task 7 等所有前置完成后执行。
+Group A/B/C/D 四组可同时开工。Task 6 等 Task 1 完成后执行。Task 7a 等 Task 1-6 完成后执行。Task 7b 等 Gate 0a-0d 全部通过后执行。
 
 ---
 
 ## 四、迁移策略
 
-### 4.1 包名迁移（建议延后到 Phase 1 功能交付后）
+### 4.1 Phase 1 迁移范围（展示层改名）
+
+Phase 1 只改展示层名称：前端 package name、页面标题、导航标题、文件头注释。所有数据面/基础设施名称保留不变：
+- 主库名 `interview_guide`、S3 bucket `interview-guide`、容器名前缀 `interview-*`、Java 包名 `interview.guide`、JPA 表名、P1-C 评测实例名、Gradle rootProject.name/group、Spring application.name
+
+### 4.2 后续阶段迁移原则
 
 Java 包名 `interview.guide` → `devsupport` 涉及数百文件的 `package` 和 `import` 语句，建议：
 1. Phase 1 功能交付后，单独开一个 "Rename Package" PR
@@ -274,18 +407,13 @@ Java 包名 `interview.guide` → `devsupport` 涉及数百文件的 `package` �
 3. 同步更新 `application.yml` 的 `spring.autoconfigure.base-packages`
 4. 更新测试包名
 
-### 4.2 表名迁移（建议延后）
+### 4.3 表名迁移原则
 
-14 张表中，6 张面试表（`interview_sessions`, `interview_answers`, `interview_schedule`, `resumes`, `resume_analyses`, `voice_interview_*`）在 DevSupport 中不再使用。建议：
-1. Phase 1 不改动表名，避免数据迁移风险
-2. 后续如需清理，通过新 Flyway 迁移脚本 `ALTER TABLE ... RENAME TO ...`
-3. `knowledge_bases`、`rag_chat_*`、`vector_store` 表名无需改动
-
-### 4.3 旧数据处理
-
-- 开发环境: `ddl-auto: update`，可以直接 drop 旧表重建
-- 生产环境: 需要 `pg_dump` → 改表名 → `pg_restore`
-- S3 bucket: 新建 `devsupport` bucket，旧 `interview-guide` bucket 数据手动迁移或保留
+14 张表中，6 张面试表在 DevSupport 中不再使用。Phase 1 不改动表名，避免数据迁移风险。后续如需清理：
+- 当前 `ddl-auto: validate`，Hibernate 只校验不建表
+- 所有 schema 变更必须通过 Flyway 迁移脚本（新增 `V20260XXX__xxx.sql`）
+- 必须写 `ALTER TABLE ... RENAME TO ...` 迁移脚本，不能 drop 重建
+- `knowledge_bases`、`rag_chat_*`、`vector_store` 表名无需改动
 
 ### 4.4 仓库名称
 
@@ -299,12 +427,12 @@ Java 包名 `interview.guide` → `devsupport` 涉及数百文件的 `package` �
 
 | 场景 | 说明 |
 |------|------|
-| Task 0 通过 | 获得 L1 基线数字（Hit@K / MRR@K / APC@K），可作为 Task 7 E2E 验证的检索质量参照 |
-| Task 0 未通过 | 说明 Embedding/向量检索有底层问题，需先修复再进入 Task 7 |
-| Prompt 改动对 L1 的影响 | P1-C L1 绕过 Service 层直接调 `VectorStore.similaritySearch`，不受 Prompt 改动影响；但 Task 7 的端到端验证会受 Prompt 影响 |
-| 命名迁移对评测的影响 | `docker-compose-eval.yml` 中的容器名/库名需跟随 Task 1 一起改；评测代码在 test 作用域，不受 main 包名影响 |
+| Task 0a-0d 通过 | 获得 L1 基线数字（Hit@K / MRR@K / APC@K），可作为 Task 7a E2E 验证的检索质量参照 |
+| Task 0a-0d 未通过 | 说明 Embedding/向量检索有底层问题，需先修复再进入 Task 7b |
+| Prompt 改动对 L1 的影响 | P1-C L1 绕过 Service 层直接调 `VectorStore.similaritySearch`，不受 Prompt 改动影响；但 Task 7a 的端到端验证会受 Prompt 影响 |
+| 命名迁移对评测的影响 | Phase 1 不改容器名/库名，评测环境无影响；评测代码在 test 作用域，不受 main 包名影响 |
 
-**结论**: Task 1-6 的编码工作不依赖 Task 0 的结果，可以先行推进。Task 7 的 E2E 验证需要 Task 0 的 L1 基线作为参照。
+**结论**: Task 1-6 的编码工作不依赖 Task 0 的结果，可以先行推进。Task 7a 的 E2E 冒烟不依赖 P1-C；Task 7b 的 P1-C 评测需要 Gate 0a-0d 全部通过。
 
 ---
 
@@ -312,6 +440,6 @@ Java 包名 `interview.guide` → `devsupport` 涉及数百文件的 `package` �
 
 1. **不推送 origin**: 后续提交只推送到 `devsupport`（`HyCheng-reborn/devsupport-platform`），绝不推送到上游 `Snailclimb/interview-guide`
 2. **评测隔离**: P1-C 评测代码全部在 test 作用域，不新增 main 源码；评测容器独立端口 5433，不连生产库
-3. **面试模块保留**: 第一阶段不删除面试模块代码，只从前端入口隐藏，降低回滚风险
+3. **面试模块保留**: 第一阶段不删除面试模块代码，前端从导航入口隐藏，后端保持所有 32 个端点可用，降低回滚风险
 4. **P1-C 状态**: 当前"代码已写 + 离线通过 · 真实环境零验证"，114 条离线用例全绿，但无检索质量数字
 5. **不设计预期为结果**: 方案中所有检索质量指标需等 Task 0 执行后才能填写
