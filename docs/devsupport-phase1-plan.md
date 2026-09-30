@@ -1,6 +1,6 @@
 # DevSupport 第一阶段改造方案
 
-> 当前 HEAD: `4fd2de0`
+> 调研基线: `4fd2de0`（方案修订: `5c2426d`）
 > 本方案只读调研产出，未修改任何代码。所有结论均有源码核实依据。
 
 ---
@@ -20,11 +20,11 @@
 ```
 
 **涉及核心类**:
-- [KnowledgeBaseUploadService](app/src/main/java/interview/guide/modules/knowledgebase/service/KnowledgeBaseUploadService.java)
-- [KnowledgeBaseVectorService](app/src/main/java/interview/guide/modules/knowledgebase/service/KnowledgeBaseVectorService.java)
-- [DocumentParseService](app/src/main/java/interview/guide/infrastructure/file/DocumentParseService.java)
-- [VectorizeStreamConsumer](app/src/main/java/interview/guide/modules/knowledgebase/listener/VectorizeStreamConsumer.java)
-- [VectorRepository](app/src/main/java/interview/guide/modules/knowledgebase/repository/VectorRepository.java)
+- [KnowledgeBaseUploadService](../app/src/main/java/interview/guide/modules/knowledgebase/service/KnowledgeBaseUploadService.java)
+- [KnowledgeBaseVectorService](../app/src/main/java/interview/guide/modules/knowledgebase/service/KnowledgeBaseVectorService.java)
+- [DocumentParseService](../app/src/main/java/interview/guide/infrastructure/file/DocumentParseService.java)
+- [VectorizeStreamConsumer](../app/src/main/java/interview/guide/modules/knowledgebase/listener/VectorizeStreamConsumer.java)
+- [VectorRepository](../app/src/main/java/interview/guide/modules/knowledgebase/repository/VectorRepository.java)
 
 ### 1.2 RAG 问答调用链（可复用，需增强来源标注）
 
@@ -39,9 +39,9 @@ RagChatController.sendMessageStream()
 ```
 
 **涉及核心类**:
-- [KnowledgeBaseQueryService](app/src/main/java/interview/guide/modules/knowledgebase/service/KnowledgeBaseQueryService.java)
-- [RagChatSessionService](app/src/main/java/interview/guide/modules/knowledgebase/service/RagChatSessionService.java)
-- [KnowledgeBaseQueryProperties](app/src/main/java/interview/guide/modules/knowledgebase/service/KnowledgeBaseQueryProperties.java)
+- [KnowledgeBaseQueryService](../app/src/main/java/interview/guide/modules/knowledgebase/service/KnowledgeBaseQueryService.java)
+- [RagChatSessionService](../app/src/main/java/interview/guide/modules/knowledgebase/service/RagChatSessionService.java)
+- [KnowledgeBaseQueryProperties](../app/src/main/java/interview/guide/modules/knowledgebase/service/KnowledgeBaseQueryProperties.java)
 
 ### 1.3 可直接复用的能力清单
 
@@ -117,7 +117,7 @@ RagChatController.sendMessageStream()
 | **数据模型** | 14张表（含面试/简历/语音6张表），`knowledge_base_questions` 含大量面试题目字段 | 核心使用4张表：`knowledge_bases`、`vector_store`（Spring AI 管理，无 JPA Entity）、`rag_chat_sessions`、`rag_chat_messages`；共 14 张表（14 个 @Entity + @Table 类 + vector_store）；面试相关表保留但不写入新数据 |
 | **后端接口** | 3个KB Controller（含面试/题目生成共 ~25 个端点） | 保留 `KnowledgeBaseController`（14 个端点）+ `RagChatController`（8 个端点）+ `KnowledgeBaseInterviewController`（10 个端点）= 32 个活跃端点；前端不再访问面试相关端点，后端保持原样 |
 | **检索流程** | RAG 问答 + 查询改写 + 动态 topK/minScore | 完全复用，无变化；Prompt 模板从"面试知识问答"改为"研发知识/故障排查问答" |
-| **来源标注** | Prompt 中有"引用来源"指令（`system.st` 第 60 行），但 API 响应不返回结构化来源；`Message` 接口只有 id/type/content/timestamp | **新增**: SSE 流结束后发送 `event: sources` 事件，data 为 `List<SourceReference>` JSON（kbId、kbName、content）；注意当前 `similaritySearch()` 返回的 `List<Document>` 不含 score 字段 |
+| **来源标注** | Prompt 中有"引用来源"指令（`system.st` 第 60 行），但 API 响应不返回结构化来源；`Message` 接口只有 id/type/content/timestamp | **新增**: SSE 流结束后发送 `event: sources` 事件，data 为 `List<SourceReference>` JSON（kbId、documentName、content、score）；`Document.getScore()` 返回 `Double`（Spring AI 2.0.0），P1-C 测试已实际调用；`documentName` 通过 `Document.getMetadata()` 中的 `kb_id` 反查 `knowledge_bases` 表获取 `originalFilename`（原始文件名，不可被用户修改） |
 | **权限** | 无认证（单机部署） | 第一阶段不变，保持无认证 |
 | **前端交互** | 导航含面试中心、简历上传、语音面试、知识库、设置 | 导航简化为：知识库管理 + 问答助手 + 设置；面试相关页面从导航移除，旧路由重定向到首页 |
 | **项目命名** | `interview-guide` / `interview.guide` / `ai-interview-platform` | 见第四节迁移策略 |
@@ -175,10 +175,12 @@ RagChatController.sendMessageStream()
 #### Gate 0c: 付费冒泡
 
 - **前置**: Gate 0b 通过 + 用户手动创建 `.env.eval` 填入 `AI_BAILIAN_API_KEY` 和 `EVAL_RUNNER_PASSWORD`
-- **操作**: 运行 1 道 exact_lookup 题的真实 Embedding + 检索，验证端到端通路
+- **说明**: 现有 `P1cRealRetrievalEvalTest` 只有 1 个 `@Test` 方法 `realRetrievalEval()` 跑全部 20 题，无 `@ParameterizedTest`，无系统属性控制单题模式，**不支持单题运行**
+- **操作**: **新增代码**（test 作用域）——新增一个独立的冒泡测试方法（如 `@Test void smokeSingleQuery()`），或新增系统属性 `eval.p1c.smokeQueryId` 控制只跑指定题目。运行 1 道 exact_lookup 题的真实 Embedding + 检索，验证端到端通路
 - **验收**: 返回非空检索结果，确认 Embedding API 可达、pgvector 写入成功
+- **冒泡完成后清理**: 删除冒泡测试方法或重置系统属性
 - **费用**: 约 0.002 元
-- **工作量**: 约 5 分钟
+- **工作量**: 约 5 分钟（含新增冒泡代码）
 
 #### Gate 0d: 正式 L1
 
@@ -196,7 +198,7 @@ RagChatController.sendMessageStream()
 - `docker-compose-eval.yml` 容器名 `interview-eval-postgres`，端口 5433
 
 **依赖**: 无，但需要用户手动执行
-**阻塞**: Task 7b（P1-C 检索质量评测）
+**阻塞**: 无（Gate 0d 为"执行完整 L1"的唯一入口，Task 7b 已删除）
 
 ### Task 1: 产品展示层改名（基础层，无运行时依赖）
 
@@ -258,22 +260,31 @@ RagChatController.sendMessageStream()
 ```
 SourceReference {
   kbId: Long          // 知识库 ID
-  kbName: String      // 知识库名称（从 KnowledgeBaseEntity 查询）
+  documentName: String // 取自 KnowledgeBaseEntity.originalFilename（原始文件名，不可被用户修改）
+                      // 获取方式：检索后通过 Document.getMetadata() 中的 kb_id 反查 knowledge_bases 表
   content: String     // chunk 文本片段（截断至 200 字符）
-  // 注意：当前 similaritySearch 返回的 List<Document> 不含 score
-  // 如需 score，需改用 VectorStore 底层 API 或自行计算
+  score: Double       // 检索相似度分数（Spring AI 2.0.0 Document.getScore() 返回 Double）
 }
 ```
 
-#### SSE 事件协议
+#### SSE 事件协议与调用链重设计
 
-- 当前 `RagChatController.sendMessageStream()` 返回 `Flux<ServerSentEvent<String>>`
-- 现有事件类型：只有 `data` 事件（文本 chunk）
-- 新增事件类型：`sources` 事件（流结束后发送）
-  - event: `sources`
-  - data: JSON 序列化的 `List<SourceReference>`
-- 实现位置：在 `RagChatSessionService` 的 `.doOnComplete()` 之前，将检索到的文档列表转换为 `SourceReference` 列表，作为额外的 SSE 事件发送
-- 具体做法：在 `RagChatSessionService` 中缓存检索结果（`List<Document>`），流完成后通过新的 SSE 事件类型发送
+**问题说明**：当前检索结果 `List<Document>` 在 `KnowledgeBaseQueryService.answerQuestionStream()` 内部被消费为纯文本 context（第 225-227 行只取 `Document::getText`，metadata 丢弃），方法返回 `Flux<String>` 后 metadata 完全丢失。`RagChatSessionService.getStreamAnswer()` 也只返回 `Flux<String>`，Controller 层无法拿到检索来源。
+
+**解决方案**：
+1. **新增结果契约类** `RetrievalResult`（放在 `KnowledgeBaseQueryService` 同包或 model 包）：
+   ```
+   record RetrievalResult(Flux<String> contentStream, List<Document> sourceDocuments)
+   ```
+2. **修改 `KnowledgeBaseQueryService.answerQuestionStream()` 返回类型**：从 `Flux<String>` 改为 `RetrievalResult`，将 `relevantDocs` 与 `responseFlux` 一起返回
+3. **级联修改**：
+   - `RagChatSessionService.getStreamAnswer()` 返回类型改为 `RetrievalResult`
+   - `RagChatController.sendMessageStream()` 从 `RetrievalResult` 中取 `contentStream` 做 SSE 包装，从 `sourceDocuments` 构建来源列表
+4. **SSE 发送顺序**：
+   - 先发送所有 `event: data` 文本 chunk（现有行为不变）
+   - 流完成后（`.doOnComplete()` 之前），发送一个 `event: sources` 事件，data 为 `List<SourceReference>` 的 JSON
+   - 最后发送 `event: done` 事件标记结束
+5. **注意**：`KnowledgeBaseController.queryKnowledgeBaseStream()` 也调用 `answerQuestionStream()`，需要同步适配（可暂时忽略来源，只取 `contentStream`）
 
 #### 消息持久化
 
@@ -281,26 +292,47 @@ SourceReference {
 - `completeStreamMessage()` 方法增加 sources 参数
 - 历史消息回显：`getSessionDetail()` 返回的消息中包含 sources_json，前端解析后显示
 
-#### 边界情况处理
+#### 边界情况处理与消息状态区分
 
-- **断流**: `.doOnError()` 中仍调用 `completeStreamMessage`，sources 照常保存（检索已完成，只是 LLM 生成中断）
-- **无检索结果**: sources 为空列表 `[]`，Prompt 中已有“无法回答时如实说明”指令，前端显示“未找到相关文档”
-- **多文档来源**: sources 列表按检索排序展示，前端限制最多显示 5 条，超出折叠
+**消息完成状态**：`rag_chat_messages` 表新增 `status` 字段（替代或补充 `completed` Boolean），枚举值：
+- `COMPLETED` — 正常完成，LLM 流式输出完毕
+- `NO_RESULTS` — 检索命中 0 条文档，LLM 未调用（或调用了但 context 为空）
+- `MODEL_FAILED` — LLM 调用失败（`onErrorResume` 触发或 `.doOnError()` 触发）
+- `CLIENT_DISCONNECTED` — 客户端中途断开（SSE 订阅取消）
+
+**来源与状态绑定持久化**：
+- `sources_json` 与 `status` 一起持久化
+- `MODEL_FAILED` 时：`sources_json` 仍可保存（检索已完成，LLM 失败），前端展示时标记为"回答生成失败，以下为检索到的参考文档"
+- `CLIENT_DISCONNECTED` 时：`sources_json` 保存，`status=CLIENT_DISCONNECTED`，前端标记为"回答中断"
+- `NO_RESULTS` 时：`sources_json = []`，前端显示"未找到相关文档"
+- `COMPLETED` 时：正常展示来源
+
+**错误文本区分**：当前 `onErrorResume` 将错误转为 `"【错误】..."` 普通文本，上层无法区分。建议：
+- 方案 A（推荐）：`answerQuestionStream()` 返回 `RetrievalResult` 时增加 `errorFlag` 字段，标记是否发生过错误
+- 方案 B：保留 `onErrorResume` 但在 metadata 中设置错误标记，Controller 层检查
+
+**多文档来源**：sources 列表按检索排序展示，前端限制最多显示 5 条，超出折叠
+
+**历史回显**：`getSessionDetail()` 返回消息时包含 `status` 和 `sources_json`，前端按 status 决定展示样式
 
 #### 前端改动
 
-- `Message` 接口新增 `sources?: SourceReference[]` 字段
-- SSE 接收逻辑解析 `event: sources` 事件
-- AI 消息渲染组件在内容下方显示来源引用面板（可折叠）
+- `stream.ts` 的 `StreamSseOptions` 新增 `onSources?: (data: string) => void` 回调
+- `stream.ts` 的 `processEventBlock` 增加 `eventName === 'sources'` 分支
+- `ragChat.ts` 的 `sendMessageStream` 透传 `onSources` 回调
+- `KnowledgeBaseQueryPage.tsx` 的 `Message` 接口新增 `sources?: SourceReference[]` 和 `status?: 'completed' | 'no_results' | 'model_failed' | 'client_disconnected'`
+- AI 消息渲染组件在内容下方显示来源引用面板（可折叠），按 status 决定展示样式
 
 #### 涉及文件
 
-- 后端 `KnowledgeBaseQueryService.java` — 在检索阶段收集 `sources` 列表
-- 后端 `RagChatSessionService.java` — SSE 流结束后发送 `sources` 事件
-- 新增 DTO: `SourceReference`（kbId, kbName, content）
-- Flyway 迁移脚本：`rag_chat_messages` 新增 `sources_json` 列
-- 前端 `KnowledgeBaseQueryPage.tsx` — 在 AI 回答下方渲染来源引用列表
-- 前端 `api/ragChat.ts` — 解析 SSE 中的 sources 事件
+- 后端 `KnowledgeBaseQueryService.java` — 返回类型改为 `RetrievalResult`，在检索阶段收集 `sources` 列表
+- 后端 `RagChatSessionService.java` — 返回类型改为 `RetrievalResult`，SSE 流结束后发送 `sources` 事件
+- 新增 record: `RetrievalResult(Flux<String> contentStream, List<Document> sourceDocuments)`
+- 新增 DTO: `SourceReference`（kbId, documentName, content, score）
+- Flyway 迁移脚本：`rag_chat_messages` 新增 `sources_json TEXT` 列 + `status VARCHAR(32)` 列
+- 前端 `KnowledgeBaseQueryPage.tsx` — 在 AI 回答下方渲染来源引用列表，按 status 决定展示样式
+- 前端 `api/ragChat.ts` — 解析 SSE 中的 sources 事件，透传 onSources 回调
+- 前端 `api/stream.ts` — StreamSseOptions 新增 onSources 回调，processEventBlock 新增 sources 分支
 
 - **验收**: 提问后回答下方显示引用来源（文档名 + 相关文本片段）
 - **工作量**: 4-6 小时
@@ -347,38 +379,30 @@ SourceReference {
   1. `docker compose -f docker-compose.dev.yml up -d`
   2. 上传 devsupport-v0.1 corpus 中的 2-3 份文档
   3. 等待向量化完成
-  4. 在问答助手中提问（参考修订 5 的 5 个验收例子）
+  4. 在问答助手中提问（参考 §2.4 的 5 个验收例子）
   5. 验证来源标注正确显示
-- **验收**: 5 个验收例子全部通过（详见修订 5）
-- **不涉及**: P1-C 评测、付费 API
+- **验收**: 5 个验收例子全部通过（详见 §2.4）
+- **API 成本说明**: **生产链路 API 冒烟，有外部调用**（Embedding + LLM）。上传文档触发向量化（调用 DashScope Embedding API），RAG 问答调用 LLM，因此有少量费用，估算约 0.01 元（2-3 次 Embedding + 2-3 次 LLM 调用）。如需真正零 API 测试，需实现桩服务（MockEmbeddingModel / MockChatModel），这不在 Phase 1 范围内
 - **工作量**: 1-2 小时
-- **依赖**: Task 1-6 全部完成
-
-### Task 7b: P1-C 检索质量评测（独立于 E2E）
-
-- **内容**: 执行完整 L1 评测
-- **前置**: Gate 0a-0d 全部通过
-- **操作**: 执行完整 20 题 L1 评测（`-Peval.p1c.realApi=true`）
-- **验收**: `p1c-l1-report.json` 含非 null 指标
-- **与 E2E 冒烟独立执行、独立报告**
-- **工作量**: 约 15 分钟（费用约 0.02 元）
-- **依赖**: Task 0 Gate 0a-0d 全部通过
+- **依赖**: Task 1-6 全部完成 + Gate 0a-0c 通过（不需要 0d，因为 7a 是功能冒烟不是质量评测）
 
 ### 依赖关系图
 
 ```
-Task 0a-0d (P1-C 门槛, 手动) ────────────────────────┐
-                                                       │
+Task 0a-0c (P1-C 门槛, 手动) ─────────────────────→ Task 7a (E2E 冒烟)
+                                                       ↑
 Task 1 (展示层改名) ─────────────────────→ Task 6 (文档) │
                                                        │
-Task 2 (前端精简) ────────────────────────→ Task 7a (E2E 冒烟)
+Task 2 (前端精简) ────────────────────────────────────→ Task 7a
                                                        │
-Task 3 (来源标注) ────────────────────────→ Task 7a    │
+Task 3 (来源标注) ───────────────────────────────────→ Task 7a
                                                        │
-Task 4 (Prompt适配) ────────────────────────→ Task 7a  │
-                                                       │
-Task 0a-0d ───────────────────────────────→ Task 7b (P1-C 评测) ─┘
+Task 4 (Prompt适配) ─────────────────────────────────→ Task 7a
+
+Task 0d (正式 L1) ── 独立执行，生成 p1c-l1-report.json（不再阻塞其他任务）
 ```
+
+> 注：原 Task 7b（P1-C 检索质量评测）已删除，与 Gate 0d 重复。Gate 0d 保持为"执行完整 L1"的唯一入口。
 
 ### 并行策略
 
@@ -388,7 +412,7 @@ Task 0a-0d ───────────────────────
 - **Group C**（后端层）: Task 3（来源标注）、Task 4（Prompt 适配）
 - **Group D**（手动操作）: Task 0（P1-C 门槛 Gate 0a-0d）
 
-Group A/B/C/D 四组可同时开工。Task 6 等 Task 1 完成后执行。Task 7a 等 Task 1-6 完成后执行。Task 7b 等 Gate 0a-0d 全部通过后执行。
+Group A/B/C/D 四组可同时开工。Task 6 等 Task 1 完成后执行。Task 7a 等 Task 1-6 完成且 Gate 0a-0c 通过后执行。Gate 0d（正式 L1）独立执行，不阻塞其他任务。
 
 ---
 
@@ -428,11 +452,11 @@ Java 包名 `interview.guide` → `devsupport` 涉及数百文件的 `package` �
 | 场景 | 说明 |
 |------|------|
 | Task 0a-0d 通过 | 获得 L1 基线数字（Hit@K / MRR@K / APC@K），可作为 Task 7a E2E 验证的检索质量参照 |
-| Task 0a-0d 未通过 | 说明 Embedding/向量检索有底层问题，需先修复再进入 Task 7b |
+| Task 0a-0d 未通过 | 说明 Embedding/向量检索有底层问题，需先修复再进入 Task 7a |
 | Prompt 改动对 L1 的影响 | P1-C L1 绕过 Service 层直接调 `VectorStore.similaritySearch`，不受 Prompt 改动影响；但 Task 7a 的端到端验证会受 Prompt 影响 |
 | 命名迁移对评测的影响 | Phase 1 不改容器名/库名，评测环境无影响；评测代码在 test 作用域，不受 main 包名影响 |
 
-**结论**: Task 1-6 的编码工作不依赖 Task 0 的结果，可以先行推进。Task 7a 的 E2E 冒烟不依赖 P1-C；Task 7b 的 P1-C 评测需要 Gate 0a-0d 全部通过。
+**结论**: Task 1-6 的编码工作不依赖 Task 0 的结果，可以先行推进。Task 7a 的 E2E 冒烟需要 Gate 0a-0c 通过；Gate 0d 的正式 L1 评测独立执行。
 
 ---
 

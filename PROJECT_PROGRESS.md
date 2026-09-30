@@ -2,7 +2,7 @@
 
 > 本项目（远程仓库 `HyCheng-reborn/devsupport-platform`，本地目录名仍为 `interview-guide`）的进度事实源。
 > 新会话接手时先读本文件，再读「交接区」列出的文件。
-> 最近更新：**2026-09-30 23:30（北京时间）**，作者 Qoder。
+> 最近更新：**2026-09-30 方案第二轮修订（北京时间）**，作者 Qoder。
 
 ## 0. 维护规则
 
@@ -134,6 +134,16 @@
 - **环境提醒**：Gradle 命令必须带 `GRADLE_USER_HOME=/c/temp/gradle-tmp`（默认用户目录含非 ASCII 字符会让 test worker 启动失败）；Jackson 是 3.x（`tools.jackson.databind`）。从 Windows Python 里 `subprocess.run(['bash', …])` 会解析到 `C:\WINDOWS\System32\bash.exe`（WSL 启动器）而不是 Git Bash，会返回一堆 UTF-16 的 WSL 网络提示而把每个块都判成失败——要显式用 `C:\Program Files\Git\bin\bash.exe`；Python 读子进程输出别用 `text=True`（GBK 解码崩），用字节模式 + `errors='replace'`。宿主机无 `psql` / `jq`。**本轮 R4 新增三条**：① **`docker exec` 没有 `-T` 旗标**（真机 `Docker version 29.7.2, build a7dcaa6` 实测：带 `-T` 报 `unknown shorthand flag: 'T' in -T`、exit 125，且 flag 解析先于 daemon 调用，所以**daemon 停止也能测**）；`docker compose exec` 才有 `-T/--no-tty`。② **文档里不要写出真围栏标记**（三个反引号 + `bash`）——清单 §0 的核验脚本按围栏提取正文，围栏字面量会截断它自己的正则，让新增断言静默不执行却仍报 exit 0；断言里用 `chr(96)*3` 拼。同理「旧写法」一律用文字描述，原样粘贴会被自己的断言判成违例（本轮实测：贴进一行 → 38 PASS / 1 FAIL）。③ **`ok()` 只 print 的断言脚本没有失败信号**——退出码恒 0，「exit=0」不证明通过；已改为收集失败项并 `raise SystemExit(1 if BAD else 0)`。
 
 ## 7. 变更记录（简短，倒序）
+
+- 2026-09-30 — **`docs/devsupport-phase1-plan.md` 第二轮定点修订（Codex 复核 6 点意见落实，P0×2 + P1×3 + P2×1）**，只改两份文档（方案文档 + 本文件），零代码改动、零容器、零网络。修订内容：
+  ① **来源字段明确（P0）**：`SourceReference` DTO 的 `kbName` 改为 `documentName`（取自 `KnowledgeBaseEntity.originalFilename`，不可被用户修改），获取方式为通过 `Document.getMetadata()` 中的 `kb_id` 反查 `knowledge_bases` 表；新增 `score: Double` 字段（依据：Spring AI 2.0.0 `Document.getScore()` 返回 `Double`，P1-C 测试已实际调用）；删除所有"不含 score"表述。
+  ② **调用链重设计（P0）**：SSE 事件协议与实现位置重写——现有调用链中检索结果 `List<Document>` 在 `KnowledgeBaseQueryService.answerQuestionStream()` 内部被消费为纯文本 context（metadata 丢弃），新增 `RetrievalResult` record 契约（`contentStream` + `sourceDocuments`），级联修改返回类型，使 Controller 层可获取检索来源。
+  ③ **消息状态区分（P1）**：边界情况处理重写——`rag_chat_messages` 表新增 `status` 字段，4 种完成态（`COMPLETED` / `NO_RESULTS` / `MODEL_FAILED` / `CLIENT_DISCONNECTED`），来源与状态绑定持久化，错误文本区分方案（推荐 `RetrievalResult` 增加 `errorFlag`）。
+  ④ **Gate 0c 冒泡入口（P1）**：说明现有 `P1cRealRetrievalEvalTest` 不支持单题运行，需新增冒泡测试方法或系统属性控制（test 作用域新代码）。
+  ⑤ **0d/7b 去重（P1）**：删除 Task 7b（与 Gate 0d 操作完全相同），Gate 0d 保持为"执行完整 L1"唯一入口，更新依赖关系图与并行策略。
+  ⑥ **Task 7a API 成本（P1）**：将"不涉及付费 API"改为"生产链路 API 冒烟，有外部调用"，估算约 0.01 元。
+  ⑦ **链接与基线修正（P2）**：8 个相对链接 `app/src/...` 修复为 `../app/src/...`；顶部基线标注改为"调研基线: `4fd2de0`（方案修订: `5c2426d`）"；前端改动补充 `stream.ts`（onSources 回调 + sources 分支）、`ragChat.ts`（透传 onSources）、`KnowledgeBaseQueryPage.tsx`（Message 接口新增 sources + status）。
+  **当前状态：方案第二轮修订完成，待 Codex 复核。**
 
 - 2026-09-30 23:30 — **`docs/devsupport-phase1-plan.md` 定点修订（6 点修订意见落实）**，只改两份文档（方案文档 + 本文件），零代码改动、零容器、零网络。修订内容：
   ① **核实调研基线**：替换所有 `file:///` 链接为仓库相对路径；为“100% 复用”能力表每项附源码依据（类名+方法名）；端点数量改为已核实精确数字（KB 14 + RagChat 8 + KB Interview 10 = 32）；表数量改为已核实 14 张（含 vector_store 由 Spring AI 管理）。
