@@ -210,7 +210,7 @@ event: done     → {"status":"<finalStatus>"}
 |------|-------------|
 | 正常回答 | 显示提问时的 service/environment（快照） |
 | KB 后来改了标签 | 旧回答仍显示旧标签（快照不变） |
-| KB 被删除 | 显示“已删除的文档”（kbId 查不到记录） |
+| KB 被删除 | 仍显示快照中的 documentName（originalFilename），不自动标"已删除"（来源面板不实时查 KB 是否存在） |
 | lookup 失败（DB 异常） | 降级显示 documentName（originalFilename），不显示 service/environment |
 
 **实现方式**：在 `SourceReference` record 中新增两个可选字段：
@@ -229,7 +229,7 @@ public record SourceReference(
 
 **历史 sourcesJson 缺少 service/environment 标签时的显示**：来源面板显示"无标签"（不是空白），让用户知道该来源存在但标签信息缺失。
 
-**KB 被删除后的降级显示**：KB 被删除后，仅靠快照中的 kbId 无法识别删除状态——需要前端查询 KB 是否存在来降级显示（如显示"已删除的文档"）。快照只能保证来源信息不回溯，不能单独判断 KB 是否仍存在。
+**KB 被删除后的显示规则**：来源面板**不实时查询 KB 是否存在**，因此无法自动标记"已删除的文档"。明确选择：**展示快照中的 documentName（originalFilename）作为一致规则**——即使 KB 被删除，来源面板仍显示快照中保存的 documentName，与 KB 存在时的显示方式完全一致。如需对已删除 KB 显示"已删除"标记，需前端通过 kbId 查询 KB 是否存在，该功能列为**批次 C 的可选实现任务**。
 
 **与 sourcesJson 快照不同步是产品约定**：明确声明来源标签是提问时刻的快照，后续 KB 标签变更不影响已持久化的来源。
 
@@ -320,6 +320,7 @@ public record SourceReference(
   - 扩展重复上传响应：当 fileHash 重复时，返回已有记录的 service/environment 信息
   - 测试原标签不变：重复上传不修改原 KB 的 service/environment
   - 访问次数现有行为：`accessCount` 和 `lastAccessedAt` 在 `downloadKnowledgeBase()` 时更新（已有逻辑，无需新增）
+  - 重复上传 accessCount 行为说明：重复上传（fileHash 已存在）时，`handleDuplicateKnowledgeBase()` 直接返回已有记录，**不会**增加 `accessCount` 或更新 `lastAccessedAt`（这两个字段只在 `downloadKnowledgeBase()` 时更新）。批次 B 需决定是否在重复上传提示中也展示 `accessCount` 信息
 - **回退**：恢复旧方法签名
 - **未验证**：真实上传端到端
 
@@ -332,6 +333,8 @@ public record SourceReference(
 - **测试**：H2/Mockito 可测（buildSourceReferences 返回含 service/environment 的 SourceReference）
 - **回退**：恢复旧 SourceReference 签名
 - **未验证**：真实检索端到端
+- **待办**：
+  - （可选）KB 存在性查询：前端通过 kbId 查询 KB 是否存在，对已删除的 KB 在来源面板显示"已删除"标记，替代始终显示快照 documentName 的一致规则
 
 ### 批次 D：文档更新
 

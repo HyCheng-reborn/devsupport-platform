@@ -1,3 +1,17 @@
+**2026-10-02 -- DevSupport Phase 1 批次 A 定点补证（代码+文档）**
+- 改了什么：
+  - 修复 KnowledgeBaseRepositoryTest：删除 mock 非空断言，改为集成测试
+  - 修正设计文档：重复上传 accessCount 行为、来源快照删除后展示规则
+- 为什么：批次 A 补证，确保测试真实运行、设计文档与实现一致
+- 验证：
+  - `./gradlew :app:test --no-daemon` exit 0（GRADLE_USER_HOME=C:\GradleHome）
+  - 全量 462 tests / 0 failures / 46 skipped
+  - Repository 集成测试 5/5 通过（@DataJpaTest + H2）
+  - Flyway V20261001 在隔离 PostgreSQL（pgvector/pgvector:pg16 临时容器 5433 端口）验证通过：7/7 迁移成功、列/索引正确、JPA validate 通过、新行写入正常
+- 尚未验证的真实行为：
+  - Repository JPQL 查询在真实 PostgreSQL 上的行为（H2 已验证，PostgreSQL 未单独验证）
+  - 重复上传响应扩展（批次 B 待办）
+
 **2026-10-01 -- DevSupport Phase 1 批次 A 实施 + 设计文档修正（代码+文档）**
 - 改了什么：
   - 新增 Flyway 迁移 V20261001（service/environment 列 + 索引）

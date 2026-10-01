@@ -586,3 +586,17 @@
 - Flyway 迁移（需真实 PostgreSQL）
 - 单元测试（GradleWorkerMain 崩溃）
 - 干净 worktree 复验（进行中）
+
+---
+
+## DevSupport Phase 1 批次 A 定点补证
+
+**时间**: 2026-10-02
+**基线 HEAD**: `fcea610`
+**状态**: 补证进行中
+**改动**:
+- 修复 KnowledgeBaseRepositoryTest（mock → 集成测试）
+- 修正设计文档（重复上传行为、来源快照规则）
+- GradleWorkerMain 诊断结果：根因定位为 JVM `@` 参数文件编码不匹配（UTF-8 vs GBK），修复方案为 `GRADLE_USER_HOME=C:\GradleHome`（纯 ASCII 路径）
+- Flyway 迁移验证结果：✅ 全部通过（隔离 PostgreSQL 容器 pgvector/pgvector:pg16:5433，7/7 迁移成功，JPA validate 通过）
+- 全量测试：462 tests / 0 failures / 46 skipped（exit 0）

@@ -33,7 +33,7 @@ spring:
       api-key: test-api-key
       chat:
         options:
-      model: qwen3.5-flash
+          model: qwen3.5-flash
           temperature: 0.2
       embedding:
         options:

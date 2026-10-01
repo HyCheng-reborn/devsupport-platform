@@ -88,6 +88,7 @@ dependencies {
 
     // Testing
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
     testImplementation libs.junit.jupiter
     testImplementation 'io.projectreactor:reactor-test'
     testImplementation platform('org.testcontainers:testcontainers-bom:2.0.5')
