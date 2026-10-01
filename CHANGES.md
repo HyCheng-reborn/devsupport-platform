@@ -1,3 +1,19 @@
+**2026-10-02 -- DevSupport Phase 1 批次 C 后端：SourceReference 标签快照**
+- 改了什么：
+  - `SourceReference.java`：新增 `service` + `environment` 字段（提问时刻快照）
+  - `RagChatSessionService.buildSourceReferences()`：批量查询 KB 时一并获取 service/environment，写入来源引用
+  - 批量查询仍为单次 `findAllById`，不逐条查 DB
+  - 更新已有测试文件中的 SourceReference 构造器调用（4参→6参）
+- 为什么：来源引用需携带 KB 的 service/environment 标签快照，前端来源面板展示
+- 验证：
+  - `./gradlew :app:compileJava` exit 0
+  - `./gradlew :app:test --no-daemon` exit 0（497/0/46）
+  - 新增 SourceReferenceSnapshotTest 覆盖：正常标签映射、NULL 标签、缺失 KB、批量一次查询、来源顺序、空输入
+- 尚未验证的真实行为：
+  - 真实上传端到端后来源面板显示
+  - sourcesJson 序列化包含 service/environment 字段（前端批次 C 负责消费）
+- 不实施：批次 C 前端（另一个 agent 负责）
+
 **2026-10-02 -- fix: correct Spring placeholder syntax for POSTGRES_PASSWORD**
 - 改了什么：
   - application.yml 将 `${POSTGRES_PASSWORD:?POSTGRES_PASSWORD environment variable is required}` 改为 `${POSTGRES_PASSWORD}`

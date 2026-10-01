@@ -75,7 +75,7 @@ class RagChatControllerTest {
   }
 
   private List<SourceReference> oneSource() {
-    return List.of(new SourceReference(1L, "README.md", "后端端口 8080", 0.9));
+    return List.of(new SourceReference(1L, "README.md", "后端端口 8080", 0.9, "支付网关", "生产"));
   }
 
   private RetrievalResult resultWith(Flux<String> contentStream, List<Document> docs) {

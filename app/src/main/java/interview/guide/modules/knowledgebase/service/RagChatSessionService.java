@@ -192,7 +192,8 @@ public class RagChatSessionService {
 
     /**
      * 从检索文档列表构建来源引用。
-     * 从每个 Document 的 metadata 中提取 kb_id，批量查询知识库获取原始文件名（documentName）。
+     * 从每个 Document 的 metadata 中提取 kb_id，批量查询知识库获取原始文件名（documentName）
+     * 以及 service/environment 标签（提问时刻快照）。
      * 来源顺序与入参 docs 保持一致，不改变字段含义与 SSE 序列化契约。
      *
      * @param docs 检索到的文档列表
@@ -210,12 +211,12 @@ public class RagChatSessionService {
             .map(id -> ((Number) id).longValue())
             .collect(Collectors.toSet());
 
-        // 批量查询知识库获取原始文件名
-        Map<Long, String> kbFilenameMap = new HashMap<>();
+        // 批量查询知识库获取原始文件名和标签（一次查询，不逐条查）
+        Map<Long, KnowledgeBaseEntity> kbMap = new HashMap<>();
         if (!kbIds.isEmpty()) {
             List<KnowledgeBaseEntity> kbs = knowledgeBaseRepository.findAllById(kbIds);
             for (KnowledgeBaseEntity kb : kbs) {
-                kbFilenameMap.put(kb.getId(), kb.getOriginalFilename());
+                kbMap.put(kb.getId(), kb);
             }
         }
 
@@ -224,11 +225,14 @@ public class RagChatSessionService {
             .map(doc -> {
                 Object kbIdObj = doc.getMetadata() != null ? doc.getMetadata().get("kb_id") : null;
                 Long kbId = kbIdObj instanceof Number ? ((Number) kbIdObj).longValue() : null;
-                String docName = kbId != null ? kbFilenameMap.getOrDefault(kbId, "未知文档") : "未知文档";
+                KnowledgeBaseEntity kb = kbId != null ? kbMap.get(kbId) : null;
+                String docName = kb != null ? kb.getOriginalFilename() : "未知文档";
                 String text = doc.getText();
                 String snippet = text != null && text.length() > 200 ? text.substring(0, 200) + "..." : text;
                 Double score = doc.getScore();
-                return new SourceReference(kbId, docName, snippet, score);
+                String service = kb != null ? kb.getService() : null;
+                String environment = kb != null ? kb.getEnvironment() : null;
+                return new SourceReference(kbId, docName, snippet, score, service, environment);
             })
             .toList();
     }

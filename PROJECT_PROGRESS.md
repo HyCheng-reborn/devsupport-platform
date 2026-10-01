@@ -747,3 +747,22 @@
 **验证**:
 - TCP 认证验证：新密码 exit 0，错误密码 exit 2
 - Docker Compose 对缺失变量替换为空字符串（不报错）
+
+---
+
+## 批次 C 后端：SourceReference 标签快照（2026-10-02）
+
+**基线**: `d884c34`（语法修正） → 本轮（批次 C 后端）
+**改动**:
+- `SourceReference.java`：新增 `service` + `environment` 字段
+- `RagChatSessionService.buildSourceReferences()`：批量查询 KB 时一并获取 service/environment
+- 更新已有测试构造器调用（4参→6参）
+- 新增 `SourceReferenceSnapshotTest.java`（10 个测试用例）
+**验证**:
+- `./gradlew :app:compileJava` exit 0
+- `./gradlew :app:test --no-daemon` exit 0（497/0/46）
+**未实施**:
+- 批次 C 前端（另一个 agent 负责）
+**未验证**:
+- 真实上传端到端后来源面板显示
+- sourcesJson 序列化包含 service/environment 字段
