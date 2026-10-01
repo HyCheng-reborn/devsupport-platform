@@ -2,6 +2,7 @@ package interview.guide.modules.knowledgebase.service;
 
 import interview.guide.common.ai.LlmProviderRegistry;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseEntity;
+import interview.guide.modules.knowledgebase.model.MessageStatus;
 import interview.guide.modules.knowledgebase.model.RetrievalResult;
 import interview.guide.modules.knowledgebase.model.SourceReference;
 import interview.guide.modules.knowledgebase.repository.KnowledgeBaseRepository;
@@ -172,6 +173,44 @@ class KnowledgeBaseQueryServiceTest {
       StepVerifier.create(result.contentStream())
           .expectError(RuntimeException.class)
           .verify();
+    }
+  }
+
+  @Nested
+  @DisplayName("resolveFinalStatus 最终状态判定测试")
+  class ResolveFinalStatusTests {
+
+    @Test
+    @DisplayName("resolveFinalStatus_未检索到文档_NO_RESULTS")
+    void noDocuments_returnsNO_RESULTS() {
+      MessageStatus status = queryService.resolveFinalStatus("随便一段文字", List.of());
+      assertThat(status).isEqualTo(MessageStatus.NO_RESULTS);
+    }
+
+    @Test
+    @DisplayName("resolveFinalStatus_检索到文档且实质性回答_COMPLETED")
+    void documentsAndRealAnswer_returnsCOMPLETED() {
+      List<Document> docs = List.of(createDoc("后端端口是 8080", 1L, 0.9));
+      MessageStatus status = queryService.resolveFinalStatus("项目的后端端口是 8080。", docs);
+      assertThat(status).isEqualTo(MessageStatus.COMPLETED);
+    }
+
+    @Test
+    @DisplayName("resolveFinalStatus_检索到文档但输出无结果文本_NO_RESULTS")
+    void documentsButNoResultOutput_returnsNO_RESULTS() {
+      List<Document> docs = List.of(createDoc("一些相关内容", 1L, 0.9));
+      // 模拟检索命中但模型拒答（与 normalizeAnswer/NO_RESULT_RESPONSE 同形）
+      MessageStatus status = queryService.resolveFinalStatus(
+          "抱歉，在选定的知识库中未检索到相关信息。请换一个更具体的关键词或补充上下文后再试。", docs);
+      assertThat(status).isEqualTo(MessageStatus.NO_RESULTS);
+    }
+
+    @Test
+    @DisplayName("resolveFinalStatus_检索到文档但输出为空_NO_RESULTS")
+    void documentsButBlankOutput_returnsNO_RESULTS() {
+      List<Document> docs = List.of(createDoc("一些相关内容", 1L, 0.9));
+      assertThat(queryService.resolveFinalStatus("   ", docs)).isEqualTo(MessageStatus.NO_RESULTS);
+      assertThat(queryService.resolveFinalStatus(null, docs)).isEqualTo(MessageStatus.NO_RESULTS);
     }
   }
 

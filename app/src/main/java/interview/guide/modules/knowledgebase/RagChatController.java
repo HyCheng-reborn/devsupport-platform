@@ -1,5 +1,7 @@
 package interview.guide.modules.knowledgebase;
 
+import interview.guide.common.exception.BusinessException;
+import interview.guide.common.exception.ErrorCode;
 import interview.guide.common.result.Result;
 import interview.guide.modules.knowledgebase.model.MessageStatus;
 import interview.guide.modules.knowledgebase.model.RagChatDTO.CreateSessionRequest;
@@ -28,10 +30,10 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * RAG 聊天控制器
@@ -118,8 +120,9 @@ public class RagChatController {
      * 发送消息（流式SSE）
      * 流式响应设计：
      * 1. 先同步保存用户消息和创建 AI 消息占位
-     * 2. 返回流式响应 + 来源事件 + done 事件
-     * 3. 流式完成后通过回调更新消息
+     * 2. 流式发出 data chunk；内容流正常完成后，依据「实际检索 + 实际输出」确定最终状态，
+     *    先落库回答内容与来源，落库成功后才发出 sources 事件与 done 事件（done 携带最终状态）
+     * 3. 落库失败、模型错误或客户端取消均不会向客户端宣告成功；单次护栏避免重复写入
      */
     @PostMapping(value = "/api/rag-chat/sessions/{sessionId}/messages/stream",
                  produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -147,14 +150,15 @@ public class RagChatController {
             sourcesJson = "[]";
         }
 
-        // 4. 判断状态
-        MessageStatus status = result.sourceDocuments().isEmpty()
-            ? MessageStatus.NO_RESULTS
-            : MessageStatus.COMPLETED;
+        // 4. 判断是否有检索到文档（供异常/取消路径决定来源是否保留）
+        final boolean hasDocuments = !result.sourceDocuments().isEmpty();
 
-        // 5. 文本流 + sources 事件 + done 事件
+        // 5. 事件顺序保证：data... -> (落库最终状态与来源) -> sources -> done。
+        //    done 仅在回答内容与最终状态、来源成功落库后发出；持久化失败时不向客户端宣告成功。
+        //    用单次护栏协调「正常完成 / 模型错误 / 客户端取消」三条终止路径，避免重复写入与互相覆盖。
         StringBuilder fullContent = new StringBuilder();
         final String finalSourcesJson = sourcesJson;
+        final AtomicBoolean finalized = new AtomicBoolean(false);
 
         return result.contentStream()
             .doOnNext(fullContent::append)
@@ -162,27 +166,64 @@ public class RagChatController {
                 .event("data")
                 .data(chunk.replace("\n", "\\n").replace("\r", "\\r"))
                 .build())
-            .concatWith(Mono.just(ServerSentEvent.<String>builder()
-                .event("sources")
-                .data(finalSourcesJson)
-                .build()))
-            .concatWith(Mono.just(ServerSentEvent.<String>builder()
-                .event("done")
-                .data("")
-                .build()))
-            .doOnComplete(() -> {
-                sessionService.completeStreamMessage(messageId, fullContent.toString(), status, finalSourcesJson);
-                log.info("RAG 聊天流式完成: sessionId={}, messageId={}", sessionId, messageId);
-            })
+            .concatWith(Flux.defer(() -> {
+                // 依据实际检索与实际输出确定最终状态，而非请求时的检索条数
+                MessageStatus finalStatus = queryService.resolveFinalStatus(
+                    fullContent.toString(), result.sourceDocuments());
+                // 无依据的拒答不保存来源，避免呈现为“有依据”的回答
+                String persistedSourcesJson = finalStatus == MessageStatus.NO_RESULTS
+                    ? "[]" : finalSourcesJson;
+
+                if (!finalized.compareAndSet(false, true)) {
+                    return Flux.empty();
+                }
+                try {
+                    sessionService.completeStreamMessage(
+                        messageId, fullContent.toString(), finalStatus, persistedSourcesJson);
+                } catch (Exception e) {
+                    log.error("RAG 流式回答持久化失败，不向客户端宣告成功: sessionId={}, messageId={}",
+                        sessionId, messageId, e);
+                    return Flux.error(new BusinessException(
+                        ErrorCode.KNOWLEDGE_BASE_QUERY_FAILED, "回答保存失败：" + e.getMessage()));
+                }
+                // 持久化成功后才宣告结束，done 携带最终状态供前端使用
+                return Flux.just(
+                    ServerSentEvent.<String>builder()
+                        .event("sources")
+                        .data(persistedSourcesJson)
+                        .build(),
+                    ServerSentEvent.<String>builder()
+                        .event("done")
+                        .data("{\"status\":\"" + finalStatus.name() + "\"}")
+                        .build());
+            }))
             .doOnError(e -> {
-                sessionService.completeStreamMessage(messageId, fullContent.toString(),
-                    MessageStatus.MODEL_FAILED, finalSourcesJson);
+                // 内容流本身出错（模型失败）；持久化失败已在上面拦截，护栏确保不重复写入
+                if (finalized.compareAndSet(false, true)) {
+                    persistQuietly(messageId, fullContent.toString(), MessageStatus.MODEL_FAILED,
+                        hasDocuments ? finalSourcesJson : "[]", sessionId);
+                }
                 log.error("RAG 聊天流式错误: sessionId={}", sessionId, e);
             })
             .doOnCancel(() -> {
-                sessionService.completeStreamMessage(messageId, fullContent.toString(),
-                    MessageStatus.CLIENT_DISCONNECTED, finalSourcesJson);
-                log.info("RAG 聊天流式取消: sessionId={}, messageId={}", sessionId, messageId);
+                if (finalized.compareAndSet(false, true)) {
+                    persistQuietly(messageId, fullContent.toString(), MessageStatus.CLIENT_DISCONNECTED,
+                        hasDocuments ? finalSourcesJson : "[]", sessionId);
+                    log.info("RAG 聊天流式取消: sessionId={}, messageId={}", sessionId, messageId);
+                }
             });
+    }
+
+    /**
+     * 终止态（模型失败 / 客户端断开）持久化，异常只记录不外抛，避免在 Reactor 终止回调里抛出。
+     */
+    private void persistQuietly(Long messageId, String content, MessageStatus status,
+                                String sourcesJson, Long sessionId) {
+        try {
+            sessionService.completeStreamMessage(messageId, content, status, sourcesJson);
+        } catch (Exception ex) {
+            log.error("RAG 流式终止态持久化失败: sessionId={}, messageId={}, status={}",
+                sessionId, messageId, status, ex);
+        }
     }
 }

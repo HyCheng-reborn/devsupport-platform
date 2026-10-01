@@ -5,6 +5,7 @@ import interview.guide.common.ai.PromptSecurityConstants;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseEntity;
+import interview.guide.modules.knowledgebase.model.MessageStatus;
 import interview.guide.modules.knowledgebase.model.QueryRequest;
 import interview.guide.modules.knowledgebase.model.QueryResponse;
 import interview.guide.modules.knowledgebase.model.RetrievalResult;
@@ -260,6 +261,32 @@ public class KnowledgeBaseQueryService {
             log.error("知识库流式问答失败: {}", e.getMessage(), e);
             return new RetrievalResult(Flux.error(e), List.of());
         }
+    }
+
+    /**
+     * 依据实际检索结果与模型最终输出，确定这条回答的最终状态。
+     * <ul>
+     *   <li>未检索到文档：NO_RESULTS。</li>
+     *   <li>检索到文档，但模型最终输出为空或为“无结果”文本：NO_RESULTS——
+     *       避免把一段拒答保存为有依据的 COMPLETED 回答。</li>
+     *   <li>检索到文档且模型给出了实质性回答：COMPLETED。</li>
+     * </ul>
+     * 说明：MODEL_FAILED / CLIENT_DISCONNECTED 由调用方在流式终止信号处判定，
+     * 本方法只覆盖“流正常完成”后的内容层面状态。
+     *
+     * @param finalContent     客户端实际收到的完整回答文本
+     * @param sourceDocuments  实际检索命中的文档列表
+     * @return 最终状态
+     */
+    public MessageStatus resolveFinalStatus(String finalContent, List<Document> sourceDocuments) {
+        if (sourceDocuments == null || sourceDocuments.isEmpty()) {
+            return MessageStatus.NO_RESULTS;
+        }
+        String normalized = finalContent == null ? "" : finalContent.trim();
+        if (normalized.isEmpty() || isNoResultLike(normalized)) {
+            return MessageStatus.NO_RESULTS;
+        }
+        return MessageStatus.COMPLETED;
     }
 
     /**

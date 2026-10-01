@@ -135,6 +135,8 @@
 
 ## 7. 变更记录（简短，倒序）
 
+- 2026-10-01 — **Phase 1 流式回答服务端最终状态与事件顺序定点修复**（见 §9）。仅改 `RagChatController` + `KnowledgeBaseQueryService` + 两处测试 + 本文件；未调付费 API、未启 Docker、未跑真实 L1、未动生产数据。状态 `代码已写 · 离线通过 · 真实环境未验证`。
+
 - 2026-09-30 — Phase 1 编码启动（见下方 §8）。
 - 2026-09-30 — **`docs/devsupport-phase1-plan.md` 第二轮定点修订（Codex 复核 6 点意见落实，P0×2 + P1×3 + P2×1）**，只改两份文档（方案文档 + 本文件），零代码改动、零容器、零网络。修订内容：
   ① **来源字段明确（P0）**：`SourceReference` DTO 的 `kbName` 改为 `documentName`（取自 `KnowledgeBaseEntity.originalFilename`，不可被用户修改），获取方式为通过 `Document.getMetadata()` 中的 `kb_id` 反查 `knowledge_bases` 表；新增 `score: Double` 字段（依据：Spring AI 2.0.0 `Document.getScore()` 返回 `Double`，P1-C 测试已实际调用）；删除所有"不含 score"表述。
@@ -197,3 +199,36 @@
 - Gate 0a-0d（P1-C 真实环境门槛）
 - Task 7a（E2E 功能冒烟）
 - 代码审查与 diff 复核
+
+## 9. Phase 1 流式最终状态与事件顺序定点修复
+
+**时间**: 2026-10-01（北京时间）
+**基线 HEAD**: `67baebd`（修复前）
+**范围**: 只修 Phase 1 流式回答（`RagChatController.sendMessageStream`）的服务端最终状态与事件顺序，不做无关重构，不改生产数据。
+
+### 根因（修复前实为）
+
+- 事件顺序：`data…` → `sources` → `done` → 流整体完成后 `doOnComplete` 才落库。**done（成功信号）先于持久化发给客户端**，落库失败无法撤回 done。
+- 最终状态：`status` 在请求时按 `sourceDocuments().isEmpty()` 预先算定，**不看模型实际输出**——检索命中但输出被归一化成「未检索到相关信息」拒答时，仍存成有依据的 COMPLETED 且带 sources。
+- 终止写入：`doOnError` / `doOnCancel` 与「落库抛异常再触发 doOnError」之间无护栏，可能重复写入 / 互相覆盖。
+
+### 修复
+
+- `KnowledgeBaseQueryService` 新增 `resolveFinalStatus(实际输出, 检索文档)`：空检索→NO_RESULTS；命中但输出为空或命中 `isNoResultLike` 拒答→NO_RESULTS；命中且实质回答→COMPLETED。判定收敛到 Service 层便于单测。
+- `RagChatController.sendMessageStream` 链重构为：`data…` →（`concatWith(Flux.defer(...))` 内先 `resolveFinalStatus` → **先落库** → 成功才发 `sources` + `done`）；落库失败返回 `Flux.error(BusinessException)`、**不发 done**；`AtomicBoolean finalized` 单次护栏协调成功 / 错误(MODEL_FAILED) / 取消(CLIENT_DISCONNECTED) 三条终止路径，杜绝重复写与覆盖。NO_RESULTS 一律以 `[]` 存来源（有文档却拒答也不呈现为有依据）。
+- 保留现有 SSE `sources` 契约；`done` 事件 data 由空改为 `{"status":"<COMPLETED|NO_RESULTS>"}`，供下一项前端任务区分最终态（前端 `stream.ts` 的 done 分支忽略 data，不破坏现有行为）。
+
+### 测试
+
+- 新增 `RagChatControllerTest`（5 条）：成功顺序 `data,data,sources,done`；持久化失败→终止于 error、不发 done、仅写一次；有文档却拒答→按 NO_RESULTS 且 sources=`[]`、done 带 NO_RESULTS；内容流出错→MODEL_FAILED 仅写一次且不调 resolveFinalStatus；取消→CLIENT_DISCONNECTED 仅写一次。
+- `KnowledgeBaseQueryServiceTest` 新增 `resolveFinalStatus` 4 条（空检索 / 实质回答 / 拒答文本 / 空输出）。
+- 验证命令（PowerShell，`$env:GRADLE_USER_HOME="C:\temp\gradle-tmp"`）：
+  - `./gradlew :app:compileJava :app:compileTestJava --no-daemon` → exit 0
+  - `./gradlew :app:test --tests 'interview.guide.modules.knowledgebase.RagChatControllerTest' --tests 'interview.guide.modules.knowledgebase.service.KnowledgeBaseQueryServiceTest' --no-daemon --rerun` → exit 0；结果 XML：RagChatControllerTest 5（成功路径 2 + 外层 3）、resolveFinalStatus 4，均 0 失败 / 0 错误。
+
+### 尚未验证的真实行为（不得写成已验证）
+
+- 真实 SSE 端到端顺序与落库：未连真实 LLM / 数据库跑过一次，测试均为 Mockito + `StepVerifier`/`collectList` 的单元级验证；`completeStreamMessage` 的事务回滚在真实 DB 下的表现未实测。
+- 「检索命中但模型输出恰为拒答模板」依赖 `resolveFinalStatus` 的关键词判定，真实模型输出的多样措辞是否都能落入 `isNoResultLike`，未经真实样本验证。
+- 在 Reactor 链中同步执行阻塞式 JDBC 落库（`@Transactional`）仍是既有形态，本轮未改线程模型。
+- 前端据 done 的新 `status` 字段区分展示属下一项任务，本文件只保证后端已带出该字段。
