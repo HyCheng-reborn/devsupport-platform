@@ -570,3 +570,19 @@
 **状态**: 第三轮修订待 Codex 复核
 **文件**: `devsupport-phase1-design.md`
 **关键决策**: service/environment = 组织标签；fileHash 唯一不变；来源快照语义；fallback 允许
+
+## DevSupport Phase 1 批次 A 实施
+
+**时间**: 2026-10-01
+**基线 HEAD**: `e62067b`
+**状态**: 编译通过，测试未验证（环境问题）
+**改动文件**:
+- `V20261001__add_service_environment.sql`（新增）
+- `KnowledgeBaseEntity.java`（新增 service/environment 字段）
+- `KnowledgeBaseRepository.java`（新增 4 个查询方法）
+- `KnowledgeBaseEntityTest.java`（新增）
+- `KnowledgeBaseRepositoryTest.java`（新增）
+**未验证**:
+- Flyway 迁移（需真实 PostgreSQL）
+- 单元测试（GradleWorkerMain 崩溃）
+- 干净 worktree 复验（进行中）

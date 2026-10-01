@@ -227,6 +227,10 @@ public record SourceReference(
 
 **sourcesJson 快照**：`buildSourceReferences()` 在构建来源时一并查询并写入 service/environment。历史消息直接读取 sourcesJson，不实时查 KB 表。
 
+**历史 sourcesJson 缺少 service/environment 标签时的显示**：来源面板显示"无标签"（不是空白），让用户知道该来源存在但标签信息缺失。
+
+**KB 被删除后的降级显示**：KB 被删除后，仅靠快照中的 kbId 无法识别删除状态——需要前端查询 KB 是否存在来降级显示（如显示"已删除的文档"）。快照只能保证来源信息不回溯，不能单独判断 KB 是否仍存在。
+
 **与 sourcesJson 快照不同步是产品约定**：明确声明来源标签是提问时刻的快照，后续 KB 标签变更不影响已持久化的来源。
 
 **批量获取和刷新恢复**：
@@ -295,13 +299,15 @@ public record SourceReference(
 
 ### 批次 A：服务/环境数据模型
 
-- **文件**：`KnowledgeBaseEntity.java`、`V20261001__add_service_environment.sql`、`KnowledgeBaseRepository.java`
-- **内容**：新增 service/environment 列，不设 DEFAULT；旧行保持 NULL；新增查询方法
+- **文件**：`KnowledgeBaseEntity.java`、`V20261001__add_service_environment.sql`、`KnowledgeBaseRepository.java`、`KnowledgeBaseEntityTest.java`、`KnowledgeBaseRepositoryTest.java`
+- **内容**：新增 service/environment 列，不设 DEFAULT；旧行保持 NULL；新增查询方法；新增 Entity 和 Repository 测试
 - **依赖**：无
-- **验收**：`./gradlew :app:compileJava` 通过
-- **测试**：H2/Mockito 可测（上传不传标签 → null；传标签 → 用户值；列表筛选 → 只返回匹配）
+- **验收**：
+  - 编译通过（`./gradlew :app:compileJava` exit 0，**已验证**）
+  - Flyway 迁移需真实 PostgreSQL 验证（**未验证**，Docker 未启动）
+  - 单元测试因 GradleWorkerMain 环境问题无法执行（**未验证**）
+- **待办（移至批次 B）**：上传带标签、列表筛选的端到端验收
 - **回退**：已应用的 Flyway 迁移不能通过删除脚本回退，需新增反向迁移脚本。未应用的迁移可以安全删除
-- **未验证**：真实数据库迁移
 
 ### 批次 B：上传 API + 管理页面筛选
 
@@ -310,6 +316,10 @@ public record SourceReference(
 - **依赖**：批次 A
 - **验收**：`./gradlew :app:test --no-daemon` 通过 + `cd frontend && pnpm run build` 通过
 - **测试**：H2/Mockito 可测（上传带/不带标签、列表筛选）
+- **待办**：
+  - 扩展重复上传响应：当 fileHash 重复时，返回已有记录的 service/environment 信息
+  - 测试原标签不变：重复上传不修改原 KB 的 service/environment
+  - 访问次数现有行为：`accessCount` 和 `lastAccessedAt` 在 `downloadKnowledgeBase()` 时更新（已有逻辑，无需新增）
 - **回退**：恢复旧方法签名
 - **未验证**：真实上传端到端
 
@@ -371,12 +381,13 @@ public record SourceReference(
 
 **Fallback 路径**：主路径过滤表达式失败时（如 pgvector 扩展异常），执行无前置过滤的全局候选检索（topK*3 扩大召回），然后在应用层按 `kb_id` 做本地过滤。
 
-**Fallback 的局限**：检索执行范围（recall）不受 kbIds 约束，只有最终返回结果受约束。这意味着向量索引中不属于目标 KB 的文档可能参与了距离计算，影响排序质量。
+**Fallback 的局限（未经实测的假设）**：检索执行范围（recall）不受 kbIds 约束，只有最终返回结果受约束。这意味着向量索引中不属于目标 KB 的文档可能参与了距离计算，**可能**影响排序质量。以上 recall 和排序质量影响为理论分析，**未经真实数据验证**。
 
 **Phase 1 允许 fallback 存在**：
-- Fallback 是容错机制，改为“直接失败”会降低可用性
+- Fallback 是容错机制，改为"直接失败"会降低可用性
 - 当前 kbIds 来自用户显式勾选，范围已经很小（通常 < 10 个 KB）
-- 排序质量影响在实际场景中可接受
+- KB 数量对排序影响的表述是**未经实测的假设**，实际影响取决于数据分布和 KB 数量
+- 排序质量影响在实际场景中**假设**可接受（待真实数据验证）
 
 **反例测试**（H2/Mockito 可测）：
 - Mock VectorStore 主路径抛异常 → 验证 fallback 路径只返回 kbIds 范围内的文档

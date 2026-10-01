@@ -10,7 +10,9 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "knowledge_bases", indexes = {
     @Index(name = "idx_kb_hash", columnList = "fileHash", unique = true),
-    @Index(name = "idx_kb_category", columnList = "category")
+    @Index(name = "idx_kb_category", columnList = "category"),
+    @Index(name = "idx_kb_service", columnList = "service"),
+    @Index(name = "idx_kb_environment", columnList = "environment")
 })
 public class KnowledgeBaseEntity {
 
@@ -99,6 +101,14 @@ public class KnowledgeBaseEntity {
     private Integer questionGenSkippedCount = 0;
 
     private LocalDateTime questionGenUpdatedAt;
+
+    // 服务标签（如"支付网关"、"用户中心"）
+    @Column(length = 100)
+    private String service;
+
+    // 环境标签（如"生产"、"预发"、"测试"）
+    @Column(length = 50)
+    private String environment;
     
     @PrePersist
     protected void onCreate() {
@@ -308,5 +318,21 @@ public class KnowledgeBaseEntity {
 
     public void setQuestionGenUpdatedAt(LocalDateTime questionGenUpdatedAt) {
         this.questionGenUpdatedAt = questionGenUpdatedAt;
+    }
+
+    public String getService() {
+        return service;
+    }
+
+    public void setService(String service) {
+        this.service = service;
+    }
+
+    public String getEnvironment() {
+        return environment;
+    }
+
+    public void setEnvironment(String environment) {
+        this.environment = environment;
     }
 }

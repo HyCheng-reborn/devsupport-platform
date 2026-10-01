@@ -1,3 +1,19 @@
+**2026-10-01 -- DevSupport Phase 1 批次 A 实施 + 设计文档修正（代码+文档）**
+- 改了什么：
+  - 新增 Flyway 迁移 V20261001（service/environment 列 + 索引）
+  - 更新 KnowledgeBaseEntity 映射 + KnowledgeBaseRepository 查询
+  - 新增 Entity 和 Repository 测试
+  - 修正设计文档：批次验收表述、来源快照降级、fallback 假设标注
+- 为什么：Phase 1 批次 A 落地，同步修正设计文档与实现一致
+- 验证：`./gradlew :app:compileJava` exit 0；`./gradlew :app:test` exit 1（GradleWorkerMain 环境问题，非代码问题）
+- 尚未验证的真实行为：Flyway 迁移（需真实 PostgreSQL）、单元测试（需修复 Gradle 环境）、重复上传响应扩展（批次 B）
+
+**2026-10-01 -- DevSupport Phase 1 批次 A：service/environment 数据模型**
+- 改了什么：(1) 新增 Flyway 迁移 `V20261001__add_service_environment.sql`，为 `knowledge_bases` 表添加 `service VARCHAR(100)` 和 `environment VARCHAR(50)` 列及索引；(2) `KnowledgeBaseEntity` 新增 `service`/`environment` 字段及 getter/setter，`@Table(indexes=...)` 加入新索引；(3) `KnowledgeBaseRepository` 新增 4 个查询方法（findByService、findByServiceAndEnvironment、findAllServices、findAllEnvironments）；(4) 新增 `KnowledgeBaseEntityTest` 和 `KnowledgeBaseRepositoryTest` 单元测试
+- 为什么：DevSupport Phase 1 批次 A，为知识库新增服务/环境组织标签的数据模型层，不涉及业务逻辑变更
+- 验证：`./gradlew :app:compileJava` 退出码 0（BUILD SUCCESSFUL）；`./gradlew :app:test --no-daemon` 退出码 1（GradleWorkerMain ClassNotFoundException，环境问题，非代码问题）
+- 尚未验证的真实行为：(1) Flyway 迁移需真实 PostgreSQL 验证（当前无可用实例）；(2) 测试因 Gradle worker 崩溃无法执行，需修复 Gradle/Java 环境后重试
+
 **2026-10-01 -- DevSupport Phase 1 设计文档第三轮修订（仅文档）**
 - 改了什么：按 Codex 第二轮复核 5 个阻塞点修订 `devsupport-phase1-design.md`：(1) service/environment 定位为组织标签非检索隔离；(2) 迁移不设 DEFAULT，旧行 NULL = 未分类；(3) 不支持同文件跨服务，重复上传返回提示；(4) 来源标签 = 提问时快照，SourceReference 新增字段；(5) fallback 允许存在，如实描述语义限制
 - 为什么：消除过度承诺，确保每项决策可实现、可验证

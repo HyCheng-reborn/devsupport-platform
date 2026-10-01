@@ -121,4 +121,28 @@ public interface KnowledgeBaseRepository extends JpaRepository<KnowledgeBaseEnti
     List<KnowledgeBaseEntity> findStaleQuestionGenerationTasks(
         @Param("status") QuestionGenStatus status,
         @Param("threshold") LocalDateTime threshold);
+
+    // ==================== 服务/环境标签查询 ====================
+
+    /**
+     * 根据服务标签查找知识库（按上传时间倒序）
+     */
+    List<KnowledgeBaseEntity> findByServiceOrderByUploadedAtDesc(String service);
+
+    /**
+     * 根据服务标签和环境标签查找知识库（按上传时间倒序）
+     */
+    List<KnowledgeBaseEntity> findByServiceAndEnvironmentOrderByUploadedAtDesc(String service, String environment);
+
+    /**
+     * 获取所有不同的服务标签（非空，按字母排序）
+     */
+    @Query("SELECT DISTINCT k.service FROM KnowledgeBaseEntity k WHERE k.service IS NOT NULL ORDER BY k.service")
+    List<String> findAllServices();
+
+    /**
+     * 获取所有不同的环境标签（非空，按字母排序）
+     */
+    @Query("SELECT DISTINCT k.environment FROM KnowledgeBaseEntity k WHERE k.environment IS NOT NULL ORDER BY k.environment")
+    List<String> findAllEnvironments();
 }
