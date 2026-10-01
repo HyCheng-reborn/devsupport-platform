@@ -33,6 +33,7 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 知识库控制器
@@ -42,6 +43,12 @@ import java.util.Map;
 @RequiredArgsConstructor
 @Tag(name = "知识库管理", description = "知识库上传、下载、查询、分类与向量化")
 public class KnowledgeBaseController {
+
+    /** 流式端点错误兜底：尚未产出内容时，整串以该前缀 + 真实原因发出。 */
+    private static final String STREAM_ERROR_PREFIX = "【错误】知识库查询失败：";
+    /** 流式端点错误兜底：已输出部分内容后中断时，追加的固定错误标记。 */
+    private static final String STREAM_UNAVAILABLE_FALLBACK =
+        "\n\n【错误】知识库查询失败：AI服务暂时不可用，请稍后重试。";
 
     private final KnowledgeBaseUploadService uploadService;
     private final KnowledgeBaseQueryService queryService;
@@ -99,6 +106,16 @@ public class KnowledgeBaseController {
 
     /**
      * 基于知识库回答问题（流式SSE，支持多知识库）
+     *
+     * <p>该端点返回纯文本 {@code Flux<String>}，没有 RagChat 的 sources/done 事件协议，
+     * 因此在此恢复 Phase 1 之前原有的流式错误兜底语义：出错时显式发出【错误】文本，
+     * 而不是让错误裸传播导致前端把“被中断的回答”误读成正常完成的回答。
+     * 共享的 {@code answerQuestionStream} 仍返回 {@code Flux.error}，不改变 RagChatController 的 SSE 协议。
+     * 明确区分两类错误：
+     * <ul>
+     *   <li>建立 RetrievalResult 时的同步抛错（含尚未产出任何内容即失败）：整条流以带真实原因的【错误】文本兜底。</li>
+     *   <li>Flux 订阅后的异步出错（已输出部分内容后中断）：追加显式的【错误】标记，避免残缺回答被伪装成正常回答。</li>
+     * </ul>
      */
     @PostMapping(value = "/api/knowledgebase/query/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     @RateLimit(dimension = RateLimit.Dimension.GLOBAL, count = 5)
@@ -106,8 +123,38 @@ public class KnowledgeBaseController {
     public Flux<String> queryKnowledgeBaseStream(@Valid @RequestBody QueryRequest request) {
         log.debug("收到知识库流式查询请求: kbIds={}, question={}, 线程: {} (虚拟线程: {})",
             request.knowledgeBaseIds(), request.question(), Thread.currentThread(), Thread.currentThread().isVirtual());
-        // 仅返回内容流，来源信息在此端点忽略
-        return queryService.answerQuestionStream(request.knowledgeBaseIds(), request.question()).contentStream();
+
+        // 仅返回内容流，来源信息在此端点忽略。
+        Flux<String> contentStream;
+        try {
+            // (A) 建立 RetrievalResult 阶段的同步抛错
+            contentStream = queryService
+                .answerQuestionStream(request.knowledgeBaseIds(), request.question())
+                .contentStream();
+        } catch (Exception e) {
+            log.error("知识库流式查询建立阶段同步失败: kbIds={}, error={}",
+                request.knowledgeBaseIds(), e.getMessage(), e);
+            return Flux.just(STREAM_ERROR_PREFIX + resolveErrorReason(e));
+        }
+
+        final AtomicBoolean emitted = new AtomicBoolean(false);
+        return contentStream
+            .doOnNext(chunk -> emitted.set(true))
+            // (B) Flux 订阅后的异步出错
+            .onErrorResume(e -> {
+                log.error("知识库流式查询输出阶段失败: kbIds={}, emitted={}, error={}",
+                    request.knowledgeBaseIds(), emitted.get(), e.getMessage(), e);
+                // 尚未产出任何内容（含 RetrievalResult 里预置的 Flux.error）：以带真实原因的整串错误文本兜底
+                // 已输出部分内容后中断：追加固定错误标记，避免残缺回答被当作正常完成的回答
+                return Flux.just(emitted.get()
+                    ? STREAM_UNAVAILABLE_FALLBACK
+                    : STREAM_ERROR_PREFIX + resolveErrorReason(e));
+            });
+    }
+
+    private static String resolveErrorReason(Throwable e) {
+        String msg = e.getMessage();
+        return (msg == null || msg.isBlank()) ? "AI服务暂时不可用，请稍后重试。" : msg;
     }
 
     // ========== 分类管理 API ==========

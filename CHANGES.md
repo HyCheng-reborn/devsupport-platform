@@ -7,6 +7,27 @@
 
 ---
 
+## 2026-10-01 — KnowledgeBaseController 流式错误兜底语义定点恢复
+
+**基线**：`376ef5a`（本任务前 HEAD）
+**范围**：只恢复 `queryKnowledgeBaseStream()`（`/api/knowledgebase/query/stream`，纯文本 `Flux<String>`）的流式错误兜底；不改共享 Service、不改 RagChatController 的 SSE 协议、不调外部 API/数据库。
+
+### 改了什么
+- `KnowledgeBaseController.queryKnowledgeBaseStream`：新增 (A) 建立 RetrievalResult 时同步抛错的 try/catch 兜底，(B) Flux 订阅后异步出错的 `.onErrorResume` 兜底；用 `AtomicBoolean emitted` 区分“未输出即失败”（整串【错误】+真实原因）与“已输出部分后中断”（追加固定【错误】标记）；新增常量 `STREAM_ERROR_PREFIX`/`STREAM_UNAVAILABLE_FALLBACK` 与 `resolveErrorReason`。
+- 新增 `KnowledgeBaseControllerStreamTest`（7 条）。
+
+### 为什么（回归）
+- Phase 1（`da1c744`）为支持 RagChatController 把共享 `answerQuestionStream` 的两处降级改为 `Flux.error(e)`；而本端点直接返回 `.contentStream()` 且无错误处理，导致失败裸传播、前端把被中断的回答当正常完成（伪装 + 丢失【错误】兜底）。端点级修复不影响依赖 `Flux.error` 的 RagChatController。
+
+### 验证
+- `./gradlew :app:compileJava :app:compileTestJava --no-daemon` → exit 0
+- `./gradlew :app:test --tests '...KnowledgeBaseControllerStreamTest' --tests '...RagChatControllerTest' --tests '...KnowledgeBaseQueryServiceTest' --no-daemon --rerun` → exit 0（新类 7、RagChatControllerTest / QueryServiceTest 无回归）
+
+### 尚未验证（真实环境）
+- 未连真实后端跑端到端 SSE；(A) 同步抛错分支在当前服务形态下几乎不触发（Service 内部已 catch 为 `Flux.error`），主要真实路径为 (B) 中 `emitted=false` 分支。
+
+---
+
 ## 2026-10-01 — RAG 流式回答前端状态处理定点修复
 
 **基线**：`b85890f`（本任务前 HEAD）
