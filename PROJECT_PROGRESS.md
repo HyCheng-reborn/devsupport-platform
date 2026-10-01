@@ -597,6 +597,10 @@
 **改动**:
 - 修复 KnowledgeBaseRepositoryTest（mock → 集成测试）
 - 修正设计文档（重复上传行为、来源快照规则）
-- GradleWorkerMain 诊断结果：根因定位为 JVM `@` 参数文件编码不匹配（UTF-8 vs GBK），修复方案为 `GRADLE_USER_HOME=C:\GradleHome`（纯 ASCII 路径）
+- GradleWorkerMain 诊断结果：设置纯 ASCII 的 `GRADLE_USER_HOME=C:\GradleHome` 后 worker 能启动、测试能执行（462/0/46）；具体作用因素（路径编码、JVM 参数文件处理、或两者组合）尚未隔离确认，不做根因断言
 - Flyway 迁移验证结果：✅ 全部通过（隔离 PostgreSQL 容器 pgvector/pgvector:pg16:5433，7/7 迁移成功，JPA validate 通过）
 - 全量测试：462 tests / 0 failures / 46 skipped（exit 0）
+
+**证据区分**：
+- 本轮能查看的原始证据：测试 XML 文件存在于 `app/build/test-results/test/`，其中 `KnowledgeBaseRepositoryIntegrationTest.xml` 显示 tests=5 / failures=0 / errors=0 / skipped=0（timestamp=2026-10-01T17:07:47.076Z）
+- 此前 Agent 报告：Flyway 迁移验证（隔离 PostgreSQL 容器 pgvector/pgvector:pg16:5433，7/7 迁移成功）——本轮未重新执行，无法独立复核原始日志；`app/build/` 下无 `.log` 文件

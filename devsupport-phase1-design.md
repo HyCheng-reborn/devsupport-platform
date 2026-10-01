@@ -319,8 +319,8 @@ public record SourceReference(
 - **待办**：
   - 扩展重复上传响应：当 fileHash 重复时，返回已有记录的 service/environment 信息
   - 测试原标签不变：重复上传不修改原 KB 的 service/environment
-  - 访问次数现有行为：`accessCount` 和 `lastAccessedAt` 在 `downloadKnowledgeBase()` 时更新（已有逻辑，无需新增）
-  - 重复上传 accessCount 行为说明：重复上传（fileHash 已存在）时，`handleDuplicateKnowledgeBase()` 直接返回已有记录，**不会**增加 `accessCount` 或更新 `lastAccessedAt`（这两个字段只在 `downloadKnowledgeBase()` 时更新）。批次 B 需决定是否在重复上传提示中也展示 `accessCount` 信息
+  - 重复上传 accessCount 行为说明（源码已确认）：重复上传（fileHash 已存在）时，`handleDuplicateKnowledgeBase()` 调用 `kb.incrementAccessCount()`，**会增加** `accessCount` 并更新 `lastAccessedAt`（`KnowledgeBaseEntity.incrementAccessCount()` 同时设置两者）。原 service/environment 标签不变。批次 B 需在重复上传提示中展示更新后的 `accessCount` 信息
+  - 添加重复上传行为的回归测试：验证 accessCount 增加、lastAccessedAt 更新、service/environment 不变
 - **回退**：恢复旧方法签名
 - **未验证**：真实上传端到端
 

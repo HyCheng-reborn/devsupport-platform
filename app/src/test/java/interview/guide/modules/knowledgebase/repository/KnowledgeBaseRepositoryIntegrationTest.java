@@ -19,6 +19,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * KnowledgeBaseRepository service/environment 集成测试（H2 内存数据库）
  * <p>
  * 验证 service/environment 标签相关的 4 个查询方法的真实 SQL 行为。
+ * <p>
+ * 集成测试环境说明：
+ * - 数据库：H2 内存数据库（@DataJpaTest 默认）
+ * - Flyway：disabled（@DataJpaTest 默认禁用 Flyway，由 Hibernate 自动建表）
+ * - PostgreSQL 上的 Repository 查询行为：未验证（需真实 PostgreSQL 实例）
  */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
