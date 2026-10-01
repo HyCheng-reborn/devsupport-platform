@@ -1,3 +1,19 @@
+**2026-10-02 -- DevSupport Phase 1 批次 B 最终定点收口**
+- 改了什么：
+  - 管理页直接调用已测试的 `applyFilters()`，移除重复 service/environment 筛选实现
+  - select 编码前缀从 `value:` 改为 `val:`，避免真实标签以 `value:` 开头时误判
+  - 检查 `.gitignore` 规则无误伤（`*.tar.gz`/`*.zip`/`interview-guide_*.md`/`status.txt`/`__review_diff.txt` 均合理）
+  - 修正 PROJECT_PROGRESS.md skipped 解释为有证据支持的表述
+- 为什么：批次 B 最终收口，确保组件调用已测试纯函数、文档表述准确
+- 验证：
+  - `./gradlew :app:test --no-daemon` exit 0（485 tests / 0 failures / 57 skipped）
+  - `cd frontend && pnpm run test:kb-filter` 9 pass / 0 fail
+  - `cd frontend && pnpm run build` exit 0
+  - `git diff --check` exit 0
+- 尚未验证的真实行为：
+  - 前端筛选端到端交互（需启动完整服务）
+  - Repository 筛选查询在真实 PostgreSQL 上的行为
+
 **2026-10-02 -- DevSupport Phase 1 批次 B 紧急定点收尾**
 - 改了什么：
   - 改进“未分类”状态表示：前端筛选从字符串字面量 `'\0UNCATEGORIZED'` 改为类型安全的 `FilterState` 联合类型（`'all' | 'unclassified' | { type: 'value'; value: string }`），彻底消除哨兵值与真实标签冲突的可能

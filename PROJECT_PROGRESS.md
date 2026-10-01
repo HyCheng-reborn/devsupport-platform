@@ -671,8 +671,7 @@
 **测试统计变化解释**:
 - 上一轮 482 tests/46 skipped，本轮 485 tests/57 skipped
 - 新增 1 个测试方法 `rejectLongService`，另 2 个方法重写（serviceExactly100/nullServiceAndEnvironment）
-- skipped 增加 11 个（46→57）来自前一轮缓存差异与有条件跳过用例
-- 实际执行数 428（485-57），与上一轮一致
+- skipped 数量变化：本轮 57，上轮 46；两次运行的实际执行数分别为 428 和 436，差异来自 Gradle 测试缓存和条件跳过用例，未做根因分析
 **未验证**:
 - 前端筛选端到端交互
 - Repository 筛选在真实 PostgreSQL 上的行为
@@ -692,6 +691,26 @@
 **测试结果**:
 - 后端：485 tests / 0 failures / 57 skipped / exit 0
 - 前端：pnpm run build / exit 0
+- git diff --check / exit 0
+**未验证**:
+- 前端筛选端到端交互
+- Repository 筛选在真实 PostgreSQL 上的行为
+
+---
+
+## 批次 B 最终定点收口（2026-10-02）
+
+**基线**: `803cbfb`
+**前端改动**:
+- `KnowledgeBaseManagePage.tsx` 直接调用已测试的 `applyFilters()`，移除重复 service/environment 筛选实现
+- select 编码前缀从 `value:` 改为 `val:`，避免真实标签以 `value:` 开头时误判
+**文档改动**:
+- `.gitignore` 规则检查：无误伤
+- `PROJECT_PROGRESS.md` skipped 解释修正为有证据支持的表述
+**测试结果**:
+- 后端：485 tests / 0 failures / 57 skipped / exit 0
+- 前端筛选测试：9 pass / 0 fail
+- 前端构建：pnpm run build / exit 0
 - git diff --check / exit 0
 **未验证**:
 - 前端筛选端到端交互
