@@ -497,5 +497,42 @@
 ### 尚未验证的真实行为（不得写成已验证）
 - 未连真实 LLM / 付费 Embedding / 真实 L1 / 生产库跑端到端 SSE；线上多样措辞、嵌套引用/条件/否定未经样本验证。
 - 当前状态为“待 Codex 五次复核”，不得提前写成复核通过。
+  > 更正（Codex 五次复核）：§16 把 `QUOTE_MASK`（`□`）加入 `CLAUSE_SPLIT` 当子句终止符的设计，会在“引号内是资料名、拒答构造在引号外”时把 `无法根据□回答` / `未找到关于□的信息` 从中间切断，导致真实拒答被误判 COMPLETED（详见 §17，已于本轮修复）。另 §16 的 `无法结合“某字段”回答也不奇怪 = COMPLETED` 前提本身不成立——该句原文已含 `无法…回答` 构造，不能以“删除引用才产生拒答”为由强判 COMPLETED。故 §16 不得写成“引用占位边界已完备解决”。
+
+## 17. P1 定点修复：引用占位不作子句边界（修复 5b1d88b 确定性回归）
+
+**时间**: 2026-10-01（北京时间）
+**基线 HEAD**: `5b1d88b`（§16）
+**状态**: 代码已写 + 定点测试此前离线通过；**本轮全量 `:app:test` 因本地 Gradle 测试执行器启动故障未能重新执行**；**待 Codex 六次复核**（未提前宣称通过，未宣称根因已确定）。
+**范围**: 仅最终拒答判定（`isExplicitRefusal` / `maskQuotedSpans` / `CLAUSE_SPLIT`）+ 相关后端测试 + 进度文档。前端 P2、`answerQuestionStream`、共享 `isNoResultLike`、探测窗口 `normalizeStreamOutput`、SSE 协议、事务、schema、来源组装、已通过的事件顺序补强均不动；不调真实 LLM / 付费 Embedding / 真实 L1 / 生产库。
+
+### 回归根因（Codex 五次复核，5b1d88b 确定性错误）
+§16 让占位符 `□` 既作引用内联替换、又被加进 `CLAUSE_SPLIT` 充当子句终止符。当引号内是**资料名称**、而拒答构造在**引号外**时，`□` 把外部构造从中间切断：
+1. “抱歉，无法根据“部署说明”回答您的问题，请补充资料。” 期望 NO_RESULTS，`5b1d88b` 判 COMPLETED。
+2. “目前未找到关于“索引配置”的相关信息，请补充文档。” 期望 NO_RESULTS，`5b1d88b` 判 COMPLETED。
+两例均不命中共享 `isNoResultLike`，错误发生在最终状态判定。
+
+### 最小方案
+- **把 `□` 从 `CLAUSE_SPLIT` 移除**：占位符仍是“内联中性标记”——在任何句子/子句切分之前替换整段引用，从而（a）屏蔽引用内部的拒答措辞、（b）吸收引用内的句号/换行不提前截断、（c）保留一个中性标记使引用两侧文本不拼接；但它**不再充当子句边界**，因此引用外的 `无法…回答` / `未找到…信息` 构造得以保持连续而被正确识别为拒答。
+- 未新增个别关键词、未改动 `REFUSAL_INABILITY` / `REFUSAL_EMPTY_RETRIEVAL` 窗口、就地否定 / 同子句条件 / “……时请……”护栏与 §15/§16 完全一致。定长 vs 定界取舍：单字符内联占位会压缩间隔，但这恰是识别“未找到关于〔资料名〕的相关信息”这类被资料名撑开、原本超窗口的外部拒答所需；占位符不删空、两侧不拼接，故不会凭空合成原文没有的拒答。
+
+### 重新审视 §16 歧义测试
+`无法结合“某些字段”回答也不奇怪，这是正常说明。` 原文本身含 `无法…回答` 构造，旧测试“删除引用才产生拒答、故应 COMPLETED”的前提不成立（新逻辑下会判 NO_RESULTS）。已将其替换为无歧义反例：`“无法回答”这个提示通常表示模型连接异常，请检查网络后重试。`（只有引号内是被提及的界面字符串，引用外无拒答）→ COMPLETED，并据实修正 §16。
+
+### 测试
+- 先加 3 条失败回归（NO_RESULTS，`KnowledgeBaseQueryServiceTest` 行 440/449/458）：引用为资料名的外部 `无法…回答`、外部 `未找到…信息`、引用内含换行不干扰外部拒答 → 对 `5b1d88b` 确认 FAIL（GRADLE_EXIT=1）；Controller 协作 `quotedResourceNameRefusalWithRealStatusJudgingClearsSources`（行 281）同样 FAIL。
+- Controller 协作：真实 `resolveFinalStatus` 判“无法根据“部署说明”回答您的问题”为 NO_RESULTS，断言落库 status=NO_RESULTS、sources=`[]`、sources 事件=`[]`、done 含 NO_RESULTS；与“正常回答保留来源”“真实拒答清空来源”配对，均不 mock 最终状态。
+- 配对/保留：引号内仅提及拒答 → COMPLETED；引号内是资料名、引用外明确拒答 → NO_RESULTS；引用内含句号/换行不干扰外部判定；条件 / 就地否定与独立真实拒答既有作用域行为不变；§13/§14/§15/§16 全部历史回归（固定模板 / 无文档 / 空输出 = NO_RESULTS，正常排查答案 = COMPLETED，ASCII/中文引号提及 = COMPLETED）保留。
+
+### 验证（区分两件事；PowerShell 直取 `$LASTEXITCODE`）
+- **定点（此前一次、执行器健康时）= 本轮代码与新测试通过的实证**（日志 `build\p1r4-postfix.log`）：`compileJava`+`compileTestJava` COMPILE_EXIT=0；`:app:test`（`KnowledgeBaseQueryServiceTest` + `RagChatControllerTest`）GRADLE_EXIT=0，**BUILD SUCCESSFUL in 23s**；resolveFinalStatus 套件 tests=31/failures=0/errors=0/skipped=0、成功路径 tests=6/failures=0、answerQuestionStream 契约 tests=3/failures=0、顶层控制器 tests=3/failures=0。
+- `git diff --check` → exit 0。
+- **全量 `:app:test --no-daemon` = 本轮未取到有效结果（执行器启动故障，非测试通过/失败）**：多次尝试（含 18:30 起）worker JVM 在 bootstrap 阶段即报 `ClassNotFoundException: worker.org.gradle.process.internal.worker.GradleWorkerMain`、退出码 1；Gradle 随后向 worker stdin 写执行规格时才抛 `IOException: 管道正在被关闭`。受控恢复后最后一次单跑（START 19:24:03 / END 19:25:45 / 102s / FULL_EXIT=1）在**空闲物理 3.5GB、提交余量 8.86GB** 下仍复现；`Task :app:test` 已执行（非 UP-TO-DATE），但**本次 `app/build/test-results/test` 内 XML 数为 0**（worker 未跑到产出结果）→ 本次全量不能作为新验证，也不用旧 XML 充当通过。排查：`gradle-worker.jar` 完好且确含该类（`jar tf` exit 0）、失败/成功两次 worker 的 `-cp` argfile 内容 MD5 相同（`FB40…`）、系统无资源耗尽事件、无 java `hs_err_pid*.log`、堆仅 `-Xmx512m` → 既不能用内存耗尽、也不能用 jar 缺类解释，**根因尚未确定**，已按指示停止继续重试。
+
+### 尚未验证的真实行为（不得写成已验证）
+- 本轮修复后的**全量回归未在本机执行器上重新取得 BUILD SUCCESSFUL**（执行器启动故障）；只有定点/相关套件此前离线通过，真实全量套件本轮未复验。
+- 未连真实 LLM / 付费 Embedding / 真实 L1 / 生产库跑端到端 SSE；引用外拒答跨更多子句、多语言撇号成对、内联占位压缩间隔导致的过度识别等变体未经线上样本验证。
+- 规则边界同 §15/§16：跨子句且拒答后无紧邻“时”的条件仍可能判拒答；ASCII 单引号靠成对匹配可能误屏蔽；否定词远离情态词可能误判；若再现更多语义变体，建议在流式结束前用一次极小的“当前回答是否拒答”二分类替代（需单独授权）。
+- 当前状态为“待 Codex 六次复核”，不得提前写成复核通过，亦不得宣称执行器故障根因已确定。
 
 

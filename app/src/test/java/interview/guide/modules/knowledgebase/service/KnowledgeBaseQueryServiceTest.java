@@ -405,11 +405,11 @@ class KnowledgeBaseQueryServiceTest {
     }
 
     @Test
-    @DisplayName("对偶_引用占位不拼接出原文不存在的拒答（无法结合“某些字段”回答）_COMPLETED")
-    void quotePlaceholderNotConcatenatingRefusal_returnsCOMPLETED() {
-      List<Document> docs = List.of(createDoc("字段说明", 1L, 0.9));
-      // 直接删除引用会把"无法结合"与"回答"拼接成"无法…回答"；占位边界应断开该拼接。
-      String answer = "无法结合“某些字段”回答也不奇怪，这是正常说明。";
+    @DisplayName("对偶_引号内仅是被提及的界面字符串_外部无拒答_COMPLETED")
+    void quotedUiTokenMention_returnsCOMPLETED() {
+      List<Document> docs = List.of(createDoc("排错手册", 1L, 0.9));
+      // 只有引号内的“无法回答”是被提及的界面字符串，引用外没有拒答构造 → 正常作答。
+      String answer = "“无法回答”这个提示通常表示模型连接异常，请检查网络后重试。";
       assertThat(queryService.resolveFinalStatus(answer, docs)).isEqualTo(MessageStatus.COMPLETED);
     }
 
@@ -428,6 +428,33 @@ class KnowledgeBaseQueryServiceTest {
       List<Document> docs = List.of(createDoc("一些相关内容", 1L, 0.9));
       // 分号前是条件排查指引；分号后的"无法根据现有资料回答您的问题"是独立真实拒答。
       String answer = "如果服务启动失败，请检查配置；目前无法根据现有资料回答您的问题。";
+      assertThat(queryService.resolveFinalStatus(answer, docs)).isEqualTo(MessageStatus.NO_RESULTS);
+    }
+
+    @Test
+    @DisplayName("Codex六次_P1_引用为资料名_外部无法…回答_NO_RESULTS")
+    void refusalSpanningQuotedResourceName_returnsNO_RESULTS() {
+      List<Document> docs = List.of(createDoc("部署手册", 1L, 0.9));
+      // 引号内是资料名称“部署说明”，引用外的“无法…回答您的问题”是真实拒答，不能被占位切断。
+      String answer = "抱歉，无法根据“部署说明”回答您的问题，请补充资料。";
+      assertThat(queryService.resolveFinalStatus(answer, docs)).isEqualTo(MessageStatus.NO_RESULTS);
+    }
+
+    @Test
+    @DisplayName("Codex六次_P1_引用为资料名_外部未找到…信息_NO_RESULTS")
+    void emptyRetrievalSpanningQuotedResourceName_returnsNO_RESULTS() {
+      List<Document> docs = List.of(createDoc("索引文档", 1L, 0.9));
+      // 引号内是资料名“索引配置”，引用外“未找到关于…的相关信息”是真实无结果拒答。
+      String answer = "目前未找到关于“索引配置”的相关信息，请补充文档。";
+      assertThat(queryService.resolveFinalStatus(answer, docs)).isEqualTo(MessageStatus.NO_RESULTS);
+    }
+
+    @Test
+    @DisplayName("Codex六次_P1_引用内部含换行不干扰_外部真实拒答仍_NO_RESULTS")
+    void newlineInsideQuoteDoesNotBreakExternalRefusal_returnsNO_RESULTS() {
+      List<Document> docs = List.of(createDoc("部署手册", 1L, 0.9));
+      // 引用内含换行，屏蔽后不应把外部“无法…回答”截断。
+      String answer = "抱歉，无法根据“部署\n说明”回答您的问题，请补充资料。";
       assertThat(queryService.resolveFinalStatus(answer, docs)).isEqualTo(MessageStatus.NO_RESULTS);
     }
   }

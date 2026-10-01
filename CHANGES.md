@@ -7,6 +7,31 @@
 
 ---
 
+## 2026-10-01 — P1 定点修复：引用占位不作子句边界（修复 5b1d88b 确定性回归，待 Codex 六次复核）
+
+**基线**：`5b1d88b`（本任务前 HEAD）
+**状态**：代码已写 + 定点测试此前离线通过；**本轮全量 `:app:test` 因本地 Gradle 测试执行器启动故障未能重新执行**；**待 Codex 六次复核**（未提前宣称通过，未宣称根因已确定）。
+**范围**：仅最终拒答判定（`isExplicitRefusal`/`maskQuotedSpans`/`CLAUSE_SPLIT`）+ 相关后端测试 + 进度文档。未动 `answerQuestionStream`、共享 `isNoResultLike`、探测窗口 `normalizeStreamOutput`、前端/P2、SSE 协议/事务/schema/来源组装/事件顺序补强；不调真实 LLM/付费 Embedding/真实 L1/生产库。
+
+### 改了什么
+- **把占位符 `□` 从 `CLAUSE_SPLIT` 移除**：§16 让 `□` 既作引用内联替换又被当子句终止符，在“引号内是资料名、拒答在引号外”时把 `无法根据□回答` / `未找到关于□的信息` 从中间切断→误判 COMPLETED。现在占位符仍为内联中性标记（切分前替换整段引用、屏蔽引用内拒答词、吸收引用内句号/换行、两侧不拼接），但不再作子句边界。未加关键词、未改窗口与否定/条件/时请护栏。
+- 重新审视 §16 歧义测试 `无法结合“某些字段”回答也不奇怪`（原文本就含 `无法…回答`）：前提不成立，已换为无歧义反例 `“无法回答”这个提示通常表示模型连接异常…`（=COMPLETED）。
+- 测试：`KnowledgeBaseQueryServiceTest` 新增 3 条失败回归（引用为资料名的外部 `无法…回答`/外部 `未找到…信息`/引用内含换行不干扰外部拒答，均 NO_RESULTS）+ 替换歧义用例；`RagChatControllerTest` 新增 `quotedResourceNameRefusalWithRealStatusJudgingClearsSources`（真实 resolveFinalStatus → NO_RESULTS、sources=[]、done 一致）。
+
+### 为什么
+Codex 五次复核：`5b1d88b` 两条确定性反例（有检索文档时，不命中共享 `isNoResultLike`）被误判 COMPLETED；占位符不应同时充当子句终止符。
+
+### 验证（区分两件事，PowerShell 直取 `$LASTEXITCODE`）
+- 定点（此前一次、执行器健康时）：compileJava+compileTestJava exit 0；`:app:test`（两测试类）GRADLE_EXIT=0、**BUILD SUCCESSFUL in 23s**；resolveFinalStatus 套件 tests=31/0/0/0、成功路径 6/0、answerQuestionStream 契约 3/0、顶层控制器 3/0（日志 `build\p1r4-postfix.log`）。`git diff --check` exit 0。
+- 全量 `:app:test --no-daemon`：**本轮未取到有效结果（执行器启动故障，非通过/失败）**。多次尝试 worker JVM 在 bootstrap 即报 `ClassNotFoundException: ...GradleWorkerMain`、退出 1；受控恢复（`--stop` 掉残留 daemon，内存回到空闲 3.5GB/提交余量 8.86GB）后最后一次单跑（19:24:03–19:25:45，102s，FULL_EXIT=1）仍复现，`Task :app:test` 已执行但本次 XML 数为 0。排查：`gradle-worker.jar` 完好且含该类、失败/成功 worker 的 `-cp` argfile MD5 相同、无资源耗尽事件/hs_err、堆仅 512m → 不能用内存耗尽或 jar 缺类解释，**根因未定**，已按指示停止重试。
+
+### 尚未验证的真实行为
+- 本轮修复后的全量回归未在本机执行器上重新取得 BUILD SUCCESSFUL；只有定点/相关套件此前离线通过。
+- 未连真实 LLM/付费 Embedding/真实 L1/生产库跑端到端 SSE；引用外拒答跨更多子句、多语言撇号、内联占位压缩间隔导致的过度识别等变体未经样本验证。
+- 跨子句无紧邻“时”的条件仍可能判拒答；ASCII 单引号成对可能误屏蔽；否定词远离情态词可能误判；建议后续用极小二分类替代（需单独授权）。
+
+---
+
 ## 2026-10-01 — P1 定点修复：引用屏蔽前置 / ASCII 单引号 / “……时请……”条件作用域（修复 8d6f367 确定性回归，待 Codex 五次复核）
 
 **基线**：`8d6f367`（本任务前 HEAD）

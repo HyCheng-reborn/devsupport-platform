@@ -75,11 +75,11 @@ public class KnowledgeBaseQueryService {
         "‘[^’]*’|“[^”]*”|\"[^\"]*\"|'[^'\\n\\r]*'"
             + "|「[^」]*」|『[^』]*』");
 
-    /** 屏蔽引用时替换整段引用的占位符：作为子句边界，避免把引用两侧文本拼接成原文没有的拒答。 */
+    /** 屏蔽引用时用于替换整段引用的中性占位符：保留一个不贡献语义的标记，使引用两侧文本不被拼接，也不被删除。 */
     private static final String QUOTE_MASK = "\u25A1";
 
-    /** 子句切分：条件 / 否定的作用范围只在同一子句内生效；{@link #QUOTE_MASK} 也作为边界。 */
-    private static final Pattern CLAUSE_SPLIT = Pattern.compile("[，,、；;：:。.．！!？?\\n\\r\u25A1]+");
+    /** 子句切分：条件 / 否定的作用范围只在同一子句内生效；引用占位符不作为边界，以免切断引用外的拒答构造。 */
+    private static final Pattern CLAUSE_SPLIT = Pattern.compile("[，,、；;：:。.．！!？?\\n\\r]+");
 
     /** 紧邻情态词之前的否定词，只取消该处拒答（并非 / 并不是 / 不是 / 并未 / 绝非 / 绝不）。 */
     private static final Pattern NEGATION_BEFORE_MODAL = Pattern.compile(
@@ -486,8 +486,9 @@ public class KnowledgeBaseQueryService {
         if (text.equals(NO_RESULT_RESPONSE) || text.startsWith(NO_RESULT_RESPONSE)) {
             return true;
         }
-        // 先屏蔽成对引用（含 ASCII 单引号、引用内的句号与换行），用占位符替代整段引用：
-        // 引用内的终止标点不参与后续句子/子句切分，也不会把引用两侧拼接成新的拒答。
+        // 先屏蔽成对引用（含 ASCII 单引号、引用内的句号与换行），用中性占位符替换整段引用：
+        // 引用内部的拒答措辞不再被当作当前拒答，引用内的终止标点也不参与句子/子句切分；
+        // 占位符不作为子句边界，因此不会把引用外的“无法…回答”“未找到…信息”构造切断。
         String masked = maskQuotedSpans(text);
         // 再取起始句（第一个句子终止符之前），把描述性/排查性用语限制在整段拒答判定之外
         String leadingSentence = masked.split("[。．.！!？?\\n\\r]", 2)[0].trim();
