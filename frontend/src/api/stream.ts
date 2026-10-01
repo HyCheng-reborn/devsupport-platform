@@ -1,4 +1,4 @@
-import { API_BASE_URL, getErrorMessage, getResultError, parseResultPayload } from './request';
+import { API_BASE_URL, getErrorMessage, getResultError, parseResultPayload } from './request.ts';
 
 type SseParseMode = 'line' | 'event';
 
@@ -224,7 +224,17 @@ function processEventBlock(block: string, options: StreamSseOptions): void {
 }
 
 function flushEventBuffer(buffer: string, done: boolean, options: StreamSseOptions): string {
-  let remaining = buffer.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  // 跨网络块时，一个 CRLF 可能被拆成"…\r" + "\n…"。若此刻结尾是一个孤立的 \r 且流未结束，
+  // 先把它扣留、等下一块再判定：否则它会被当作行结束符归一成 \n，与下一块开头的 \n 拼成
+  // 假的空行分隔符，导致 event: 头与其 data: 被拆成两个块，done 事件丢失、状态 JSON 混入正文。
+  let work = buffer;
+  let heldCR = false;
+  if (!done && work.endsWith('\r')) {
+    work = work.slice(0, -1);
+    heldCR = true;
+  }
+
+  let remaining = work.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   let separatorIndex = remaining.indexOf('\n\n');
 
   while (separatorIndex !== -1) {
@@ -238,11 +248,13 @@ function flushEventBuffer(buffer: string, done: boolean, options: StreamSseOptio
     const singleLineIndex = remaining.indexOf('\n');
     if (singleLineIndex !== -1 && remaining.substring(0, singleLineIndex).startsWith('data:')) {
       processEventBlock(remaining.substring(0, singleLineIndex), options);
-      return remaining.substring(singleLineIndex + 1);
+      remaining = remaining.substring(singleLineIndex + 1);
     }
+    // 把扣留的孤立 \r 重新接回尾部，交由下一块与后续可能到来的 \n 正确配对
+    return remaining + (heldCR ? '\r' : '');
   }
 
-  if (done && remaining.trim()) {
+  if (remaining.trim()) {
     processEventBlock(remaining, options);
     return '';
   }

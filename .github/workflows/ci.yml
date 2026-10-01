@@ -69,6 +69,7 @@ jobs:
           pnpm run test:interview-capacity
           pnpm run test:interview-entry
           pnpm run test:rag-stream
+          pnpm run test:sse-stream
 
       - name: Build frontend
         run: pnpm run build

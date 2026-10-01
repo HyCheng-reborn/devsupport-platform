@@ -1,4 +1,5 @@
-import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
+import axios from 'axios';
+import type { AxiosInstance, AxiosRequestConfig } from 'axios';
 
 declare module 'axios' {
   interface AxiosRequestConfig {
@@ -18,7 +19,7 @@ export interface Result<T = unknown> {
 const SUCCESS_CODE = 200;
 const RESULT_BLOB_PARSE_LIMIT = 64 * 1024;
 
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
+export const API_BASE_URL = import.meta.env?.VITE_API_BASE_URL ?? '';
 
 const instance: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,

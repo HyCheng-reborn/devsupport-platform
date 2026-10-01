@@ -335,3 +335,41 @@
 - 纯重构，未连真实 LLM / 数据库跑端到端 SSE；来源组装仅由单元测试与 Controller 打桩覆盖，真实 `findAllById` 命中 / 缺行路径未做集成验证。
 - `buildSourceReferences` 在 `RagChatSessionService` 中不开事务（与原先在 QueryService 中时一致）；只依赖一次批量 `findAllById`，未新增循环查库。
 
+## 13. Codex 复核后的 P1/P2 定点修复与事件顺序测试补强
+
+**时间**: 2026-10-01（北京时间）
+**基线 HEAD**: `1c3d4c7`（§12；Codex 对 master 的独立复核结论）
+**范围**: 两处定点修复 + 一项测试补强。保持第 3 轮纯文本端点兜底与第 4 轮来源下沉的现有分层与兼容契约；不改 schema、不做无关重构、不让 Controller 重新注入 Repository；维持 `data… → 持久化成功 → sources → done(status)` 事件契约与来源字段/顺序/score/截断/未知回退语义。
+
+### P1：有效长回答被误判为 NO_RESULTS（后端）
+
+- 根因：`KnowledgeBaseQueryService.resolveFinalStatus` 复用 `isNoResultLike`（`contains` 全文匹配），只要整段正文任意位置出现“信息不足”等歧义词，即判为 NO_RESULTS 并清空来源，导致正常长回答被误伤。
+- 修复：新增 `isExplicitRefusal`，只认两类“整段式明确拒答”——① 正文等于/起始于固定无结果模板 `NO_RESULT_RESPONSE`；② 第一句（首个句子终止符之前）本身包含 `STRONG_REFUSAL_MARKERS`。`resolveFinalStatus` 由 `isNoResultLike` 改判 `isExplicitRefusal`。判定基于结构位置，既非“全文任意位置含关键词”，也非靠长度放行。
+- 共享路径不动：`isNoResultLike`、探测窗口 `normalizeStreamOutput`（`STREAM_PROBE_CHARS=120`）与 `answerQuestionStream` 保持不变——真正的开头即无信息仍由上游探测窗口收敛为固定模板，`STRONG_REFUSAL_MARKERS` 刻意不含“信息不足”。
+- 反例（修复前→后）：前段正常说明、后文“排查时如果日志信息不足……实际解决方法是将服务端口改为8080。” → 修复前判 NO_RESULTS（2 条新用例 FAIL，failures=2），修复后判 COMPLETED。
+
+### P2：SSE 解析器在 CRLF 跨网络块时丢失 done（前端）
+
+- 根因：一个 `\r\n` 被拆成“…\r” + “\n…” 两块时，`flushEventBuffer` 先把孤立的尾部 `\r` 归一成 `\n`，与下一块开头的 `\n` 拼成假空行分隔符，使 `event:` 头与其 `data:` 被拆成两个块，`done` 丢失、状态 JSON 混入正文、上层无 done 误回退 MODEL_FAILED。
+- 修复：`!done` 且缓冲区以孤立 `\r` 结尾时先扣留该 `\r`（`heldCR`），处理完再接回尾部交由下一块配对；`done==true` 时不扣留。line/event 两种模式与所有调用方语义等价（去掉 `!done` 分支里的提前 return、`done && remaining.trim()` 改 `remaining.trim()` 仅在 done 路径生效）。
+- 反例（修复前→后）：块 `["event:done\r", "\ndata:{\"status\":\"COMPLETED\"}\r\n\r\n"]` → 修复前 done 丢失（用例 FAIL），修复后 done 恰好触发一次、状态 JSON 不混入正文、ragChat 不误回退。
+
+### 测试补强（事件顺序）
+
+- 后端新增 `persistenceVerifiedAtMomentSourcesAndDoneArrive`：用 StepVerifier 在收到 `sources` 事件的当下即 `verify(sessionService).completeStreamMessage(...)` 并用 ArgumentCaptor 断言有效回答保留真实来源（含 `README.md`，非空数组），收到 `done` 的当下再次确认持久化已完成——直接证明“持久化先于事件发出”，而非 `collectList` 之后再 verify。保留原有：持久化失败不发 sources/done 且只写一次、模型错误按 MODEL_FAILED 只写一次不发 done、取消按 CLIENT_DISCONNECTED 只写一次。
+- 前端新增 `frontend/src/api/stream.test.ts`：走真实 `streamSse` 解析链路（TextDecoder + flushBuffer + processEventBlock，mock fetch 逐块喂 Uint8Array），覆盖跨块 CRLF 拆分、LF、CRLF、event/data/分隔符全拆块、UTF-8 多字节拆块、无 done 回退、line 模式兼容，以及 ragChat 端到端 `finalized` 单次护栏（COMPLETED 仅一次 / 无 done→MODEL_FAILED / 跨块 done 不误回退）。为此把 `request.ts` 的 axios 类型改为 `import type`、`import.meta.env?.` 可选链，`stream.ts`/`ragChat.ts` 内部 import 加 `.ts` 扩展（`allowImportingTsExtensions` 已开，Vite 与 node 均可解析）；`package.json` 注册 `test:sse-stream` 并加入 CI frontend 任务。
+
+### 验证（离线通过，代码已写 + 本地/离线测试通过）
+
+- `./gradlew :app:compileJava :app:compileTestJava --no-daemon` → BUILD SUCCESSFUL（exit 0）。
+- `./gradlew :app:test --tests '...KnowledgeBaseQueryServiceTest' --tests '...RagChatControllerTest' --no-daemon` → BUILD SUCCESSFUL；resolveFinalStatus 套件 tests=7 failures=0，成功路径套件 tests=3 failures=0。P1 反例：临时还原为 `isNoResultLike` 后该 2 条用例 FAIL（failures=2），改回 `isExplicitRefusal` 后转绿。
+- `./gradlew :app:test --no-daemon`（全量）→ BUILD SUCCESSFUL（约 2m24s，无 FAILED）。
+- `node --test src/api/stream.test.ts` → pass 10 fail 0；P2 反例：临时把扣留条件置 `false` 后跨块用例 FAIL，改回后转绿。既有前端测试合计 pass 18 fail 0。
+- `cd frontend && pnpm run build` → 构建成功（tsc 通过，仅历史 CSS `:where()` 语法告警，非本次引入）。
+
+### 尚未验证的真实行为（不得写成已验证）
+
+- 未连真实 LLM / 付费 Embedding / 真实 L1 / 生产数据库跑端到端 SSE；真实网络上 `\r\n` 跨 TCP 段的实际拆分时机、Spring WebFlux SSE 底层分帧行为未实测。
+- `isExplicitRefusal` 的强拒答词表基于现有模板与常见拒答构造归纳，真实模型输出的多样拒答措辞覆盖面未经线上样本验证。
+
+

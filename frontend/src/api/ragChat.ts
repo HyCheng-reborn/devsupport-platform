@@ -1,6 +1,6 @@
-import { request } from './request';
-import { streamSse } from './stream';
-import { parseDoneStatus, resolveFinalStatus, type MessageStatus } from './ragStreamStatus';
+import { request } from './request.ts';
+import { streamSse } from './stream.ts';
+import { parseDoneStatus, resolveFinalStatus, type MessageStatus } from './ragStreamStatus.ts';
 
 // ========== 类型定义 ==========
 

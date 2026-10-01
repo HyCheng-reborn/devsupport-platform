@@ -11,6 +11,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.document.Document;
@@ -20,6 +21,7 @@ import reactor.test.StepVerifier;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -118,6 +120,51 @@ class RagChatControllerTest {
       verify(sessionService, times(1))
           .completeStreamMessage(eq(MESSAGE_ID), eq("项目的后端端口是 8080"),
               eq(MessageStatus.COMPLETED), anyString());
+    }
+
+    @Test
+    @DisplayName("收到 sources/done 事件的当下即断言 completeStreamMessage 已成功，且有效回答保留非空来源")
+    void persistenceVerifiedAtMomentSourcesAndDoneArrive() {
+      List<Document> docs = List.of(doc());
+      when(sessionService.prepareStreamMessage(SESSION_ID, QUESTION)).thenReturn(MESSAGE_ID);
+      when(sessionService.getStreamAnswer(SESSION_ID, QUESTION))
+          .thenReturn(resultWith(Flux.just("项目的后端端口是 8080"), docs));
+      when(sessionService.buildSourceReferences(anyList())).thenReturn(oneSource());
+      when(queryService.resolveFinalStatus("项目的后端端口是 8080", docs))
+          .thenReturn(MessageStatus.COMPLETED);
+
+      AtomicBoolean persistedAtSources = new AtomicBoolean(false);
+      AtomicBoolean persistedAtDone = new AtomicBoolean(false);
+
+      StepVerifier.create(controller.sendMessageStream(SESSION_ID, request()))
+          .expectNextMatches(e -> "data".equals(e.event()))
+          .expectNextMatches(e -> {
+            if (!"sources".equals(e.event())) {
+              return false;
+            }
+            // 在收到 sources 的瞬间断言：持久化必须已成功完成，且有效回答保留真实来源（非空数组）
+            ArgumentCaptor<String> captured = ArgumentCaptor.forClass(String.class);
+            verify(sessionService, times(1)).completeStreamMessage(
+                eq(MESSAGE_ID), eq("项目的后端端口是 8080"),
+                eq(MessageStatus.COMPLETED), captured.capture());
+            assertThat(captured.getValue()).contains("README.md");
+            persistedAtSources.set(true);
+            return e.data() != null && e.data().contains("README.md");
+          })
+          .expectNextMatches(e -> {
+            if (!"done".equals(e.event())) {
+              return false;
+            }
+            // 在收到 done 的瞬间再次确认持久化先于事件完成
+            verify(sessionService, times(1)).completeStreamMessage(
+                anyLong(), anyString(), eq(MessageStatus.COMPLETED), anyString());
+            persistedAtDone.set(true);
+            return e.data().contains("COMPLETED");
+          })
+          .verifyComplete();
+
+      assertThat(persistedAtSources).isTrue();
+      assertThat(persistedAtDone).isTrue();
     }
 
     @Test

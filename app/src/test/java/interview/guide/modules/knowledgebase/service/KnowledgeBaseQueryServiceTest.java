@@ -209,5 +209,37 @@ class KnowledgeBaseQueryServiceTest {
       assertThat(queryService.resolveFinalStatus("   ", docs)).isEqualTo(MessageStatus.NO_RESULTS);
       assertThat(queryService.resolveFinalStatus(null, docs)).isEqualTo(MessageStatus.NO_RESULTS);
     }
+
+    @Test
+    @DisplayName("resolveFinalStatus_有效长回答正文偶带'信息不足'仍_COMPLETED")
+    void effectiveLongAnswerMentioningInsufficientInfo_returnsCOMPLETED() {
+      // 反例：前段是正常解释，后文出现"信息不足"等描述性用语，但整体是有依据的实质回答。
+      List<Document> docs = List.of(createDoc("默认服务端口为 8080，日志级别可调", 1L, 0.9));
+      String answer =
+          "该项目使用 Spring Boot，默认后端服务监听在 8080 端口，可通过 SERVER_PORT 环境变量覆盖。"
+        + "排查时如果日志信息不足，请提高日志级别；实际解决方法是将服务端口改为8080。";
+      MessageStatus status = queryService.resolveFinalStatus(answer, docs);
+      assertThat(status).isEqualTo(MessageStatus.COMPLETED);
+    }
+
+    @Test
+    @DisplayName("resolveFinalStatus_起始句为明确拒答（非固定模板）_NO_RESULTS")
+    void explicitRefusalNonTemplate_returnsNO_RESULTS() {
+      List<Document> docs = List.of(createDoc("一些相关内容", 1L, 0.9));
+      // 不是固定无结果模板，但第一句本身就是整段式明确拒答。
+      MessageStatus status = queryService.resolveFinalStatus(
+          "抱歉，我未检索到相关信息，无法根据提供内容回答这个问题。", docs);
+      assertThat(status).isEqualTo(MessageStatus.NO_RESULTS);
+    }
+
+    @Test
+    @DisplayName("resolveFinalStatus_有效回答中出现'信息不足'不误判为拒答")
+    void descriptivePhraseInsideAnswer_returnsCOMPLETED() {
+      List<Document> docs = List.of(createDoc("一些相关内容", 1L, 0.9));
+      // 第一句正常，"信息不足"仅作为正文描述出现，不构成拒答。
+      MessageStatus status = queryService.resolveFinalStatus(
+          "解决方法是将服务端口改为 8080。如果日志信息不足，请提高日志级别后重试。", docs);
+      assertThat(status).isEqualTo(MessageStatus.COMPLETED);
+    }
   }
 }

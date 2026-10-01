@@ -7,6 +7,35 @@
 
 ---
 
+## 2026-10-01 — Codex 复核后的 P1/P2 定点修复与事件顺序测试补强
+
+**基线**：`1c3d4c7`（本任务前 HEAD，= Codex 复核的 master）
+**范围**：两处定点修复 + 一项测试补强。保持第 3 轮端点兜底与第 4 轮来源下沉的分层/兼容契约；不改 schema、不做无关重构、不让 Controller 重新注入 Repository；维持 `data… → 持久化成功 → sources → done(status)` 与来源字段/顺序/score/截断/未知回退。未调真实 LLM / 付费 Embedding / L1 / 生产库。
+
+### 改了什么
+- **P1**（`KnowledgeBaseQueryService`）：`resolveFinalStatus` 由全文 `isNoResultLike`（contains）改判新增的 `isExplicitRefusal`（只认“等于/起始于固定无结果模板”或“第一句含 `STRONG_REFUSAL_MARKERS`”）。`isNoResultLike`、探测窗口 `normalizeStreamOutput`（`STREAM_PROBE_CHARS=120`）与 `answerQuestionStream` 均不动。
+- **P2**（`frontend/src/api/stream.ts`）：`flushEventBuffer` 在 `!done` 且尾部为孤立 `\r` 时先扣留（`heldCR`）、处理完再接回，修复跨网络块 CRLF 拆分导致的 `done` 丢失/状态 JSON 混入正文/误回退 MODEL_FAILED；line/event 两模式语义等价。
+- 测试可达性：`request.ts` axios 类型改 `import type` + `import.meta.env?.`；`stream.ts`/`ragChat.ts` 内部 import 加 `.ts` 扩展；`package.json` 新增 `test:sse-stream` 并加入 CI。
+- 测试：`KnowledgeBaseQueryServiceTest` 新增 3 条 resolveFinalStatus 用例（有效长回答含“信息不足”仍 COMPLETED / 非模板明确拒答仍 NO_RESULTS / 正文描述性短语不误判）；`RagChatControllerTest` 新增 `persistenceVerifiedAtMomentSourcesAndDoneArrive`（收到 sources/done 当下断言已持久化 + 有效回答保留非空来源）；新建 `frontend/src/api/stream.test.ts`（10 条真实解析链路 + ragChat 端到端护栏）。
+
+### 为什么
+- P1：旧逻辑对整段正文做关键词 `contains`，正常长回答中途出现“信息不足”即被误判 NO_RESULTS 并清空来源。需基于结构位置区分“明确拒答”与“正常解释”，而非仅加关键词或靠长度放行。
+- P2：一个 `\r\n` 被拆为“…\r”+“\n…”时，孤立尾部 `\r` 被提前归一成 `\n`，与下一块首 `\n` 拼成假空行，拆散 `event:`/`data:` 导致 done 丢失。
+
+### 验证（均为离线/本地测试通过，非真实环境）
+- `./gradlew :app:compileJava :app:compileTestJava --no-daemon` → BUILD SUCCESSFUL。
+- `./gradlew :app:test --tests '...KnowledgeBaseQueryServiceTest' --tests '...RagChatControllerTest' --no-daemon` → BUILD SUCCESSFUL（resolveFinalStatus 套件 tests=7/failures=0；成功路径套件 tests=3/failures=0）。
+- 反例复现：P1 临时还原 `isNoResultLike` → 2 条新用例 FAIL（failures=2），改回转绿；P2 临时禁用扣留逻辑 → 跨块用例 FAIL，改回转绿。
+- `./gradlew :app:test --no-daemon`（全量）→ BUILD SUCCESSFUL（无 FAILED）。PowerShell 因 JVM stderr 告警会将退出码误报为 1，Gradle 本身报成功。
+- `node --test src/api/stream.test.ts` → pass 10/fail 0；既有前端测试合计 pass 18/fail 0。
+- `cd frontend && pnpm run build` → 构建成功（仅历史 CSS `:where()` 告警）。
+
+### 尚未验证（真实环境）
+- 未连真实 LLM / 付费 Embedding / 真实 L1 / 生产数据库跑端到端 SSE；真实网络上 `\r\n` 跨 TCP 段拆分时机、Spring WebFlux SSE 分帧未实测。
+- `isExplicitRefusal` 强拒答词表覆盖面未经线上样本验证。
+
+---
+
 ## 2026-10-01 — RagChatController 来源组装责任下沉到 Service（Controller 不再持有 Repository）
 
 **基线**：`bab3a62`（本任务前 HEAD）

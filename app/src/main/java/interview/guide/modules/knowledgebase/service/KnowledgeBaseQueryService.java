@@ -42,6 +42,17 @@ public class KnowledgeBaseQueryService {
     private static final int STREAM_PROBE_CHARS = 120;
     private static final int MAX_REWRITE_HISTORY_CHAR = 200;
 
+    /**
+     * 起始句强拒答构造：只有当回答的第一句本身就是"整段式无信息/无法回答"时，
+     * 才判定为明确拒答。刻意不包含"信息不足"这类易出现在正常解释里的歧义词，
+     * 避免把长回答正文中途的描述误判为拒答。真正的模板拒答另由 NO_RESULT_RESPONSE 匹配。
+     */
+    private static final List<String> STRONG_REFUSAL_MARKERS = List.of(
+        "未检索到", "检索不到", "没有找到", "找不到", "没有相关信息", "暂无相关",
+        "知识库中未", "知识库中没有", "相关资料中未", "所给资料中未",
+        "超出知识库", "无法根据提供内容", "无法根据所给内容", "无法根据给定内容",
+        "无法根据知识库", "无法回答");
+
     private final LlmProviderRegistry llmProviderRegistry;
     private final KnowledgeBaseVectorService vectorService;
     private final KnowledgeBaseListService listService;
@@ -264,8 +275,9 @@ public class KnowledgeBaseQueryService {
      * 依据实际检索结果与模型最终输出，确定这条回答的最终状态。
      * <ul>
      *   <li>未检索到文档：NO_RESULTS。</li>
-     *   <li>检索到文档，但模型最终输出为空或为“无结果”文本：NO_RESULTS——
-     *       避免把一段拒答保存为有依据的 COMPLETED 回答。</li>
+     *   <li>检索到文档，但模型最终输出为空或为"整段式明确拒答"：NO_RESULTS——
+     *       避免把一段拒答保存为有依据的 COMPLETED 回答。有效长回答即使在正文中偶带
+     *       "信息不足"等描述性用语，也不视为拒答（见 {@link #isExplicitRefusal}）。</li>
      *   <li>检索到文档且模型给出了实质性回答：COMPLETED。</li>
      * </ul>
      * 说明：MODEL_FAILED / CLIENT_DISCONNECTED 由调用方在流式终止信号处判定，
@@ -280,7 +292,7 @@ public class KnowledgeBaseQueryService {
             return MessageStatus.NO_RESULTS;
         }
         String normalized = finalContent == null ? "" : finalContent.trim();
-        if (normalized.isEmpty() || isNoResultLike(normalized)) {
+        if (normalized.isEmpty() || isExplicitRefusal(normalized)) {
             return MessageStatus.NO_RESULTS;
         }
         return MessageStatus.COMPLETED;
@@ -411,6 +423,30 @@ public class KnowledgeBaseQueryService {
             || text.contains("信息不足")
             || text.contains("超出知识库范围")
             || text.contains("无法根据提供内容回答");
+    }
+
+    /**
+     * 判断最终正文是否为"整段式明确拒答"，区别于一段有效回答中偶带"信息不足"等描述性用语。
+     * <p>探测窗口 {@code normalizeStreamOutput} 已把"开头即为无信息"的流收敛为固定模板
+     * {@code NO_RESULT_RESPONSE}；因此这里只需识别两类：
+     * <ol>
+     *   <li>正文等于/起始于固定无结果模板；</li>
+     *   <li>第一句本身就是强拒答构造（{@link #STRONG_REFUSAL_MARKERS}），而后续正文里出现
+     *       "信息不足"等词不作为拒答依据。</li>
+     * </ol>
+     * 判定基于结构位置（整段/起始句），既非"全文任意位置含关键词"，也非靠长度放行。
+     */
+    private boolean isExplicitRefusal(String text) {
+        if (text == null || text.isEmpty()) {
+            return false;
+        }
+        // 固定无结果模板：零命中 / 探测窗口 / 空输出路径都会原样产出它
+        if (text.equals(NO_RESULT_RESPONSE) || text.startsWith(NO_RESULT_RESPONSE)) {
+            return true;
+        }
+        // 只看起始句（第一个句子终止符之前）；把描述性用语限制在"整段拒答"的判定之外
+        String leadingSentence = text.split("[。．.！!？?\\n\\r]", 2)[0].trim();
+        return STRONG_REFUSAL_MARKERS.stream().anyMatch(leadingSentence::contains);
     }
 
     /**
