@@ -1,3 +1,14 @@
+**2026-10-02 -- DevSupport Phase 1 凭据安全收口**
+- 改了什么：
+  - 轮换本地 PostgreSQL 凭据（影响范围：本地开发环境）
+  - 移除 docker-compose.dev.yml、docker-compose.yml、application.yml 中的硬编码密码默认值
+  - 修正 PROJECT_PROGRESS.md skipped 解释
+- 为什么：Git 历史中存在明文密码，需轮换并移除硬编码
+- 验证：新凭据连接成功；后端测试 exit 0（485/0/57）；前端筛选测试 exit 0（9/0）
+- 尚未验证的真实行为：
+  - Git 历史中的旧密码仍可通过历史提交读取（不做强推）
+  - 其他本地实例是否使用相同密码（已检查，仅本地开发环境）
+
 **2026-10-02 -- DevSupport Phase 1 批次 B 最终定点收口**
 - 改了什么：
   - 管理页直接调用已测试的 `applyFilters()`，移除重复 service/environment 筛选实现

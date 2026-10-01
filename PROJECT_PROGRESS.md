@@ -671,7 +671,7 @@
 **测试统计变化解释**:
 - 上一轮 482 tests/46 skipped，本轮 485 tests/57 skipped
 - 新增 1 个测试方法 `rejectLongService`，另 2 个方法重写（serviceExactly100/nullServiceAndEnvironment）
-- skipped 数量变化：本轮 57，上轮 46；两次运行的实际执行数分别为 428 和 436，差异来自 Gradle 测试缓存和条件跳过用例，未做根因分析
+- skipped 数量变化：本轮 57，上轮 46；原因未查明
 **未验证**:
 - 前端筛选端到端交互
 - Repository 筛选在真实 PostgreSQL 上的行为
@@ -715,3 +715,23 @@
 **未验证**:
 - 前端筛选端到端交互
 - Repository 筛选在真实 PostgreSQL 上的行为
+
+---
+
+## 凭据安全收口（2026-10-02）
+
+**基线**: `3486e4a`
+**改动**:
+- 轮换本地 PostgreSQL 密码（容器 interview-postgres，已启动→改密→停止）
+- 更新 `.env` 中 `POSTGRES_PASSWORD`（24 位随机字母数字）
+- `docker-compose.dev.yml`：移除 `POSTGRES_PASSWORD` 硬编码默认值，改为 `${POSTGRES_PASSWORD}`
+- `docker-compose.yml`：移除两处 `POSTGRES_PASSWORD` 硬编码默认值，改为 `${POSTGRES_PASSWORD}`
+- `application.yml`：`password` 默认值改为占位符 `changeme`
+- `PROJECT_PROGRESS.md`：skipped 解释简化为“原因未查明”
+**验证**:
+- 新凭据连接成功（`SELECT 1` via docker exec）
+- 后端：485 tests / 0 failures / 57 skipped / exit 0
+- 前端筛选测试：9 pass / 0 fail
+- `git diff --check` exit 0
+**未解决**:
+- Git 历史中的旧密码仍可通过历史提交读取（不做强推）
