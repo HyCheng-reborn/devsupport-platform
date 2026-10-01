@@ -503,7 +503,7 @@
 
 **时间**: 2026-10-01（北京时间）
 **基线 HEAD**: `5b1d88b`（§16）
-**状态**: 代码已写 + 定点测试此前离线通过；**本轮全量 `:app:test` 因本地 Gradle 测试执行器启动故障未能重新执行**；**待 Codex 六次复核**（未提前宣称通过，未宣称根因已确定）。
+**状态**: P1 源码复核通过（Codex 六次定点源码复核通过 `db036fe`）；已在同机同工具链的独立干净检出上重新执行全量 `:app:test` 并**通过**（455 tests / 0 failures / 0 errors / 50 skipped；非跨机对照）；原工作副本 `GradleWorkerMain` 执行器启动故障根因仍未确定；真实 LLM / Embedding / 生产库及端到端 SSE 未验证；已知文本规则边界保留（后续改为小型二分类需单独授权）。
 **范围**: 仅最终拒答判定（`isExplicitRefusal` / `maskQuotedSpans` / `CLAUSE_SPLIT`）+ 相关后端测试 + 进度文档。前端 P2、`answerQuestionStream`、共享 `isNoResultLike`、探测窗口 `normalizeStreamOutput`、SSE 协议、事务、schema、来源组装、已通过的事件顺序补强均不动；不调真实 LLM / 付费 Embedding / 真实 L1 / 生产库。
 
 ### 回归根因（Codex 五次复核，5b1d88b 确定性错误）
@@ -530,10 +530,10 @@
 - **全量 `:app:test --no-daemon` = 本轮未取到有效结果（执行器启动故障，非测试通过/失败）**：多次尝试（含 18:30 起）worker JVM 在 bootstrap 阶段即报 `ClassNotFoundException: worker.org.gradle.process.internal.worker.GradleWorkerMain`、退出码 1；Gradle 随后向 worker stdin 写执行规格时才抛 `IOException: 管道正在被关闭`。受控恢复后最后一次单跑（START 19:24:03 / END 19:25:45 / 102s / FULL_EXIT=1）在**空闲物理 3.5GB、提交余量 8.86GB** 下仍复现；`Task :app:test` 已执行（非 UP-TO-DATE），但**本次 `app/build/test-results/test` 内 XML 数为 0**（worker 未跑到产出结果）→ 本次全量不能作为新验证，也不用旧 XML 充当通过。排查：`gradle-worker.jar` 完好且确含该类（`jar tf` exit 0）、失败/成功两次 worker 的 `-cp` argfile 内容 MD5 相同（`FB40…`）、系统无资源耗尽事件、无 java `hs_err_pid*.log`、堆仅 `-Xmx512m` → **释放内存后仍复现，尚无证据认定内存不足是直接原因**；也不能用 jar 缺类解释，**根因尚未确定**，已按指示停止继续重试。（注：该表述只推翻“内存不足即直接原因”这一未经证实的归因，不等于已确定根因。）
 
 ### 尚未验证的真实行为（不得写成已验证）
-- 本轮修复后的**全量回归未在本机执行器上重新取得 BUILD SUCCESSFUL**（执行器启动故障）；只有定点/相关套件此前离线通过，真实全量套件本轮未复验。
+- 本轮修复后的全量回归在**原始工作副本执行器**上仍未取得 BUILD SUCCESSFUL（`GradleWorkerMain` 启动故障，根因未定）；但已在**同机同工具链的独立干净检出**上重新执行并通过（455 / 0 / 0 / 50，见文末「独立干净检出全量回归验证」）。
 - 未连真实 LLM / 付费 Embedding / 真实 L1 / 生产库跑端到端 SSE；引用外拒答跨更多子句、多语言撇号成对、内联占位压缩间隔导致的过度识别等变体未经线上样本验证。
 - 规则边界同 §15/§16：跨子句且拒答后无紧邻“时”的条件仍可能判拒答；ASCII 单引号靠成对匹配可能误屏蔽；否定词远离情态词可能误判；若再现更多语义变体，建议在流式结束前用一次极小的“当前回答是否拒答”二分类替代（需单独授权）。
-- 当前状态为“待 Codex 六次复核”，不得提前写成复核通过，亦不得宣称执行器故障根因已确定。
+- Codex 六次定点源码复核已通过 `db036fe`（P1 源码复核通过）；仍不得宣称原始工作副本执行器故障根因已确定，亦不得宣称真实 LLM / Embedding / 生产库 / 端到端 SSE 已验证；已知文本规则边界保留，后续如改为小型二分类需单独授权。
 
 ### 独立干净检出全量回归验证（2026-10-01，同机同工具链）
 **结论**：db036fe 定点源码复核通过；在独立干净检出（分离 worktree）上全量 `:app:test` 重新执行并**通过**；原机主工作副本的执行器启动故障根因仍未确定。
@@ -546,6 +546,6 @@
   - `:app:test --no-daemon --rerun`：先删 `app/build/test-results/test`（前置 XML 数 0），START 21:37:58 / END 21:40:23（2m24s）→ **BUILD SUCCESSFUL，FULL_EXIT=0**；`:app:test` 实际执行（非 UP-TO-DATE）。
   - **本次新生成 XML**：94 个测试套件文件，合计 **tests=455 / failures=0 / errors=0 / skipped=50**（skipped 主要为无 Docker 时自动禁用的 Testcontainers 用例）。全量日志中 `FAILED` / `GradleWorkerMain` / `ClassNotFoundException` 出现 **0 次**——原 `ClassNotFoundException: GradleWorkerMain` 的 worker 启动故障在干净检出上**未复现**。
   - **定点关键类复核（与 §17 记录逐项一致）**：`KnowledgeBaseQueryServiceTest$ResolveFinalStatusTests` tests=31/0/0/0；`$AnswerQuestionStreamTests` tests=3/0/0/0；`RagChatControllerTest` tests=3/0/0/0。
-- **不得写成已验证**：本轮仅补齐离线/本地全量回归证据；仍未连真实 PostgreSQL / 真实 LLM / 付费 Embedding / 真实 L1 / 生产库跑端到端 SSE；worker 启动故障在原始工作副本上的确切根因未确定（干净检出不复现只说明其与特定工作副本/守护态相关，不足以定性）。Codex 六次复核仍为待办闸门。
+- **不得写成已验证**：本轮仅补齐离线/本地全量回归证据；仍未连真实 PostgreSQL / 真实 LLM / 付费 Embedding / 真实 L1 / 生产库跑端到端 SSE；worker 启动故障在原始工作副本上的确切根因未确定（干净检出不复现只说明其与特定工作副本/守护态相关，不足以定性）。Codex 六次定点源码复核已通过 `db036fe`（P1 源码复核通过）。
 
 
