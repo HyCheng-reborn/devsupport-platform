@@ -25,6 +25,8 @@ export interface SourceReference {
   documentName: string;
   contentSnippet: string;
   score: number | null;
+  service?: string | null;
+  environment?: string | null;
 }
 
 export type { MessageStatus };

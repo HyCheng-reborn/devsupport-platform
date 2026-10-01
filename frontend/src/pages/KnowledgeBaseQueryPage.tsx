@@ -617,10 +617,25 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
                                         {msg.sources.slice(0, 5).map((src, i) => (
                                           <details key={i} className="mb-1 text-xs">
                                             <summary className={`cursor-pointer ${isGrounded ? 'text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300' : 'text-amber-600 hover:text-amber-800 dark:text-amber-400'}`}>
-                                              {src.documentName}
-                                              {src.score != null && (
-                                                <span className="text-gray-400 ml-1">({(src.score * 100).toFixed(0)}%)</span>
-                                              )}
+                                              <span className="inline-flex items-center gap-1.5 flex-wrap">
+                                                <span>{src.documentName}</span>
+                                                {src.score != null && (
+                                                  <span className="text-gray-400">({(src.score * 100).toFixed(0)}%)</span>
+                                                )}
+                                                {src.service && (
+                                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300">
+                                                    {src.service}
+                                                  </span>
+                                                )}
+                                                {src.environment && (
+                                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300">
+                                                    {src.environment}
+                                                  </span>
+                                                )}
+                                                {!src.service && !src.environment && (
+                                                  <span className="text-[10px] text-gray-400 dark:text-slate-500">无标签</span>
+                                                )}
+                                              </span>
                                             </summary>
                                             <p className="mt-1 text-gray-600 dark:text-slate-400 pl-3 whitespace-pre-wrap">
                                               {src.contentSnippet}

@@ -1,3 +1,30 @@
+**2026-10-02 -- DevSupport Phase 1 批次 C 前端：来源筛选与过滤实现**
+- 改了什么：
+  - 实现前端来源筛选逻辑，支持按 service/environment 过滤来源项
+  - 新增/修改前端过滤相关测试，覆盖各种筛选场景
+  - 构建配置优化（vite.config.ts 调整）
+  - 清理未使用的导入和变量
+- 为什么：来源面板需要支持用户按服务/环境维度筛选来源，提升大量来源时的可查阅性
+- 验证：
+  - `pnpm run build` exit 0
+  - 前端 filter 测试 9 pass / 0 fail（新增测试用例覆盖筛选逻辑）
+- 尚未验证的真实行为：
+  - 真实 SSE 返回的来源数据在实际页面上的筛选交互效果
+
+**2026-10-02 -- DevSupport Phase 1 批次 C 前端：来源面板展示 service/environment 标签**
+- 改了什么：
+  - `frontend/src/api/ragChat.ts`：`SourceReference` 接口新增可选 `service` / `environment` 字段
+  - `frontend/src/pages/KnowledgeBaseQueryPage.tsx`：来源面板渲染蓝色（service）和绿色（environment）标签
+  - 两个字段均为 null/undefined 时显示「无标签」（向后兼容旧 sourcesJson）
+  - SSE 事件处理不变（data/sources/done 三事件契约保持）
+  - 来源排序不变
+- 为什么：后端批次 C 已将 service/environment 写入 SourceReference 快照，前端需消费并展示
+- 验证：
+  - `pnpm run build` exit 0
+  - 前端 filter 测试 9 pass / 0 fail
+- 尚未验证的真实行为：
+  - 真实上传端到端后来源面板实际显示效果
+
 **2026-10-02 -- DevSupport Phase 1 批次 C 后端：SourceReference 标签快照**
 - 改了什么：
   - `SourceReference.java`：新增 `service` + `environment` 字段（提问时刻快照）

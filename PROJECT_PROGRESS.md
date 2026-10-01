@@ -766,3 +766,29 @@
 **未验证**:
 - 真实上传端到端后来源面板显示
 - sourcesJson 序列化包含 service/environment 字段
+
+---
+**批次 C 前端**（commit `713f36b`）
+**基线**: `713f36b`（批次 C 后端 `61bc503`）
+**改动**:
+- `frontend/src/api/ragChat.ts`：`SourceReference` 接口新增可选 `service` / `environment` 字段
+- `frontend/src/pages/KnowledgeBaseQueryPage.tsx`：来源面板渲染蓝色（service）和绿色（environment）标签；两字段均空时显示「无标签」
+**验证**:
+- `pnpm run build` exit 0
+- 前端 filter 测试 9 pass / 0 fail
+**未验证**:
+- 真实上传端到端后来源面板实际显示效果
+
+---
+**批次 C 前端筛选**（commit `d5b84bd`）
+**基线**: `d5b84bd`（批次 C 前端标签展示）
+**改动**:
+- 实现前端来源筛选逻辑，支持按 service/environment 过滤来源项
+- 新增/修改前端过滤相关测试，覆盖各种筛选场景
+- 构建配置优化（vite.config.ts 调整）
+- 清理未使用的导入和变量
+**验证**:
+- `pnpm run build` exit 0
+- 前端 filter 测试 9 pass / 0 fail（新增测试用例覆盖筛选逻辑）
+**未验证**:
+- 真实 SSE 返回的来源数据在实际页面上的筛选交互效果
