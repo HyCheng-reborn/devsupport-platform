@@ -7,6 +7,29 @@
 
 ---
 
+## 2026-10-01 — db036fe 独立干净检出全量回归补证（不改代码，仅验证记录）
+
+**对象提交**：`db036fe498a3b3c03ca23ea87215467ce8062d19`（= §17 / HEAD）
+**状态**：db036fe 定点源码复核通过；独立干净检出全量 `:app:test` 重新执行并通过；原机主工作副本执行器启动故障根因仍未确定。
+**范围**：仅补齐验证证据与更新进度文档/CHANGES（本轮不改任何代码/构建配置、不禁用测试、不扩展 P1 文本规则）。
+
+### 验证方式与环境（诚实区分）
+- **独立干净检出**：对 db036fe 新建分离 `git worktree`（工作树 clean，HEAD=完整哈希），在该副本上重新编译与跑全量测试；事先清空 `app/build/test-results/test` 并用 `--rerun` 强制真实执行。
+- **同机、非同“跨机”**：本验证与故障会话在同一物理机（hostname `MSI`）、同一 `~/.gradle`、同一工具链（Gradle 9.6.1 + Temurin 25.0.4.1+1-LTS）上完成，差异仅在工作副本。不宣称严格跨机对照；未替换 Gradle 发行版、未复制故障机缓存。
+- **外部依赖**：未启动任何外部服务；不调真实 LLM / 付费 Embedding / 真实 L1 / 生产库（`:app:test` 默认排除 `real-eval`，H2 内存库，Redis/S3 打桩；Docker 不可用时 `RateLimitIntegrationTest` 自动禁用）。
+
+### 结果（PowerShell 直取 `$LASTEXITCODE`）
+- `:app:compileJava :app:compileTestJava --no-daemon` → COMPILE_EXIT=0，BUILD SUCCESSFUL。
+- `:app:test --no-daemon --rerun` → FULL_EXIT=0，BUILD SUCCESSFUL；`:app:test` 实际执行（非 UP-TO-DATE）。
+- 新生成 XML：94 个套件，**tests=455 / failures=0 / errors=0 / skipped=50**；日志中 `FAILED`/`GradleWorkerMain`/`ClassNotFoundException` 0 次 → 原 worker 启动故障在干净检出上**未复现**。
+- 定点类与 §17 一致：`KnowledgeBaseQueryServiceTest` ResolveFinalStatus=31/0/0/0、AnswerQuestionStream=3/0/0/0；`RagChatControllerTest`=3/0/0/0。
+
+### 尚未验证
+- 未连真实 PostgreSQL / LLM / 付费 Embedding / L1 / 生产库跑端到端 SSE；本轮不宣称任何真实环境端到端已验证。
+- 原机主工作副本执行器故障根因仍未确定（干净检出不复现仅提示与特定工作副本/守护态相关，不足以定性）。Codex 六次复核仍为待办闸门。
+
+---
+
 ## 2026-10-01 — P1 定点修复：引用占位不作子句边界（修复 5b1d88b 确定性回归，待 Codex 六次复核）
 
 **基线**：`5b1d88b`（本任务前 HEAD）
@@ -23,7 +46,7 @@ Codex 五次复核：`5b1d88b` 两条确定性反例（有检索文档时，不�
 
 ### 验证（区分两件事，PowerShell 直取 `$LASTEXITCODE`）
 - 定点（此前一次、执行器健康时）：compileJava+compileTestJava exit 0；`:app:test`（两测试类）GRADLE_EXIT=0、**BUILD SUCCESSFUL in 23s**；resolveFinalStatus 套件 tests=31/0/0/0、成功路径 6/0、answerQuestionStream 契约 3/0、顶层控制器 3/0（日志 `build\p1r4-postfix.log`）。`git diff --check` exit 0。
-- 全量 `:app:test --no-daemon`：**本轮未取到有效结果（执行器启动故障，非通过/失败）**。多次尝试 worker JVM 在 bootstrap 即报 `ClassNotFoundException: ...GradleWorkerMain`、退出 1；受控恢复（`--stop` 掉残留 daemon，内存回到空闲 3.5GB/提交余量 8.86GB）后最后一次单跑（19:24:03–19:25:45，102s，FULL_EXIT=1）仍复现，`Task :app:test` 已执行但本次 XML 数为 0。排查：`gradle-worker.jar` 完好且含该类、失败/成功 worker 的 `-cp` argfile MD5 相同、无资源耗尽事件/hs_err、堆仅 512m → 不能用内存耗尽或 jar 缺类解释，**根因未定**，已按指示停止重试。
+- 全量 `:app:test --no-daemon`：**本轮未取到有效结果（执行器启动故障，非通过/失败）**。多次尝试 worker JVM 在 bootstrap 即报 `ClassNotFoundException: ...GradleWorkerMain`、退出 1；受控恢复（`--stop` 掉残留 daemon，内存回到空闲 3.5GB/提交余量 8.86GB）后最后一次单跑（19:24:03–19:25:45，102s，FULL_EXIT=1）仍复现，`Task :app:test` 已执行但本次 XML 数为 0。排查：`gradle-worker.jar` 完好且含该类、失败/成功 worker 的 `-cp` argfile MD5 相同、无资源耗尽事件/hs_err、堆仅 512m → **释放内存后仍复现，尚无证据认定内存不足是直接原因**；也不能用 jar 缺类解释，**根因未定**，已按指示停止重试。
 
 ### 尚未验证的真实行为
 - 本轮修复后的全量回归未在本机执行器上重新取得 BUILD SUCCESSFUL；只有定点/相关套件此前离线通过。
