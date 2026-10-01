@@ -720,18 +720,18 @@
 
 ## 凭据安全收口（2026-10-02）
 
-**基线**: `3486e4a`
+**基线**: `3486e4a` → `ee8f5f5`（凭据轮换） → 本轮（移除 application.yml 默认值）
 **改动**:
 - 轮换本地 PostgreSQL 密码（容器 interview-postgres，已启动→改密→停止）
 - 更新 `.env` 中 `POSTGRES_PASSWORD`（24 位随机字母数字）
 - `docker-compose.dev.yml`：移除 `POSTGRES_PASSWORD` 硬编码默认值，改为 `${POSTGRES_PASSWORD}`
 - `docker-compose.yml`：移除两处 `POSTGRES_PASSWORD` 硬编码默认值，改为 `${POSTGRES_PASSWORD}`
-- `application.yml`：`password` 默认值改为占位符 `changeme`
+- `application.yml`：移除 `changeme` 默认值，改为 `${POSTGRES_PASSWORD:?POSTGRES_PASSWORD environment variable is required}`，缺少时启动失败
 - `PROJECT_PROGRESS.md`：skipped 解释简化为“原因未查明”
 **验证**:
-- 新凭据连接成功（`SELECT 1` via docker exec）
-- 后端：485 tests / 0 failures / 57 skipped / exit 0
-- 前端筛选测试：9 pass / 0 fail
-- `git diff --check` exit 0
+- 新凭据连接成功（`SELECT 1` via docker exec，本地连接）
+- TCP 认证验证：通过容器 psql 经 localhost:5432 TCP 连接，新密码 exit 0，错误密码 exit 2（password authentication failed）
+- 后端编译：`./gradlew :app:compileJava` exit 0
+- 前端筛选测试：9 pass / 0 fail / exit 0
 **未解决**:
 - Git 历史中的旧密码仍可通过历史提交读取（不做强推）

@@ -1,3 +1,17 @@
+**2026-10-02 -- DevSupport Phase 1 凭据处置最终验证**
+- 改了什么：
+  - application.yml 移除 POSTGRES_PASSWORD 默认值 `changeme`，改为 `${POSTGRES_PASSWORD:?POSTGRES_PASSWORD environment variable is required}`，缺少时启动失败
+  - TCP 认证验证：通过容器 psql 经 localhost:5432 TCP 连接，新密码成功（exit 0），错误密码被拒绝（exit 2）
+  - 核查文档表述与实际证据一致：区分 docker exec 本地连接 vs TCP 网络连接
+- 为什么：凭据处置最终验收，确保 application.yml 不再有任何硬编码默认密码
+- 验证：
+  - TCP 连接新密码 exit 0（`SELECT 'auth_ok'`），错误密码 exit 2（`password authentication failed`）
+  - `./gradlew :app:compileJava` exit 0
+  - `cd frontend && pnpm run test:kb-filter` 9 pass / 0 fail / exit 0
+- 尚未验证的真实行为：
+  - Git 历史中的旧密码仍可通过历史提交读取（不做强推）
+  - 完整浏览器端到端交互
+
 **2026-10-02 -- DevSupport Phase 1 凭据安全收口**
 - 改了什么：
   - 轮换本地 PostgreSQL 凭据（影响范围：本地开发环境）

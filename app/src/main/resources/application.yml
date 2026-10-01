@@ -41,8 +41,8 @@ spring:
   datasource:
     url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:interview_guide}
     username: ${POSTGRES_USER:postgres}
-    # 与 docker-compose.dev.yml 中 postgres 服务默认一致（本地只起依赖容器 + bootRun 时无需改）
-    password: ${POSTGRES_PASSWORD:changeme}
+    # 必须通过 POSTGRES_PASSWORD 环境变量提供，缺少时启动失败
+    password: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD environment variable is required}
     driver-class-name: org.postgresql.Driver
 
   jpa:
