@@ -358,5 +358,77 @@ class KnowledgeBaseQueryServiceTest {
       String answer = "如果需要详细步骤，请补充日志；目前无法根据现有资料回答您的问题。";
       assertThat(queryService.resolveFinalStatus(answer, docs)).isEqualTo(MessageStatus.NO_RESULTS);
     }
+
+    @Test
+    @DisplayName("反例A2_ASCII单引号引用（'无法回答'）_COMPLETED")
+    void asciiSingleQuotedMention_returnsCOMPLETED() {
+      List<Document> docs = List.of(createDoc("模型连接配置", 1L, 0.9));
+      // 注意：这里是 ASCII 单引号，不是中文弯引号；其中的"无法回答"只是被引用的日志文本。
+      String answer = "日志出现'无法回答'时，请检查模型连接配置并重启服务。";
+      assertThat(queryService.resolveFinalStatus(answer, docs)).isEqualTo(MessageStatus.COMPLETED);
+    }
+
+    @Test
+    @DisplayName("反例B2_句号位于引用内部（“无法回答。”）_COMPLETED")
+    void periodInsideQuote_returnsCOMPLETED() {
+      List<Document> docs = List.of(createDoc("模型连接配置", 1L, 0.9));
+      // 引用内部的句号不得提前截断句子；整段是条件排查而非拒答。
+      String answer = "日志出现“无法回答。”时，请检查模型连接配置并重启服务。";
+      assertThat(queryService.resolveFinalStatus(answer, docs)).isEqualTo(MessageStatus.COMPLETED);
+    }
+
+    @Test
+    @DisplayName("反例C2_条件排查构造（如果…，…无法回答时请检查…）_COMPLETED")
+    void conditionalWhenThenInstruction_returnsCOMPLETED() {
+      List<Document> docs = List.of(createDoc("API Key 与超时配置", 1L, 0.9));
+      // "如果服务启动失败"与"模型无法回答"都是假设条件，"时请…"是条件排查指引，不是当前拒答。
+      String answer = "如果服务启动失败，模型无法回答时请检查 API Key 并重试。";
+      assertThat(queryService.resolveFinalStatus(answer, docs)).isEqualTo(MessageStatus.COMPLETED);
+    }
+
+    @Test
+    @DisplayName("对偶_引用内含换行的“无法回答”_COMPLETED")
+    void newlineInsideQuote_returnsCOMPLETED() {
+      List<Document> docs = List.of(createDoc("模型连接配置", 1L, 0.9));
+      // 引用内部的换行不应截断引用，也不应让"无法"/"回答"跨行拼接。
+      String answer = "日志出现\"无法\n回答\"时，请检查配置并重启服务。";
+      assertThat(queryService.resolveFinalStatus(answer, docs)).isEqualTo(MessageStatus.COMPLETED);
+    }
+
+    @Test
+    @DisplayName("对偶_引用中分别提及“无法”与“回答”_COMPLETED")
+    void quotedSeparateWordsNotConcatenated_returnsCOMPLETED() {
+      List<Document> docs = List.of(createDoc("术语表", 1L, 0.9));
+      // "无法"与"回答"分别被引用，是术语定义而非拒答；屏蔽后不能拼接成"无法…回答"。
+      String answer = "关于“无法”与“回答”这两个词的定义，请参见术语表。";
+      assertThat(queryService.resolveFinalStatus(answer, docs)).isEqualTo(MessageStatus.COMPLETED);
+    }
+
+    @Test
+    @DisplayName("对偶_引用占位不拼接出原文不存在的拒答（无法结合“某些字段”回答）_COMPLETED")
+    void quotePlaceholderNotConcatenatingRefusal_returnsCOMPLETED() {
+      List<Document> docs = List.of(createDoc("字段说明", 1L, 0.9));
+      // 直接删除引用会把"无法结合"与"回答"拼接成"无法…回答"；占位边界应断开该拼接。
+      String answer = "无法结合“某些字段”回答也不奇怪，这是正常说明。";
+      assertThat(queryService.resolveFinalStatus(answer, docs)).isEqualTo(MessageStatus.COMPLETED);
+    }
+
+    @Test
+    @DisplayName("对偶_ASCII单引号提及后仍有独立真实拒答_NO_RESULTS")
+    void asciiQuoteThenGenuineRefusal_returnsNO_RESULTS() {
+      List<Document> docs = List.of(createDoc("一些相关内容", 1L, 0.9));
+      // ASCII 单引号里的"无法回答"是提及；逗号后是当前回答的真实拒答。
+      String answer = "日志出现'无法回答'，但仍无法根据现有资料回答您的问题。";
+      assertThat(queryService.resolveFinalStatus(answer, docs)).isEqualTo(MessageStatus.NO_RESULTS);
+    }
+
+    @Test
+    @DisplayName("对偶_条件指引之后仍有独立真实拒答_NO_RESULTS")
+    void conditionalThenIndependentRefusal_returnsNO_RESULTS() {
+      List<Document> docs = List.of(createDoc("一些相关内容", 1L, 0.9));
+      // 分号前是条件排查指引；分号后的"无法根据现有资料回答您的问题"是独立真实拒答。
+      String answer = "如果服务启动失败，请检查配置；目前无法根据现有资料回答您的问题。";
+      assertThat(queryService.resolveFinalStatus(answer, docs)).isEqualTo(MessageStatus.NO_RESULTS);
+    }
   }
 }

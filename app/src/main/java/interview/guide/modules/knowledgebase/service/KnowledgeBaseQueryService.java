@@ -66,12 +66,20 @@ public class KnowledgeBaseQueryService {
         "(未|没有|未能|没能)[^。．.！!？?\\n\\r]{0,8}(检索|找到|发现|查到|命中)"
             + "[^。．.！!？?\\n\\r]{0,8}(相关)?(信息|内容|资料|结果|依据)");
 
-    /** 成对引号内的引用 / 提及文本，判定拒答前先剔除，避免把复述的"无法回答"当成当前拒答。 */
+    /**
+     * 成对引号内的引用 / 提及文本，判定拒答前先屏蔽，避免把复述的"无法回答"当成当前拒答。
+     * 覆盖：中文弯单/双引号、ASCII 双引号（允许跨换行）、ASCII 单引号（不跨换行，降低撇号误配）、直角引号。
+     * 未闭合的引号不匹配（不会贪婪吞到结尾）。
+     */
     private static final Pattern QUOTED_SPAN = Pattern.compile(
-        "\u2018[^\u2019]*\u2019|\u201c[^\u201d]*\u201d|\"[^\"\\n\\r]*\"|「[^」]*」|『[^』]*』");
+        "‘[^’]*’|“[^”]*”|\"[^\"]*\"|'[^'\\n\\r]*'"
+            + "|「[^」]*」|『[^』]*』");
 
-    /** 子句切分：条件 / 否定的作用范围只在同一子句内生效。 */
-    private static final Pattern CLAUSE_SPLIT = Pattern.compile("[，,、；;：:。.．！!？?\\n\\r]+");
+    /** 屏蔽引用时替换整段引用的占位符：作为子句边界，避免把引用两侧文本拼接成原文没有的拒答。 */
+    private static final String QUOTE_MASK = "\u25A1";
+
+    /** 子句切分：条件 / 否定的作用范围只在同一子句内生效；{@link #QUOTE_MASK} 也作为边界。 */
+    private static final Pattern CLAUSE_SPLIT = Pattern.compile("[，,、；;：:。.．！!？?\\n\\r\u25A1]+");
 
     /** 紧邻情态词之前的否定词，只取消该处拒答（并非 / 并不是 / 不是 / 并未 / 绝非 / 绝不）。 */
     private static final Pattern NEGATION_BEFORE_MODAL = Pattern.compile(
@@ -80,6 +88,10 @@ public class KnowledgeBaseQueryService {
     /** 位于拒答之前、同属一个子句的条件连接词，表明该拒答是假设而非当前陈述。 */
     private static final Pattern CONDITIONAL_CONNECTIVE = Pattern.compile(
         "(如果|假如|倘若|若是|若|要是|万一|一旦|设若)");
+
+    /** "……无法回答时请检查……"里紧跟"时"之后出现的请求 / 指令词，配合条件排查识别。 */
+    private static final Pattern CONDITIONAL_REQUEST_MARKER = Pattern.compile(
+        "(请|则|就|那么|建议|应|可|需|当|尝试|检查|重新|重试|补充|换)");
 
     private final LlmProviderRegistry llmProviderRegistry;
     private final KnowledgeBaseVectorService vectorService;
@@ -474,22 +486,29 @@ public class KnowledgeBaseQueryService {
         if (text.equals(NO_RESULT_RESPONSE) || text.startsWith(NO_RESULT_RESPONSE)) {
             return true;
         }
-        // 只看起始句（第一个句子终止符之前），把描述性/排查性用语限制在整段拒答判定之外
-        String leadingSentence = text.split("[。．.！!？?\\n\\r]", 2)[0].trim();
+        // 先屏蔽成对引用（含 ASCII 单引号、引用内的句号与换行），用占位符替代整段引用：
+        // 引用内的终止标点不参与后续句子/子句切分，也不会把引用两侧拼接成新的拒答。
+        String masked = maskQuotedSpans(text);
+        // 再取起始句（第一个句子终止符之前），把描述性/排查性用语限制在整段拒答判定之外
+        String leadingSentence = masked.split("[。．.！!？?\\n\\r]", 2)[0].trim();
         return containsGenuineRefusal(leadingSentence);
     }
 
+    /** 用占位符替换成对引号内的整段引用；未闭合引号不匹配，不会吞到结尾。 */
+    private String maskQuotedSpans(String text) {
+        return QUOTED_SPAN.matcher(text).replaceAll(QUOTE_MASK);
+    }
+
     /**
-     * 起始句内是否存在"当前回答本身"的明确拒答：先剔除被引用的提及，再以子句为作用域逐句判定。
+     * 起始句内是否存在"当前回答本身"的明确拒答：以子句为作用域逐句判定，
+     * 引用已在 {@link #maskQuotedSpans} 阶段屏蔽，条件 / 否定只作用于各自子句。
      */
     private boolean containsGenuineRefusal(String sentence) {
         if (sentence.isEmpty()) {
             return false;
         }
-        // 引用 / 复述：成对引号内的"无法回答"只是被提及的文本，不是当前回答在拒答，先剔除
-        String stripped = QUOTED_SPAN.matcher(sentence).replaceAll("");
         // 以子句为作用域，条件与否定只在各自子句内生效，避免整句一刀切放行
-        for (String clause : CLAUSE_SPLIT.split(stripped)) {
+        for (String clause : CLAUSE_SPLIT.split(sentence)) {
             if (clause.isBlank()) {
                 continue;
             }
@@ -506,7 +525,8 @@ public class KnowledgeBaseQueryService {
     }
 
     /**
-     * 遍历子句内的拒答构造，逐个排除"就地否定"和"同子句条件假设"，只要有未被取消的出现即判为拒答。
+     * 遍历子句内的拒答构造，逐个排除"就地否定""同子句条件假设""……时请……条件排查"，
+     * 只要有未被取消的出现即判为拒答。
      */
     private boolean hasUnguardedRefusal(Matcher matcher, String clause) {
         while (matcher.find()) {
@@ -519,9 +539,25 @@ public class KnowledgeBaseQueryService {
             if (CONDITIONAL_CONNECTIVE.matcher(before).find()) {
                 continue;
             }
+            // "……无法回答时请检查……"：拒答之后紧跟"时"且同子句内出现请求 / 指令词，是条件排查假设
+            if (isConditionalTroubleshooting(clause, matcher.end())) {
+                continue;
+            }
             return true;
         }
         return false;
+    }
+
+    /**
+     * 识别"……时请……"这类条件排查构造：作用范围只到这一处拒答之后紧邻的"时"，
+     * 不按整句一刀切（不因整句含"时 / 请"就放行）。
+     */
+    private boolean isConditionalTroubleshooting(String clause, int refusalEnd) {
+        String after = clause.substring(refusalEnd).trim();
+        if (!after.startsWith("时")) {
+            return false;
+        }
+        return CONDITIONAL_REQUEST_MARKER.matcher(after).find();
     }
 
     /**

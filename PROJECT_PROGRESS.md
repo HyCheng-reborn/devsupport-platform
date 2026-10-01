@@ -455,5 +455,47 @@
 ### 尚未验证的真实行为（不得写成已验证）
 - 未连真实 LLM / 付费 Embedding / 真实 L1 / 生产库跑端到端 SSE；真实模型多样拒答措辞、引用/条件/否定的复杂嵌套未经线上样本验证。
 - 当前状态为“待 Codex 四次复核”，不得提前写成复核通过。
+  > 更正（Codex 四次复核）：`8d6f367` 仍把引用屏蔽放在句子切分之后、QUOTED_SPAN 不含 ASCII 单引号、且不支持跨子句的“如果…，…时请…”条件——以下三例当时仍为确定性误判（详见 §16，已于本轮修复），故 §15 不得写成“引用/条件已完备解决”。
+
+## 16. P1 定点修复：引用屏蔽前置 / ASCII 单引号 / “……时请……”条件作用域（修复 8d6f367 确定性回归）
+
+**时间**: 2026-10-01（北京时间）
+**基线 HEAD**: `8d6f367`（§15）
+**状态**: 代码已写 + 本地/离线测试通过；**待 Codex 五次复核**（未提前写成复核通过）。
+**范围**: 仅改最终拒答判定（`KnowledgeBaseQueryService.isExplicitRefusal` 及其私有辅助）与相关后端测试、进度文档。前端/P2、共享 `answerQuestionStream`、`isNoResultLike`、探测窗口 `normalizeStreamOutput`、SSE 协议、事务、schema、来源组装、事件顺序补强均不动；Controller 未重新注入 Repository。
+
+### 回归根因（Codex 四次复核，8d6f367 确定性错误）
+`8d6f367` 的判定：引用屏蔽在句子切分之后才做、QUOTED_SPAN 不含 ASCII 单引号、且不识别跨子句的“……时请……”条件排查。三条真实反例（有检索文档时，均不被探测窗口拦截）：
+1. “日志出现'无法回答'时，请检查模型连接配置并重启服务。”（ASCII 单引号，未被屏蔽） 期望 COMPLETED，`8d6f367` 判 NO_RESULTS。
+2. “日志出现“无法回答。”时，请检查模型连接配置并重启服务。”（句号在引用内部，被句子切分提前截断） 期望 COMPLETED，`8d6f367` 判 NO_RESULTS。
+3. “如果服务启动失败，模型无法回答时请检查 API Key 并重试。”（条件跨子句，“如果”与拒答不在同一子句） 期望 COMPLETED，`8d6f367` 判 NO_RESULTS。
+
+### 最小方案
+- **引用屏蔽前置 + 占位边界**：`maskQuotedSpans` 在任何句子/子句切分之前，用占位符 `□`（`QUOTE_MASK`，已加入 `CLAUSE_SPLIT` 作为子句边界）替换整段引用。引用内的句号/换行不参与截断；引用两侧因占位符断开，不会拼接出原文不存在的“无法…回答”。未闭合引号不匹配（不贪婪吞到结尾）。
+- **QUOTED_SPAN 扩充**：新增 ASCII 单引号 `'[^'\n\r]*'`（不跨换行以降低撇号误配），ASCII 双引号改为允许跨换行 `"[^"]*"`；中文弯单/双、直角引号不变。
+- **“……时请……”条件排查**：`isConditionalTroubleshooting`——当某处拒答之后紧邻 `时` 且同子句内出现请求/指令词（`CONDITIONAL_REQUEST_MARKER`）时，该拒答是条件假设。作用域只到这一处拒答后的紧邻 `时`，不因整句含“时/请”就整体放行。
+- 固定模板 equals/startsWith、空输出 / 无文档仍走原路径；否定/同子句条件逻辑与 §15 一致。
+
+### 保留的局限（规则边界）
+- 若“如果…”条件与拒答跨子句、且拒答后无紧邻 `时`（如“如果服务启动失败，模型无法回答。请重试。”）——此形式条件仍可能被判为拒答；本轮只做“紧邻时+同子句请求词”的保守识别，未做跨子句条件传播（避免误放真实拒答）。
+- ASCII 单引号靠成对匹配，若英文撇号（don't / it's）与中文拒答同句且恰好成对，可能误屏蔽；已用“不跨换行”降低面。未闭合/多行引用不处理。
+- 否定词与情态词被较多文字隔开、或条件标记出现在拒答之后，仍属已知边界。
+- 规则复杂度已接近“最小文本规则”上限；若线上再出现更多语义变体，建议的替代方案是在流式结束前用一次极小的“是否为当前回答拒答”二分类（不新增全量架构），需单独授权后实施。
+
+### 测试
+- 先加三条失败用例（A2/B2/C2，`KnowledgeBaseQueryServiceTest` 行 368/377/386）→ 对 `8d6f367` 确认 FAIL（共4项：另含“引用占位不拼接”对偶行 413，GRADLE_EXIT=1），修复后转绿。
+- 对偶（同批）：ASCII 单引号/中文引号/引用内句号与换行、“无法”与“回答”分别被引用、“无法结合‘某字段’回答”拼接均 COMPLETED；ASCII 单引号提及后仍有独立真实拒答、条件指引后仍有独立真实拒答均 NO_RESULTS。
+- 保留 §13/§14/§15 全部回归：固定模板 / 无文档 / 空输出 = NO_RESULTS；正常排查答案 = COMPLETED。
+- Controller 协作：继续用真实 `resolveFinalStatus`，`normalAnswerWithRealStatusJudging...`（正常回答保留来源）与 `realRefusalWithRealStatusJudgingClearsSources`（真实拒答清空 `[]`）配对；不 mock 最终状态。
+
+### 验证（均为离线/本地；PowerShell 直取 `$LASTEXITCODE`）
+- `:app:compileJava :app:compileTestJava` → COMPILE_EXIT=0。
+- 定点 `:app:test`（两测试类）→ GRADLE_EXIT=0；resolveFinalStatus 套件 tests=28/failures=0/errors=0/skipped=0，成功路径 tests=5/failures=0，answerQuestionStream 契约 tests=3/failures=0，顶层控制器 tests=3/failures=0。
+- 全量 `:app:test --no-daemon` → GRADLE_EXIT=0，BUILD SUCCESSFUL，无 FAILED。
+- `git diff --check` → exit 0（已消除本轮新常量块间的行尾空白）。
+
+### 尚未验证的真实行为（不得写成已验证）
+- 未连真实 LLM / 付费 Embedding / 真实 L1 / 生产库跑端到端 SSE；线上多样措辞、嵌套引用/条件/否定未经样本验证。
+- 当前状态为“待 Codex 五次复核”，不得提前写成复核通过。
 
 

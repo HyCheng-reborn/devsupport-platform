@@ -7,6 +7,34 @@
 
 ---
 
+## 2026-10-01 — P1 定点修复：引用屏蔽前置 / ASCII 单引号 / “……时请……”条件作用域（修复 8d6f367 确定性回归，待 Codex 五次复核）
+
+**基线**：`8d6f367`（本任务前 HEAD）
+**状态**：代码已写 + 本地/离线测试通过；**待 Codex 五次复核**（未提前写成复核通过）。
+**范围**：仅改 `KnowledgeBaseQueryService.isExplicitRefusal` 最终拒答判定 + 相关后端测试 + 进度文档。未动共享 `answerQuestionStream`、`isNoResultLike`、探测窗口 `normalizeStreamOutput`、前端/P2、SSE 协议/事务/schema/来源组装/事件顺序补强；Controller 未重新注入 Repository。
+
+### 改了什么
+- 引用屏蔽前置：新增 `maskQuotedSpans`，在句子/子句切分之前用占位符 `□`（`QUOTE_MASK`，已加入 `CLAUSE_SPLIT` 作边界）替换整段引用；引用内句号/换行不再提前截断句子，也不会拼接出原文不存在的拒答。`containsGenuineRefusal` 不再在内部做 replaceAll。
+- `QUOTED_SPAN` 扩充：新增 ASCII 单引号 `'[^'\n\r]*'`（不跨换行），ASCII 双引号改为允许跨换行 `"[^"]*"`；未闭合引号不匹配。
+- 新增 `isConditionalTroubleshooting` + `CONDITIONAL_REQUEST_MARKER`：拒答后紧邻 `时` 且同子句内有请求/指令词时视为“……时请……”条件排查，作用域只到该处拒答，不整句一刀切。
+- 测试：`KnowledgeBaseQueryServiceTest` 新增三条失败反例（ASCII 单引号/引用内句号/跨子句条件，均 COMPLETED）及五条对偶（引用内换行、“无法”与“回答”分别引用、占位不拼接=COMPLETED；ASCII引用后真实拒答、条件后独立拒答=NO_RESULTS）。Controller 协作保留两条真实状态用例。
+
+### 为什么
+- `8d6f367` 仍：引用屏蔽在句子切分之后、不支持 ASCII 单引号、不识别跨子句“如果…，…时请…”。导致三条确定性反例误判 NO_RESULTS。需把引用屏蔽前置并用占位边界，扩充引号类型，按“……时请……”识别条件。
+
+### 验证（均为离线/本地；PowerShell 直取 `$LASTEXITCODE`）
+- 先加失败用例→对 `8d6f367` 确认 FAIL（共 4 项：A2 行368 / B2 行377 / C2 行386 / “占位不拼接”对偶行413，GRADLE_EXIT=1）；修复后转绿。
+- `:app:compileJava :app:compileTestJava` → COMPILE_EXIT=0。
+- 定点 `:app:test`（两测试类）→ GRADLE_EXIT=0；resolveFinalStatus 套件 tests=28/failures=0/errors=0/skipped=0，成功路径 tests=5，answerQuestionStream 契约 tests=3，顶层控制器 tests=3。
+- 全量 `:app:test --no-daemon` → GRADLE_EXIT=0，BUILD SUCCESSFUL，无 FAILED。
+- `git diff --check` → exit 0（已消除新常量块间行尾空白）。
+
+### 尚未验证 / 保留边界
+- 未连真实 LLM / 付费 Embedding / 真实 L1 / 生产库跑端到端 SSE；线上多样措辞、嵌套引用/条件/否定未经样本验证。
+- 跨子句且拒答后无紧邻“时”的条件仍可能判拒答；ASCII 单引号靠成对匹配，英文撇号与中文拒答同句成对时可能误屏蔽（已“不跨换行”降低）；未做跨子句条件传播。
+
+---
+
 ## 2026-10-01 — P1 定点修复：条件 / 引用 / 否定的作用范围限定（修复 7801762 确定性回归，待 Codex 四次复核）
 
 **基线**：`7801762`（本任务前 HEAD）
