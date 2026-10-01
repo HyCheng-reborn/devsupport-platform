@@ -555,3 +555,10 @@
 **基线 HEAD**: `2cc5834`
 **状态**: 方案待 Codex 复核
 **文件**: `devsupport-phase1-design.md`（仓库根目录）
+
+## DevSupport Phase 1 设计文档第二轮修订
+
+**时间**: 2026-10-01
+**基线 HEAD**: `05a123c`
+**状态**: 修订方案待 Codex 复核
+**文件**: `devsupport-phase1-design.md`

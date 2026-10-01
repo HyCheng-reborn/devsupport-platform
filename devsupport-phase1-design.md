@@ -1,7 +1,7 @@
 # DevSupport Phase 1 设计文档
 
 > 调研基线: `2cc5834`（Codex 六次定点源码复核通过）
-> 状态: **方案待 Codex 复核**
+> 状态: **修订方案待 Codex 复核（第二轮）**
 > 本轮只产出设计，不修改业务代码、不启动容器、不调用付费 API。
 
 ---
@@ -88,7 +88,41 @@
 - `KnowledgeBaseRepository` — 新增 `findByServiceAndEnvironment()`、`findAllServices()`、`findAllEnvironments()` 查询
 - `VectorRepository` — 不变（仍按 kb_id 过滤）
 
-### 3.4 候选 API 变更
+### 3.4 服务/环境筛选完整请求链
+
+**用户选择范围的位置**：
+- 在问答助手（`KnowledgeBaseQueryPage`）右栏选择知识库时，每个知识库卡片显示其 service/environment 标签
+- 用户通过勾选知识库间接选择范围（不新增独立的 service/environment 选择器）
+- 范围是**会话持久字段**（存在 `rag_session_knowledge_bases` 中间表），不是每次提问参数
+
+**与会话已有 knowledgeBaseIds 的交集**：
+- 用户切换知识库选择时，前端调用 `PUT /api/rag-chat/sessions/{id}/knowledge-bases` 更新关联
+- 后端 `RagChatSessionService.updateSessionKnowledgeBases()` 替换中间表记录
+- 提问时 `getStreamAnswer()` 从 session 获取最新 kbIds → 传入 `answerQuestionStream()`
+
+**交集为空时的防护**：
+- `KnowledgeBaseQueryService.answerQuestionStream()` L260 已有拦截：`knowledgeBaseIds.isEmpty()` → 返回 `NO_RESULT_RESPONSE`
+- 不会到达 `similaritySearch()`，不会触发无过滤全局搜索
+- 状态设为 `NO_RESULTS`
+
+**历史会话和旧客户端兼容**：
+- 历史会话的 `rag_session_knowledge_bases` 关联不变，无需迁移
+- 旧客户端仍通过现有 API 操作，service/environment 只是知识库的附加属性
+
+**涉及文件清单**：
+
+| 层 | 文件 | 改动 |
+|---|---|---|
+| Controller | `RagChatController` | 不改（kbIds 从 session 获取） |
+| DTO | `RagChatDTO.MessageDTO` | 不改（sourcesJson 已含来源） |
+| Service | `RagChatSessionService` | 不改（kbIds 从 session entity 获取） |
+| Service | `KnowledgeBaseQueryService` | 不改（空 kbIds 已拦截） |
+| Repository | `KnowledgeBaseRepository` | 新增 `findByServiceAndEnvironment()` |
+| 前端 | `KnowledgeBaseQueryPage.tsx` | 右栏知识库列表显示 service/environment 标签 |
+| 前端 | `api/knowledgebase.ts` | 列表 API 返回 service/environment 字段 |
+| 测试 | `KnowledgeBaseQueryServiceTest` | 新增空 kbIds 返回 NO_RESULTS 的测试 |
+
+### 3.5 候选 API 变更
 
 | 端点 | 变更 |
 |------|------|
@@ -97,14 +131,39 @@
 | `GET /api/knowledgebase/services` | 新增，返回所有已使用的服务名 |
 | `GET /api/knowledgebase/environments` | 新增，返回所有已使用的环境名 |
 
-### 3.5 数据模型变更
+### 3.6 数据模型变更
 
-- `KnowledgeBaseEntity` 新增：
-  - `service`（varchar(100)，nullable，索引 idx_kb_service）
-  - `environment`（varchar(50)，nullable，索引 idx_kb_environment）
-- Flyway 迁移：`V20261001__add_service_environment.sql`
+**反例分析**：同一文件（如 `deployment-guide.md`）需同时适用于"支付网关/生产"和"支付网关/预发"。
 
-### 3.6 事务与异步边界
+**方案选择**：
+
+| 方案 | 描述 | 优劣 |
+|------|------|------|
+| A. 一对一标签 | 每条 KB 记录绑定一个 service + 一个 environment | 简单，但同一文件需上传两次（不同标签） |
+| B. 多值关联 | KB 与 service/environment 多对多 | 灵活，但 fileHash 唯一约束阻止同一文件多条记录 |
+| C. 显式通用范围 | 一条 KB 记录可有 service=A, environment=通用 | 最简，覆盖 80% 场景 |
+
+**Phase 1 选择方案 C**（理由）：
+- fileHash 全局唯一（`@Column(nullable=false, unique=true)`），同一文件只能有一条 KB 记录
+- 方案 B 需要解除 fileHash 唯一约束，影响去重语义，改动范围大
+- 方案 A 需用户重复上传同一文件，体验差
+- 方案 C 与现有 `category` 模式一致：一个 KB 记录有一个 service + 一个 environment，`environment="通用"` 表示跨环境适用
+
+**最小 schema**：
+```sql
+ALTER TABLE knowledge_bases ADD COLUMN service VARCHAR(100);
+ALTER TABLE knowledge_bases ADD COLUMN environment VARCHAR(50) DEFAULT '通用';
+CREATE INDEX idx_kb_service ON knowledge_bases(service);
+CREATE INDEX idx_kb_environment ON knowledge_bases(environment);
+```
+
+**唯一性/去重语义**：不变。fileHash 仍全局唯一，同一文件只存一条记录。
+
+**编辑行为**：用户可在管理页面修改 service/environment（类似现有 category 行内编辑）。
+
+**旧数据迁移**：已有记录的 service=NULL, environment=NULL。检索时 NULL 视为"未分类"，不参与按 service/environment 的筛选（除非用户明确选择"未分类"）。
+
+### 3.7 事务与异步边界
 
 - `@Transactional` 只在 Service 层
 - LLM/S3/Embedding 调用不在事务内
@@ -125,6 +184,28 @@ event: done     → {"status":"<finalStatus>"}
 - `AtomicBoolean finalized` 协调三条终止路径（正常完成/模型错误/客户端取消）
 - 持久化成功后才发 sources + done
 - 持久化失败返回 `Flux.error(BusinessException)`，不发 done
+
+### 4.1.1 来源快照策略
+
+**Phase 1 不修改 SourceReference 字段**：
+- 当前 4 字段（kbId, documentName, contentSnippet, score）足够
+- 来源面板显示 service/environment 时，通过 kbId 反查 `KnowledgeBaseEntity` 获取（前端已有 kbId）
+- 不在 sourcesJson 中冗余存储 service/environment
+
+**历史消息兼容**：
+- 已持久化的 sourcesJson 不含 service/environment，前端通过 kbId 实时查询
+- 如果 KB 被删除，kbId 查不到记录 → 来源面板显示"已删除的文档"
+
+**文档改标签后旧回答**：
+- 旧回答的 sourcesJson 中 kbId 不变
+- 前端通过 kbId 查当前 service/environment → 显示最新值
+- 这是"快照时来源，实时查标签"策略
+
+**SSE 契约不变**：data → 持久化 → sources → done(status)
+
+**开发批次文件范围修订**：
+- 后端：`KnowledgeBaseRepository`（新增查询）、`KnowledgeBaseListService`（新增筛选）、`KnowledgeBaseController`（新增参数）
+- 前端：`KnowledgeBaseQueryPage.tsx`（来源面板通过 kbId 查标签）、`KnowledgeBaseManagePage.tsx`（service/environment 编辑）
 
 ### 4.2 纯文本 Flux<String> 端点
 
@@ -166,7 +247,7 @@ event: done     → {"status":"<finalStatus>"}
 |------|--------|------|------|
 | Java 根包 `interview.guide` | 数百文件 | **保留** | 改名成本极高，无功能收益 |
 | 数据库名 `interview_guide` | 配置/环境变量 | **保留** | 需 pg_dump/restore，风险大 |
-| S3 bucket `interview-guide` | 创建后不可改 | **保留** | 技术上不可行 |
+| S3 bucket `interview-guide` | 创建后不可改 | **保留** | S3/MinIO 不支持 bucket rename 命令，但可通过"新建 bucket → 复制对象 → 删除旧 bucket → 更新 `app.storage.bucket` 配置"实现迁移。成本在于数据搬迁和停机窗口，非技术不可能 |
 | 容器名前缀 `interview-*` | compose 文件 | **保留** | 改后旧卷不兼容 |
 | JPA 表名（面试相关 6 张） | 后端代码仍在 | **保留** | 改名需 Flyway + 数据迁移 |
 | 前端展示名 | 已改为 DevSupport | **已完成** | 用户可见层已改 |
@@ -183,7 +264,7 @@ event: done     → {"status":"<finalStatus>"}
 - **文件**：`KnowledgeBaseEntity.java`、`V20261001__add_service_environment.sql`、`KnowledgeBaseRepository.java`
 - **依赖**：无
 - **验收**：`./gradlew :app:compileJava` 通过；Flyway 迁移在 `ddl-auto: validate` 下兼容
-- **回退**：删除迁移脚本和新字段
+- **回退**：已应用的 Flyway 迁移不能通过删除脚本回退，需新增反向迁移脚本（`ALTER TABLE ... DROP COLUMN ...`）。未应用的迁移（还在开发中）可以安全删除
 - **未验证**：真实数据库迁移
 
 ### 批次 B：上传与筛选 API
@@ -238,11 +319,29 @@ event: done     → {"status":"<finalStatus>"}
 - **防护**：`similaritySearch()` 的 `filterExpression` 只传入按 service/environment 筛选后的 kbIds
 - **测试点**：上传两个不同服务的文档，检索时验证只返回选中服务的文档
 
-### 9.2 旧文档无标签
+### 9.2 旧文档 NULL 检索语义
 
-- **风险**：已有知识库没有 service/environment 值，检索时被完全排除
-- **防护**：查询时 `service IS NULL` 的文档视为"通用"，参与所有服务的检索
-- **测试点**：上传无标签文档，验证检索可命中
+**三种检索语义**：
+
+| 文档标签 | 检索行为 |
+|----------|----------|
+| service=NULL, environment=NULL（未分类） | 只在选择"未分类"时参与检索 |
+| service=A, environment=通用 | 选择 service=A 的任意环境时参与检索 |
+| service=A, environment=生产 | 只在选择 service=A + environment=生产 时参与检索 |
+
+**跨服务反例**：用户选 service=支付网关，检索不应返回 service=用户中心 的文档。
+- 防护：前端筛选 kbIds 时只传入 service=支付网关 的 KB IDs
+- `similaritySearch()` 的 `buildKbFilterExpression()` 只包含这些 kbIds
+- fallback 路径的 `isDocInKnowledgeBases()` 也只检查这些 kbIds
+
+**跨环境反例**：用户选 service=支付网关 + environment=生产，检索不应返回 environment=预发 的文档。
+- 防护：kbIds 筛选时同时匹配 service + environment
+- `environment=通用` 的文档在 service 匹配时参与检索（跨环境适用）
+
+**两条路径验证**：
+- 主路径 `buildKbFilterExpression(kbIds)`：只构建传入 kbIds 的过滤表达式
+- 回退路径 `isDocInKnowledgeBases(doc, kbIds)`：只检查 doc 的 kb_id 是否在传入列表中
+- 两条路径都只能返回最终允许的 kbIds 对应的文档
 
 ### 9.3 来源与实际检索范围不一致
 
@@ -270,5 +369,5 @@ event: done     → {"status":"<finalStatus>"}
 2. **旧文档的 service 默认值**：是 NULL（视为"通用"）还是要求用户补填？
 3. **环境枚举**：是否预定义环境列表（生产/预发/测试/通用），还是自由文本？
 4. **vector metadata 是否增加 service/environment**：如果增加，可在向量层直接过滤（性能更好）；如果不增加，通过 kbIds 间接过滤（改动更小）
-5. **Controller 直接持有 Repository**：Code Review 指出 `RagChatController` 注入 `KnowledgeBaseRepository` 违反架构约定，是否在本轮修正？
+5. **Controller 直接持有 Repository**：`RagChatController` 当前只注入 `RagChatSessionService`、`KnowledgeBaseQueryService`、`ObjectMapper`，无 Repository 直接注入（已在 `bab3a62` 修正）
 6. **`queryKnowledgeBaseStream` 错误兜底**：适配 `RetrievalResult` 后的兜底是否完整？
