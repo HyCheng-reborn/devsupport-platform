@@ -214,6 +214,44 @@ class RagChatControllerTest {
     }
 
     @Test
+    @DisplayName("Controller 协作：用真实 resolveFinalStatus 判定明确拒答，落库 NO_RESULTS 且 sources 清空为 []")
+    void realRefusalWithRealStatusJudgingClearsSources() throws Exception {
+      // 同样不 mock 最终状态：走真实 resolveFinalStatus，验证真实拒答仍会清空来源。
+      KnowledgeBaseQueryProperties props = new KnowledgeBaseQueryProperties();
+      props.getRewrite().setEnabled(false);
+      KnowledgeBaseQueryService realQueryService = new KnowledgeBaseQueryService(
+          mock(LlmProviderRegistry.class), mock(KnowledgeBaseVectorService.class),
+          mock(KnowledgeBaseListService.class), mock(KnowledgeBaseCountService.class),
+          props, new DefaultResourceLoader());
+      RagChatController realController =
+          new RagChatController(sessionService, realQueryService, objectMapper);
+
+      List<Document> docs = List.of(doc());
+      // 非固定模板、但明确“无法根据现有资料回答”，有文档时也应判为拒答并清空来源。
+      String refusal = "无法根据现有资料回答您的问题，请补充更具体的关键词。";
+      when(sessionService.prepareStreamMessage(SESSION_ID, QUESTION)).thenReturn(MESSAGE_ID);
+      when(sessionService.getStreamAnswer(SESSION_ID, QUESTION))
+          .thenReturn(resultWith(Flux.just(refusal), docs));
+      when(sessionService.buildSourceReferences(anyList())).thenReturn(oneSource());
+
+      List<ServerSentEvent<String>> events =
+          realController.sendMessageStream(SESSION_ID, request()).collectList().block();
+
+      ArgumentCaptor<MessageStatus> statusCap = ArgumentCaptor.forClass(MessageStatus.class);
+      ArgumentCaptor<String> sourcesCap = ArgumentCaptor.forClass(String.class);
+      verify(sessionService).completeStreamMessage(
+          eq(MESSAGE_ID), eq(refusal), statusCap.capture(), sourcesCap.capture());
+      assertThat(statusCap.getValue()).isEqualTo(MessageStatus.NO_RESULTS);
+      assertThat(sourcesCap.getValue()).isEqualTo("[]");
+
+      ServerSentEvent<String> sources = events.get(events.size() - 2);
+      assertThat(sources.event()).isEqualTo("sources");
+      assertThat(sources.data()).isEqualTo("[]");
+      ServerSentEvent<String> done = events.get(events.size() - 1);
+      assertThat(done.data()).contains("NO_RESULTS");
+    }
+
+    @Test
     @DisplayName("持久化失败时不向客户端宣告成功：不发 done，且只尝试写入一次")
     void persistenceFailureDoesNotAnnounceSuccess() {
       List<Document> docs = List.of(doc());

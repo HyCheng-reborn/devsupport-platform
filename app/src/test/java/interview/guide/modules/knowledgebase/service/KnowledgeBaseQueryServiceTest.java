@@ -305,5 +305,58 @@ class KnowledgeBaseQueryServiceTest {
       String refusal = "抱歉，没有找到相关信息，暂时无法回答。";
       assertThat(queryService.resolveFinalStatus(refusal, docs)).isEqualTo(MessageStatus.NO_RESULTS);
     }
+
+    @Test
+    @DisplayName("反例A_条件中的拒答表达（如果…无法回答…请检查）_COMPLETED")
+    void conditionalMentionOfInability_returnsCOMPLETED() {
+      List<Document> docs = List.of(createDoc("API Key 与超时配置", 1L, 0.9));
+      // "无法回答" 处于"如果…，请…"的假设从句，当前回答并未拒答，而是给出排查步骤。
+      String answer = "如果模型无法回答，请先检查 API Key 和超时配置，然后重新发起请求。";
+      assertThat(queryService.resolveFinalStatus(answer, docs)).isEqualTo(MessageStatus.COMPLETED);
+    }
+
+    @Test
+    @DisplayName("反例B_引号内的拒答表达（日志出现‘无法回答’）_COMPLETED")
+    void quotedMentionOfInability_returnsCOMPLETED() {
+      List<Document> docs = List.of(createDoc("模型连接配置", 1L, 0.9));
+      // “无法回答” 是被引用的日志文本（提及），不是当前回答在拒答。
+      String answer = "日志出现‘无法回答’时，请检查模型连接配置并重启服务。";
+      assertThat(queryService.resolveFinalStatus(answer, docs)).isEqualTo(MessageStatus.COMPLETED);
+    }
+
+    @Test
+    @DisplayName("反例C_否定作用范围限定（并非无法连接，但无法回答）_NO_RESULTS")
+    void negationScopedToOtherVerbRealRefusalRemains_returnsNO_RESULTS() {
+      List<Document> docs = List.of(createDoc("一些相关内容", 1L, 0.9));
+      // "并非无法连接" 只否定"连接"，后面的"无法根据现有资料回答" 是真实拒答，不能被放行。
+      String answer = "并非无法连接服务，但无法根据现有资料回答您的问题，请补充文档。";
+      assertThat(queryService.resolveFinalStatus(answer, docs)).isEqualTo(MessageStatus.NO_RESULTS);
+    }
+
+    @Test
+    @DisplayName("对偶_否定拒答本身（并非无法回答，解决方法…）_COMPLETED")
+    void negationOfRefusalItself_returnsCOMPLETED() {
+      List<Document> docs = List.of(createDoc("端口配置说明", 1L, 0.9));
+      String answer = "并非无法回答，解决方法是将端口改为8080。";
+      assertThat(queryService.resolveFinalStatus(answer, docs)).isEqualTo(MessageStatus.COMPLETED);
+    }
+
+    @Test
+    @DisplayName("对偶_引用提及后仍真实拒答（‘无法回答’…但仍无法回答您的问题）_NO_RESULTS")
+    void quotedMentionThenGenuineRefusal_returnsNO_RESULTS() {
+      List<Document> docs = List.of(createDoc("一些相关内容", 1L, 0.9));
+      // 引号里的“无法回答” 是提及；逗号后是当前回答的真实拒答，不能整句放行。
+      String answer = "日志出现‘无法回答’，但根据现有资料仍无法回答您的问题。";
+      assertThat(queryService.resolveFinalStatus(answer, docs)).isEqualTo(MessageStatus.NO_RESULTS);
+    }
+
+    @Test
+    @DisplayName("对偶_条件句与独立拒答同时出现（如果…请补充日志；目前无法…回答）_NO_RESULTS")
+    void conditionalClausePlusIndependentRefusal_returnsNO_RESULTS() {
+      List<Document> docs = List.of(createDoc("一些相关内容", 1L, 0.9));
+      // 前一分句是条件；分号后的"无法根据现有资料回答您的问题" 是独立真实拒答。
+      String answer = "如果需要详细步骤，请补充日志；目前无法根据现有资料回答您的问题。";
+      assertThat(queryService.resolveFinalStatus(answer, docs)).isEqualTo(MessageStatus.NO_RESULTS);
+    }
   }
 }

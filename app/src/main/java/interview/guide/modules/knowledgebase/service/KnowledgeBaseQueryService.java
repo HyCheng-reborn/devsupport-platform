@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -44,13 +45,17 @@ public class KnowledgeBaseQueryService {
     private static final int MAX_REWRITE_HISTORY_CHAR = 200;
 
     /**
-     * 最终拒答只在"起始句"用整句式拒答构造识别，而非任意宽泛子串：
+     * 最终拒答的判定不再依赖"第一句含宽泛子串"，而是把拒答构造、以及可能削弱它的
+     * 引用 / 条件 / 否定分别限定到各自的作用范围后再判断，避免"整句含如果 / 引号 /
+     * 否定词就一律放行"：
      * <ul>
-     *   <li>{@link #REFUSAL_INABILITY}：同一分句内"无法/不能/难以/没法 … 回答/作答/给出答案"的搭配，
-     *       即明确表达"无法依据资料回答当前问题"；</li>
+     *   <li>{@link #REFUSAL_INABILITY}：同一分句内"无法/不能/难以/没法 … 回答/作答/给出答案"的搭配；</li>
      *   <li>{@link #REFUSAL_EMPTY_RETRIEVAL}："未/没有 + 检索|找到|发现|查到|命中 + (相关)? + 信息|内容|资料|结果|依据"，
-     *       对象必须是"信息类"，不匹配"找不到配置文件""知识库中未配置……字段"这类描述性排查用语；</li>
-     *   <li>{@link #REFUSAL_NEGATION}：对拒答的否定（如"并非无法回答"），出现时视为正常作答。</li>
+     *       对象必须是信息类，不匹配"找不到配置文件""知识库中未配置……字段"这类描述性排查用语；</li>
+     *   <li>{@link #QUOTED_SPAN}：成对引号内的内容是"被引用/复述的文本"（提及），判定时先剔除；</li>
+     *   <li>{@link #CLAUSE_SPLIT}：以子句为作用域逐句判断，条件与否定只作用于其所在子句；</li>
+     *   <li>{@link #NEGATION_BEFORE_MODAL}：否定词紧邻情态词时仅取消该处拒答，不外溢到后面的真实拒答；</li>
+     *   <li>{@link #CONDITIONAL_CONNECTIVE}：条件连接词位于拒答之前且同属一个子句时，该拒答是假设。</li>
      * </ul>
      * 固定无结果模板另由 {@code NO_RESULT_RESPONSE} 精确匹配；空输出 / 无文档由 {@code resolveFinalStatus} 处理。
      */
@@ -61,8 +66,20 @@ public class KnowledgeBaseQueryService {
         "(未|没有|未能|没能)[^。．.！!？?\\n\\r]{0,8}(检索|找到|发现|查到|命中)"
             + "[^。．.！!？?\\n\\r]{0,8}(相关)?(信息|内容|资料|结果|依据)");
 
-    private static final Pattern REFUSAL_NEGATION = Pattern.compile(
-        "(并非|并不是|不是|并未|绝非)[^。．.！!？?\\n\\r]{0,4}(无法|不能|没法)");
+    /** 成对引号内的引用 / 提及文本，判定拒答前先剔除，避免把复述的"无法回答"当成当前拒答。 */
+    private static final Pattern QUOTED_SPAN = Pattern.compile(
+        "\u2018[^\u2019]*\u2019|\u201c[^\u201d]*\u201d|\"[^\"\\n\\r]*\"|「[^」]*」|『[^』]*』");
+
+    /** 子句切分：条件 / 否定的作用范围只在同一子句内生效。 */
+    private static final Pattern CLAUSE_SPLIT = Pattern.compile("[，,、；;：:。.．！!？?\\n\\r]+");
+
+    /** 紧邻情态词之前的否定词，只取消该处拒答（并非 / 并不是 / 不是 / 并未 / 绝非 / 绝不）。 */
+    private static final Pattern NEGATION_BEFORE_MODAL = Pattern.compile(
+        "(并非|并不是|不是|并未|绝非|绝不)$");
+
+    /** 位于拒答之前、同属一个子句的条件连接词，表明该拒答是假设而非当前陈述。 */
+    private static final Pattern CONDITIONAL_CONNECTIVE = Pattern.compile(
+        "(如果|假如|倘若|若是|若|要是|万一|一旦|设若)");
 
     private final LlmProviderRegistry llmProviderRegistry;
     private final KnowledgeBaseVectorService vectorService;
@@ -442,12 +459,12 @@ public class KnowledgeBaseQueryService {
      * {@code NO_RESULT_RESPONSE}；因此这里识别：
      * <ol>
      *   <li>正文等于/起始于固定无结果模板；</li>
-     *   <li>起始句本身就是"无法依据资料回答当前问题"的整句式拒答构造
-     *       （{@link #REFUSAL_INABILITY} / {@link #REFUSAL_EMPTY_RETRIEVAL}），且未被否定
-     *       （{@link #REFUSAL_NEGATION}）。</li>
+     *   <li>起始句中存在"无法依据资料回答当前问题"的整句式拒答构造
+     *       （{@link #REFUSAL_INABILITY} / {@link #REFUSAL_EMPTY_RETRIEVAL}），且该构造不是
+     *       被引用的提及、条件假设或被否定词就地取消的表达。</li>
      * </ol>
-     * 判定只看起始句 + 具体句式搭配，既非"第一句含宽泛子串"，也非靠长度放行：
-     * 因此"找不到配置文件时……""知识库中未配置索引版本字段……""并非无法回答……"等正常排查答案不会被误伤。
+     * 条件、引用、否定各自的作用范围都被限定到对应子句 / 引号 / 紧邻情态词，
+     * 不会因"整句含如果 / 引号 / 否定词"就一律放行，也不会把已生效的真实拒答误判为正常作答。
      */
     private boolean isExplicitRefusal(String text) {
         if (text == null || text.isEmpty()) {
@@ -459,15 +476,52 @@ public class KnowledgeBaseQueryService {
         }
         // 只看起始句（第一个句子终止符之前），把描述性/排查性用语限制在整段拒答判定之外
         String leadingSentence = text.split("[。．.！!？?\\n\\r]", 2)[0].trim();
-        if (leadingSentence.isEmpty()) {
+        return containsGenuineRefusal(leadingSentence);
+    }
+
+    /**
+     * 起始句内是否存在"当前回答本身"的明确拒答：先剔除被引用的提及，再以子句为作用域逐句判定。
+     */
+    private boolean containsGenuineRefusal(String sentence) {
+        if (sentence.isEmpty()) {
             return false;
         }
-        // 对拒答的否定（如"并非无法回答"）视为正常作答
-        if (REFUSAL_NEGATION.matcher(leadingSentence).find()) {
-            return false;
+        // 引用 / 复述：成对引号内的"无法回答"只是被提及的文本，不是当前回答在拒答，先剔除
+        String stripped = QUOTED_SPAN.matcher(sentence).replaceAll("");
+        // 以子句为作用域，条件与否定只在各自子句内生效，避免整句一刀切放行
+        for (String clause : CLAUSE_SPLIT.split(stripped)) {
+            if (clause.isBlank()) {
+                continue;
+            }
+            if (hasUnguardedRefusal(clause)) {
+                return true;
+            }
         }
-        return REFUSAL_INABILITY.matcher(leadingSentence).find()
-            || REFUSAL_EMPTY_RETRIEVAL.matcher(leadingSentence).find();
+        return false;
+    }
+
+    private boolean hasUnguardedRefusal(String clause) {
+        return hasUnguardedRefusal(REFUSAL_INABILITY.matcher(clause), clause)
+            || hasUnguardedRefusal(REFUSAL_EMPTY_RETRIEVAL.matcher(clause), clause);
+    }
+
+    /**
+     * 遍历子句内的拒答构造，逐个排除"就地否定"和"同子句条件假设"，只要有未被取消的出现即判为拒答。
+     */
+    private boolean hasUnguardedRefusal(Matcher matcher, String clause) {
+        while (matcher.find()) {
+            String before = clause.substring(0, matcher.start());
+            // 否定只作用于紧邻其后的情态词："并非无法回答"取消，但"并非无法连接…但无法回答"的后者不受影响
+            if (NEGATION_BEFORE_MODAL.matcher(before.trim()).find()) {
+                continue;
+            }
+            // 条件连接词位于拒答之前且同属一个子句时，该拒答是假设而非当前陈述
+            if (CONDITIONAL_CONNECTIVE.matcher(before).find()) {
+                continue;
+            }
+            return true;
+        }
+        return false;
     }
 
     /**

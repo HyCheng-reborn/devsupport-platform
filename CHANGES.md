@@ -7,6 +7,32 @@
 
 ---
 
+## 2026-10-01 — P1 定点修复：条件 / 引用 / 否定的作用范围限定（修复 7801762 确定性回归，待 Codex 四次复核）
+
+**基线**：`7801762`（本任务前 HEAD）
+**状态**：代码已写 + 本地/离线测试通过；**待 Codex 四次复核**（未提前写成复核通过）。
+**范围**：仅改 `KnowledgeBaseQueryService.isExplicitRefusal` 最终拒答判定 + 相关后端测试 + 进度文档。未动共享 `answerQuestionStream`、`isNoResultLike`、探测窗口 `normalizeStreamOutput`、前端/P2、SSE 协议/事务/schema/来源组装/事件顺序补强；Controller 未重新注入 Repository。
+
+### 改了什么
+- 删除整句一刀切的 `REFUSAL_NEGATION`，新增分作用域常量：`QUOTED_SPAN`（成对引号内提及文本，判定前剔除）、`CLAUSE_SPLIT`（子句作用域）、`NEGATION_BEFORE_MODAL`（否定只紧邻情态词）、`CONDITIONAL_CONNECTIVE`（条件词在同子句且位于拒答前才生效）。`isExplicitRefusal` 拆为 `containsGenuineRefusal` + `hasUnguardedRefusal(Matcher,clause)`：逐子句遍历两处拒答构造，只要存在一处未被就地否定/非同子句条件/不在引用内的匹配即判拒答。新增 `import java.util.regex.Matcher`。
+- 测试：`KnowledgeBaseQueryServiceTest` 新增三条失败反例（条件句/引用句=COMPLETED；否定作用错位的真实拒答=NO_RESULTS）及三条对偶用例（否定拒答本身=COMPLETED；引用后真实拒答=NO_RESULTS；条件+独立拒答=NO_RESULTS）。`RagChatControllerTest` 新增 `realRefusalWithRealStatusJudgingClearsSources`（不 mock 状态，真实 resolveFinalStatus 判拒答，断言落库 NO_RESULTS + sources 清空 `[]`），与已有正常回答保留来源用例配对。
+
+### 为什么
+- `7801762` 仍把整句一刀切：`REFUSAL_INABILITY.find()` 命中条件/引用里的“无法回答”误判 NO_RESULTS；`REFUSAL_NEGATION` 命中即整句放行，把“并非无法连接…”后面的真实拒答也误判 COMPLETED。需把条件/引用/否定各自限定到对应表达；不能“整句含如果/引号/否定词就放行”，也不能只删词/扩表/靠长度。
+
+### 验证（均为离线/本地；PowerShell 直取 `$LASTEXITCODE`）
+- 先加失败用例→对 `7801762` 确认 FAIL（31 tests completed, 3 failed：反例 A 行315 / B 行324 / C 行333，GRADLE_EXIT=1）；修复后转绿。
+- `./gradlew :app:compileJava :app:compileTestJava --no-daemon` → COMPILE_EXIT=0。
+- 定点 `:app:test --tests '...KnowledgeBaseQueryServiceTest' --tests '...RagChatControllerTest'` → GRADLE_EXIT=0（resolveFinalStatus 套件 tests=20/failures=0/errors=0/skipped=0；成功路径 tests=5/failures=0；answerQuestionStream 契约 tests=3；顶层控制器 tests=3）。
+- `./gradlew :app:test --no-daemon`（全量）→ GRADLE_EXIT=0，BUILD SUCCESSFUL，无 FAILED。
+- `git diff --check` → exit 0。
+
+### 尚未验证 / 保留边界
+- 未连真实 LLM / 付费 Embedding / 真实 L1 / 生产库跑端到端 SSE；线上多样措辞、引用/条件/否定复杂嵌套未经样本验证。
+- 否定词与情态词被较多文字隔开、或条件标记出现在拒答之后，仍属已知规则边界；未引入额外 LLM 调用/大型解析/架构改造。
+
+---
+
 ## 2026-10-01 — P1 定点修复：收窄最终拒答判定（修复 1ba2a57 确定性回归，待 Codex 复核）
 
 **基线**：`1ba2a57`（本任务前 HEAD，= Codex 二次复核通过并确认保留 P2/事件顺序的版本）

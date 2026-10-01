@@ -392,7 +392,8 @@
 - `isExplicitRefusal` 保留固定模板 `NO_RESULT_RESPONSE` 的 equals/startsWith 判定；非模板部分只看起始句，先过否定护栏，再依次匹配两个拒答构造。判定基于具体句式搭配 + 结构位置，不靠宽泛子串、不靠长度放行。
 
 ### 保留的局限（规则边界）
-- 拒答语句若只出现在第一句之后（如“抱歉。未检索到相关信息。”）可能被当作 COMPLETED；若一段有效回答的**起始句**本身肯定式地断言“无法…回答”/“未检索到…信息”（罕见，多为条件/引用/否定句，已由否定护栏覆盖）仍可能误判。选择“起始句 + 构造级正则”是在不引入额外 LLM 调用/架构改造前提下的平衡。
+- 拒答语句若只出现在第一句之后（如“抱歉。未检索到相关信息。”）可能被当作 COMPLETED；若一段有效回答的**起始句**本身肯定式地断言“无法…回答”/“未检索到…信息”仍可能误判。选择“起始句 + 构造级正则”是在不引入额外 LLM 调用/架构改造前提下的平衡。
+  > 更正（Codex 三次复核）：本条旧表述“多为条件/引用/否定句，已由否定护栏覆盖”**并不属实**——`7801762` 的 `REFUSAL_NEGATION` 对整句一刀切，条件句、引用文本与否定作用范围仍有确定性误判（详见 §15，已于本轮修复）。
 
 ### 测试
 - 先写两条回归用例（上面反例）→ 对 `1ba2a57` 实现确认 FAIL（failures=2，行 252/261），修复后转绿。
@@ -409,5 +410,50 @@
 ### 尚未验证的真实行为（不得写成已验证）
 - 未连真实 LLM / 付费 Embedding / 真实 L1 / 生产数据库跑端到端 SSE；真实模型输出的多样拒答措辞与正则覆盖面未经线上样本验证。
 - 当前状态为“待 Codex 复核”，不得提前写成复核通过。
+
+## 15. P1 定点修复：条件 / 引用 / 否定的作用范围限定（修复 7801762 确定性回归）
+
+**时间**: 2026-10-01（北京时间）
+**基线 HEAD**: `7801762`（§14）
+**状态**: 代码已写 + 本地/离线测试通过；**待 Codex 四次复核**（未提前写成复核通过）。
+**范围**: 仅改最终拒答判定（`KnowledgeBaseQueryService.isExplicitRefusal` 及其私有辅助）与相关后端测试、进度文档。前端/P2、共享 `answerQuestionStream`、`isNoResultLike`、探测窗口 `normalizeStreamOutput`、SSE 协议、事务、schema、来源组装、已通过的事件顺序补强均不动；Controller 未重新注入 Repository。
+
+### 回归根因（Codex 三次复核，7801762 确定性错误）
+§14 的 `isExplicitRefusal` 仍对整句一刀切：`REFUSAL_INABILITY.find()` 会命中条件句、引用文本里的“无法回答”；`REFUSAL_NEGATION` 命中即对整句返回正常，会把“并非无法连接”错误外溢到后面的真实拒答。三条真实判定反例（有检索文档时，均不被探测窗口拦截，错误发生在最终状态判定）：
+1. “如果模型无法回答，请先检查 API Key 和超时配置，然后重新发起请求。” 期望 COMPLETED，`7801762` 判 NO_RESULTS。
+2. “日志出现‘无法回答’时，请检查模型连接配置并重启服务。” 期望 COMPLETED，`7801762` 判 NO_RESULTS。
+3. “并非无法连接服务，但无法根据现有资料回答您的问题，请补充文档。” 期望 NO_RESULTS，`7801762` 判 COMPLETED。
+
+### 最小方案（把条件 / 引用 / 否定各自限定到对应作用范围再判定）
+- 删除整句一刀切的 `REFUSAL_NEGATION`，仍只看起始句，但改为分作用域判定：
+  - `QUOTED_SPAN`：判定前先把成对引号（U+2018/2019、U+201C/201D、ASCII "、「」、『』）内的引用/提及文本剔除，“日志出现‘无法回答’”不再被当作当前拒答。
+  - `CLAUSE_SPLIT`：以子句（，,、；;：:。 等）为作用域逐句判断，条件/否定只在所在子句内生效。
+  - `NEGATION_BEFORE_MODAL`：仅当否定词紧邻拒答情态词（“并非无法回答”）时取消该处拒答，不外溢到同句后面的真实拒答。
+  - `CONDITIONAL_CONNECTIVE`：仅当条件连接词（如果/假如/倘若/若/要是/万一/一旦/设若）位于拒答之前且同属一个子句时，该拒答视为假设。
+  - 逐子句遍历 `REFUSAL_INABILITY` / `REFUSAL_EMPTY_RETRIEVAL` 的每一处匹配，只要存在一处“未被就地否定、非同子句条件假设、不在引用内”的拒答构造即判为拒答；固定模板 equals/startsWith、空输出 / 无文档仍走原路径。
+- 未采用“整句含如果就放行”“整句含引号就放行”“整句含否定词就放行”的一刀切，也未针对具体字符串打补丁。
+
+### 保留的局限（规则边界）
+- 否定词与拒答情态词被较多文字隔开（“这并非意味着我们无法回答”）、或条件标记出现在拒答之后，仍可能被就地判定，属已知边界；未引入额外 LLM 调用 / 大型解析框架 / 架构改造。
+- 有效回答起始句肯定式断言“无法…回答”仍会被判拒答（本就是拒答语义）；真实线上多样措辞未经样本验证。
+
+### 测试
+- 先加三条失败用例（反例 A/B/C，`KnowledgeBaseQueryServiceTest` 行 315/324/333）→ 对 `7801762` 确认 FAIL（31 tests completed, 3 failed，GRADLE_EXIT=1），修复后转绿。
+- 对偶用例（同批新增，与三条反例成对讲清作用范围）：
+  - “并非无法回答，解决方法是将端口改为8080。” → COMPLETED（否定拒答本身）。
+  - “日志出现‘无法回答’，但根据现有资料仍无法回答您的问题。” → NO_RESULTS（引用提及后仍有真实拒答）。
+  - “如果需要详细步骤，请补充日志；目前无法根据现有资料回答您的问题。” → NO_RESULTS（条件子句与独立真实拒答并存，不整句放行）。
+- 保留 §13/§14 全部回归：固定模板 / 无文档 / 空输出 = NO_RESULTS；正常排查答案 = COMPLETED。
+- `RagChatControllerTest` 新增 `realRefusalWithRealStatusJudgingClearsSources`：仍不 mock 最终状态，用真实 `resolveFinalStatus` 判定明确非模板拒答，断言落库 NO_RESULTS 且 sources 清空为 `[]`、发送的 sources 事件为 `[]`、done 含 NO_RESULTS；与 §14 的 `normalAnswerWithRealStatusJudgingPersistsCompletedWithSources`（正常回答保留来源）形成“保留来源 / 清空来源”配对。
+
+### 验证（均为离线/本地，非真实环境；PowerShell 直取 `$LASTEXITCODE`）
+- `./gradlew :app:compileJava :app:compileTestJava --no-daemon` → COMPILE_EXIT=0。
+- 定点 `:app:test --tests '...KnowledgeBaseQueryServiceTest' --tests '...RagChatControllerTest'` → GRADLE_EXIT=0，BUILD SUCCESSFUL；resolveFinalStatus 套件 tests=20/failures=0/errors=0/skipped=0，成功路径套件 tests=5/failures=0，answerQuestionStream 契约 tests=3/failures=0，顶层控制器 tests=3/failures=0。
+- 全量 `:app:test --no-daemon` → GRADLE_EXIT=0，BUILD SUCCESSFUL，无 FAILED。
+- `git diff --check` → exit 0。
+
+### 尚未验证的真实行为（不得写成已验证）
+- 未连真实 LLM / 付费 Embedding / 真实 L1 / 生产库跑端到端 SSE；真实模型多样拒答措辞、引用/条件/否定的复杂嵌套未经线上样本验证。
+- 当前状态为“待 Codex 四次复核”，不得提前写成复核通过。
 
 
