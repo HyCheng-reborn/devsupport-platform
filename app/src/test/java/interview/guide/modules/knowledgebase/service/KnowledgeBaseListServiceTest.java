@@ -1,5 +1,6 @@
 package interview.guide.modules.knowledgebase.service;
 
+import interview.guide.common.exception.BusinessException;
 import interview.guide.infrastructure.file.FileStorageService;
 import interview.guide.infrastructure.mapper.KnowledgeBaseMapper;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseEntity;
@@ -20,7 +21,9 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -195,6 +198,79 @@ class KnowledgeBaseListServiceTest {
       List<String> result = listService.getAllEnvironments();
 
       assertThat(result).containsExactly("测试", "生产");
+    }
+  }
+
+  @DisplayName("updateLabels 标签更新")
+  @Nested
+  class UpdateLabelsTests {
+
+    @Test
+    @DisplayName("正常保存: service=支付网关, environment=生产 → 保存成功")
+    void normalSave() {
+      KnowledgeBaseEntity kb = buildKb(1L, "A", null, null);
+      when(knowledgeBaseRepository.findById(1L)).thenReturn(java.util.Optional.of(kb));
+
+      listService.updateLabels(1L, "支付网关", "生产");
+
+      verify(knowledgeBaseRepository).save(kb);
+      assertThat(kb.getService()).isEqualTo("支付网关");
+      assertThat(kb.getEnvironment()).isEqualTo("生产");
+    }
+
+    @Test
+    @DisplayName("空白转NULL: service=\"\", environment=\"\" → 存为 NULL")
+    void blankToNull() {
+      KnowledgeBaseEntity kb = buildKb(1L, "A", "支付", "生产");
+      when(knowledgeBaseRepository.findById(1L)).thenReturn(java.util.Optional.of(kb));
+
+      listService.updateLabels(1L, "", "");
+
+      verify(knowledgeBaseRepository).save(kb);
+      assertThat(kb.getService()).isNull();
+      assertThat(kb.getEnvironment()).isNull();
+    }
+
+    @Test
+    @DisplayName("原标签清空: service=null, environment=null → 清空")
+    void clearLabels() {
+      KnowledgeBaseEntity kb = buildKb(1L, "A", "支付", "生产");
+      when(knowledgeBaseRepository.findById(1L)).thenReturn(java.util.Optional.of(kb));
+
+      listService.updateLabels(1L, null, null);
+
+      verify(knowledgeBaseRepository).save(kb);
+      assertThat(kb.getService()).isNull();
+      assertThat(kb.getEnvironment()).isNull();
+    }
+
+    @Test
+    @DisplayName("不存在 ID 报错: updateLabels(999L, ...) → 抛出 BusinessException")
+    void notFoundId() {
+      when(knowledgeBaseRepository.findById(999L)).thenReturn(java.util.Optional.empty());
+
+      assertThatThrownBy(() -> listService.updateLabels(999L, "支付", "生产"))
+          .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    @DisplayName("service 超长报错: 超过 100 字符")
+    void serviceTooLong() {
+      String longService = "a".repeat(101);
+
+      assertThatThrownBy(() -> listService.updateLabels(1L, longService, "生产"))
+          .isInstanceOf(BusinessException.class)
+          .hasMessageContaining("100");
+    }
+
+    @Test
+    @DisplayName("environment 超长报错: 超过 50 字符")
+    void environmentTooLong() {
+      String longEnv = "a".repeat(51);
+
+      assertThatThrownBy(() -> listService.updateLabels(1L, "支付", longEnv))
+          .isInstanceOf(BusinessException.class)
+          .hasMessageContaining("50");
     }
   }
 }

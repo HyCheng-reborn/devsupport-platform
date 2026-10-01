@@ -189,6 +189,14 @@ public class KnowledgeBaseListService {
      */
     @Transactional
     public void updateLabels(Long id, String service, String environment) {
+        // 长度验证
+        if (service != null && service.trim().length() > 100) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "服务名称不能超过100个字符");
+        }
+        if (environment != null && environment.trim().length() > 50) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "环境名称不能超过50个字符");
+        }
+
         KnowledgeBaseEntity entity = knowledgeBaseRepository.findById(id)
             .orElseThrow(() -> new BusinessException(ErrorCode.KNOWLEDGE_BASE_NOT_FOUND, "知识库不存在"));
         entity.setService(service != null && !service.isBlank() ? service.trim() : null);

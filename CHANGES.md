@@ -1,3 +1,19 @@
+**2026-10-02 -- DevSupport Phase 1 批次 B 定点修复**
+- 改了什么：
+  - 修复管理页 service/environment 筛选组合逻辑（“未分类”哨兵值 `__uncategorized__` 不入数据库，纯前端过滤 NULL）
+  - 确保搜索/category/sortBy 与 service/environment 可组合（所有筛选改为客户端 useMemo 组合，不再互斥清除）
+  - 新增 updateLabels 测试 6 个（正常保存/空白转NULL/清空/不存在ID/service超长/environment超长）
+  - 后端 updateLabels 新增长度验证（service≤100, environment≤50）
+  - 前端标签输入框添加 maxLength 属性 + 提交前长度检查
+- 为什么：批次 B 补证，确保筛选逻辑正确、测试覆盖完整
+- 验证：
+  - `./gradlew :app:test --no-daemon` exit 0（482/0/46）
+  - `cd frontend && pnpm run build` exit 0
+  - `git diff --check` 无尾随空格错误
+- 尚未验证的真实行为：
+  - 前端筛选端到端交互（需启动完整服务）
+  - Repository 筛选查询在真实 PostgreSQL 上的行为
+
 **2026-10-02 -- DevSupport Phase 1 批次 B 实施（上传 API + 管理页面标签）**
 - 改了什么：
   - 后端：上传 API 增加 service/environment 可选参数；列表 API 增加筛选；新增 GET /services、GET /environments、PUT /{id}/labels 端点；重复上传响应包含已有 KB 的 service/environment

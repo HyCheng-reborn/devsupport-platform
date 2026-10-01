@@ -634,3 +634,19 @@
 **批次 C 待办**:
 - SourceReference 新增 service/environment 快照字段
 - 前端来源面板显示标签
+
+### 批次 B 定点修复（2026-10-02）
+**后端改动**:
+- `KnowledgeBaseListService.updateLabels()` 新增长度验证（service≤100, environment≤50）
+- 新增 6 个 updateLabels 测试（正常/空白/清空/不存在/超长）
+**前端改动**:
+- `KnowledgeBaseManagePage.tsx`：筛选逻辑改为客户端 useMemo 组合，搜索/分类/service/environment/sortBy 全部可组合
+- “未分类”哨兵值 `__uncategorized__` 纯前端过滤 NULL，不入数据库查询
+- 标签输入框添加 maxLength + 提交前长度检查
+- 移除筛选器之间的互斥清除逻辑
+**测试结果**:
+- 后端：482 tests / 0 failures / 46 skipped / exit 0
+- 前端：pnpm run build / exit 0
+**未验证**:
+- 前端筛选端到端交互
+- Repository 筛选在真实 PostgreSQL 上的行为

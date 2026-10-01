@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useRef, useState} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {AnimatePresence, motion} from 'framer-motion';
 import {
   AlertCircle,
@@ -114,7 +114,8 @@ function StatCard({
 
 export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeBaseManagePageProps) {
   const [stats, setStats] = useState<KnowledgeBaseStats | null>(null);
-  const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBaseItem[]>([]);
+  // 原始列表（从后端获取，未经搜索/分类/服务/环境筛选）
+  const [allKnowledgeBases, setAllKnowledgeBases] = useState<KnowledgeBaseItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchKeyword, setSearchKeyword] = useState('');
   const [sortBy, setSortBy] = useState<SortOption>('time');
@@ -145,71 +146,87 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
   // 重新向量化状态
   const [revectorizing, setRevectorizing] = useState<number | null>(null);
 
+  // 客户端组合筛选：搜索 + 分类 + service + environment 同时生效
+  const filteredKnowledgeBases = useMemo(() => {
+    let items = allKnowledgeBases;
+
+    // 搜索关键词筛选
+    if (searchKeyword.trim()) {
+      const kw = searchKeyword.trim().toLowerCase();
+      items = items.filter(kb => kb.name.toLowerCase().includes(kw));
+    }
+
+    // 分类筛选
+    if (selectedCategory) {
+      items = items.filter(kb => kb.category === selectedCategory);
+    }
+
+    // service 筛选
+    if (serviceFilter === '__uncategorized__') {
+      items = items.filter(kb => kb.service === null || kb.service === undefined);
+    } else if (serviceFilter) {
+      items = items.filter(kb => kb.service === serviceFilter);
+    }
+
+    // environment 筛选
+    if (environmentFilter === '__uncategorized__') {
+      items = items.filter(kb => kb.environment === null || kb.environment === undefined);
+    } else if (environmentFilter) {
+      items = items.filter(kb => kb.environment === environmentFilter);
+    }
+
+    return items;
+  }, [allKnowledgeBases, searchKeyword, selectedCategory, serviceFilter, environmentFilter]);
+
+  // 排序（在筛选之后）
+  const knowledgeBases = useMemo(() => {
+    const items = [...filteredKnowledgeBases];
+    switch (sortBy) {
+      case 'size':
+        return items.sort((a, b) => b.fileSize - a.fileSize);
+      case 'access':
+        return items.sort((a, b) => b.accessCount - a.accessCount);
+      case 'question':
+        return items.sort((a, b) => b.questionCount - a.questionCount);
+      default:
+        // time: 按 uploadedAt 降序
+        return items.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
+    }
+  }, [filteredKnowledgeBases, sortBy]);
+
   // 加载数据（不显示loading状态，用于轮询）
   const loadDataSilent = useCallback(async () => {
     try {
-      const needClientFilter = serviceFilter === '__uncategorized__' || environmentFilter === '__uncategorized__';
-      const apiService = !needClientFilter && serviceFilter ? serviceFilter : undefined;
-      const apiEnvironment = !needClientFilter && environmentFilter ? environmentFilter : undefined;
-
       const [statsData, kbList, categoryList, servicesList, envsList] = await Promise.all([
         knowledgeBaseApi.getStatistics(),
-        searchKeyword
-          ? knowledgeBaseApi.search(searchKeyword)
-          : selectedCategory
-          ? knowledgeBaseApi.getByCategory(selectedCategory)
-          : knowledgeBaseApi.getAllKnowledgeBases(sortBy, undefined, apiService, apiEnvironment),
+        knowledgeBaseApi.getAllKnowledgeBases(),
         knowledgeBaseApi.getAllCategories(),
         knowledgeBaseApi.getAllServices(),
         knowledgeBaseApi.getAllEnvironments(),
       ]);
       setStats(statsData);
-      let filteredList = kbList;
-      if (needClientFilter) {
-        filteredList = kbList.filter(kb => {
-          if (serviceFilter === '__uncategorized__' && kb.service !== null && kb.service !== undefined) return false;
-          if (environmentFilter === '__uncategorized__' && kb.environment !== null && kb.environment !== undefined) return false;
-          return true;
-        });
-      }
-      setKnowledgeBases(filteredList);
+      setAllKnowledgeBases(kbList);
       setCategories(categoryList);
       setServices(servicesList);
       setEnvironments(envsList);
     } catch (error) {
       console.error('加载数据失败:', error);
     }
-  }, [searchKeyword, sortBy, selectedCategory, serviceFilter, environmentFilter]);
+  }, []);
 
   // 加载数据
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const needClientFilter = serviceFilter === '__uncategorized__' || environmentFilter === '__uncategorized__';
-      const apiService = !needClientFilter && serviceFilter ? serviceFilter : undefined;
-      const apiEnvironment = !needClientFilter && environmentFilter ? environmentFilter : undefined;
-
       const [statsData, kbList, categoryList, servicesList, envsList] = await Promise.all([
         knowledgeBaseApi.getStatistics(),
-        searchKeyword
-          ? knowledgeBaseApi.search(searchKeyword)
-          : selectedCategory
-          ? knowledgeBaseApi.getByCategory(selectedCategory)
-          : knowledgeBaseApi.getAllKnowledgeBases(sortBy, undefined, apiService, apiEnvironment),
+        knowledgeBaseApi.getAllKnowledgeBases(),
         knowledgeBaseApi.getAllCategories(),
         knowledgeBaseApi.getAllServices(),
         knowledgeBaseApi.getAllEnvironments(),
       ]);
       setStats(statsData);
-      let filteredList = kbList;
-      if (needClientFilter) {
-        filteredList = kbList.filter(kb => {
-          if (serviceFilter === '__uncategorized__' && kb.service !== null && kb.service !== undefined) return false;
-          if (environmentFilter === '__uncategorized__' && kb.environment !== null && kb.environment !== undefined) return false;
-          return true;
-        });
-      }
-      setKnowledgeBases(filteredList);
+      setAllKnowledgeBases(kbList);
       setCategories(categoryList);
       setServices(servicesList);
       setEnvironments(envsList);
@@ -218,11 +235,13 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
     } finally {
       setLoading(false);
     }
-  }, [searchKeyword, sortBy, selectedCategory, serviceFilter, environmentFilter]);
+  }, []);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // 筛选条件变化时不再需要重新请求后端，useMemo 会自动重新计算
 
   // 轮询：当有 PENDING 或 PROCESSING 状态时，每5秒刷新一次
   useEffect(() => {
@@ -345,9 +364,19 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
   // 保存标签
   const handleSaveLabels = async (id: number) => {
     try {
+      const trimmedService = editingService.trim();
+      const trimmedEnv = editingEnvironment.trim();
+      if (trimmedService.length > 100) {
+        alert('服务名称不能超过100个字符');
+        return;
+      }
+      if (trimmedEnv.length > 50) {
+        alert('环境名称不能超过50个字符');
+        return;
+      }
       setSavingLabels(true);
-      const serviceToSave = editingService.trim() || undefined;
-      const envToSave = editingEnvironment.trim() || undefined;
+      const serviceToSave = trimmedService || undefined;
+      const envToSave = trimmedEnv || undefined;
       await knowledgeBaseApi.updateLabels(id, serviceToSave, envToSave);
       setEditingLabelsId(null);
       setEditingService('');
@@ -370,10 +399,10 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
     }
   };
 
-  // 搜索处理
+  // 搜索处理（现在通过 useMemo 实时过滤，保留方法以备扩展）
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    loadData();
+    // 搜索已通过 useMemo 自动生效，无需额外操作
   };
 
   return (
@@ -450,11 +479,7 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
           <div className="relative">
             <select
               value={sortBy}
-              onChange={(e) => {
-                setSortBy(e.target.value as SortOption);
-                setSearchKeyword('');
-                setSelectedCategory(null);
-              }}
+              onChange={(e) => setSortBy(e.target.value as SortOption)}
               className="appearance-none pl-4 pr-10 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white cursor-pointer"
             >
               <option value="time">按时间排序</option>
@@ -469,10 +494,7 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
           <div className="relative">
             <select
               value={selectedCategory || ''}
-              onChange={(e) => {
-                setSelectedCategory(e.target.value || null);
-                setSearchKeyword('');
-              }}
+              onChange={(e) => setSelectedCategory(e.target.value || null)}
               className="appearance-none pl-4 pr-10 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white cursor-pointer"
             >
               <option value="">全部分类</option>
@@ -489,11 +511,7 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
           <div className="relative">
             <select
               value={serviceFilter}
-              onChange={(e) => {
-                setServiceFilter(e.target.value);
-                setSearchKeyword('');
-                setSelectedCategory(null);
-              }}
+              onChange={(e) => setServiceFilter(e.target.value)}
               className="appearance-none pl-4 pr-10 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white cursor-pointer"
             >
               <option value="">全部服务</option>
@@ -509,11 +527,7 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
           <div className="relative">
             <select
               value={environmentFilter}
-              onChange={(e) => {
-                setEnvironmentFilter(e.target.value);
-                setSearchKeyword('');
-                setSelectedCategory(null);
-              }}
+              onChange={(e) => setEnvironmentFilter(e.target.value)}
               className="appearance-none pl-4 pr-10 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white cursor-pointer"
             >
               <option value="">全部环境</option>
@@ -688,6 +702,7 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
                             onChange={(e) => setEditingService(e.target.value)}
                             onKeyDown={(e) => handleLabelsKeyDown(e, kb.id)}
                             placeholder="服务"
+                            maxLength={100}
                             list="service-suggestions"
                             className="w-24 px-2 py-1 text-sm border border-primary-300 dark:border-primary-600 rounded focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
                             disabled={savingLabels}
@@ -741,6 +756,7 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
                             onChange={(e) => setEditingEnvironment(e.target.value)}
                             onKeyDown={(e) => handleLabelsKeyDown(e, kb.id)}
                             placeholder="环境"
+                            maxLength={50}
                             list="environment-suggestions"
                             className="w-24 px-2 py-1 text-sm border border-primary-300 dark:border-primary-600 rounded focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
                             disabled={savingLabels}
