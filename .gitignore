@@ -29,3 +29,20 @@ frontend/test-results/
 frontend/playwright-report/
 /.agents
 skills-lock.json
+
+# IDE
+.vscode/
+
+# Review / status artifacts
+__review_diff.txt
+status.txt
+
+# Log files
+*.log
+
+# Archive files (eval datasets should not be committed)
+*.tar.gz
+*.zip
+
+# Local environment notes
+interview-guide_*.md

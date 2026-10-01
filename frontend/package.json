@@ -13,7 +13,8 @@
     "test:interview-capacity": "node --test src/components/knowledgebaseInterview/interviewCapacity.test.ts",
     "test:interview-entry": "node --test src/pages/interviewEntry.test.ts",
     "test:rag-stream": "node --test src/api/ragStreamStatus.test.ts",
-    "test:sse-stream": "node --test src/api/stream.test.ts"
+    "test:sse-stream": "node --test src/api/stream.test.ts",
+    "test:kb-filter": "node --test src/utils/kbFilter.test.ts"
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.1.18",

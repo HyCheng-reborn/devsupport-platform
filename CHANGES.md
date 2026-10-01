@@ -1,3 +1,19 @@
+**2026-10-02 -- DevSupport Phase 1 批次 B 紧急定点收尾**
+- 改了什么：
+  - 改进“未分类”状态表示：前端筛选从字符串字面量 `'\0UNCATEGORIZED'` 改为类型安全的 `FilterState` 联合类型（`'all' | 'unclassified' | { type: 'value'; value: string }`），彻底消除哨兵值与真实标签冲突的可能
+  - 抽取筛选纯函数 `applyFilters` 到 `frontend/src/utils/kbFilter.ts`，新增 9 条 Node 测试覆盖（含 `\0UNCATEGORIZED` 真实标签不混淆、service+environment 交集、空列表）
+  - 修正 `KnowledgeBaseUploadServiceTest` 中 `serviceExactly100` 和 `nullServiceAndEnvironment` 两个用例：从 try/catch 吞异常改为打桩完整上传链路 + 明确 `verify(persistenceService)` 断言
+  - 新增 `rejectLongService` 用例：断言超长拒绝时 fileValidationService/fileHashService/storageService/persistenceService/vectorizeStreamProducer 均无交互
+- 为什么：批次 B 最终收尾，消除哨兵值语义隐患、确保测试用例真实验证成功路径
+- 验证：
+  - `./gradlew :app:test --no-daemon` exit 0（485 tests / 0 failures / 57 skipped）
+  - `cd frontend && pnpm run build` exit 0
+  - `node --test src/utils/kbFilter.test.ts` 9 pass / 0 fail
+  - `git diff --check` exit 0
+- 尚未验证的真实行为：
+  - 前端筛选端到端交互（需启动完整服务）
+  - Repository 筛选查询在真实 PostgreSQL 上的行为
+
 **2026-10-02 -- DevSupport Phase 1 批次 B 最终定点修复**
 - 改了什么：
   - 后端 `KnowledgeBaseUploadService.uploadKnowledgeBase` 在 S3/fileHash/Redis 调用之前校验 service≤100/environment≤50，超长抛 BusinessException

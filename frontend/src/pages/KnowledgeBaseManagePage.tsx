@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import {knowledgeBaseApi, KnowledgeBaseItem, KnowledgeBaseStats, SortOption, VectorStatus,} from '../api/knowledgebase';
 import DeleteConfirmDialog from '../components/DeleteConfirmDialog';
+import type { FilterState } from '../utils/kbFilter';
 
 interface KnowledgeBaseManagePageProps {
   onUpload: () => void;
@@ -131,8 +132,8 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
   const categoryInputRef = useRef<HTMLInputElement>(null);
 
   // 服务/环境标签状态
-  const [serviceFilter, setServiceFilter] = useState<string>('');
-  const [environmentFilter, setEnvironmentFilter] = useState<string>('');
+  const [serviceFilter, setServiceFilter] = useState<FilterState>({ type: 'all' });
+  const [environmentFilter, setEnvironmentFilter] = useState<FilterState>({ type: 'all' });
   const [services, setServices] = useState<string[]>([]);
   const [environments, setEnvironments] = useState<string[]>([]);
 
@@ -165,17 +166,17 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
     }
 
     // service 筛选
-    if (serviceFilter === '\0UNCATEGORIZED') {
+    if (serviceFilter.type === 'unclassified') {
       items = items.filter(kb => kb.service === null || kb.service === undefined);
-    } else if (serviceFilter) {
-      items = items.filter(kb => kb.service === serviceFilter);
+    } else if (serviceFilter.type === 'value') {
+      items = items.filter(kb => kb.service === serviceFilter.value);
     }
 
     // environment 筛选
-    if (environmentFilter === '\0UNCATEGORIZED') {
+    if (environmentFilter.type === 'unclassified') {
       items = items.filter(kb => kb.environment === null || kb.environment === undefined);
-    } else if (environmentFilter) {
-      items = items.filter(kb => kb.environment === environmentFilter);
+    } else if (environmentFilter.type === 'value') {
+      items = items.filter(kb => kb.environment === environmentFilter.value);
     }
 
     return items;
@@ -513,14 +514,19 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
           {/* 服务筛选 */}
           <div className="relative">
             <select
-              value={serviceFilter}
-              onChange={(e) => setServiceFilter(e.target.value)}
+              value={serviceFilter.type === 'all' ? 'all' : serviceFilter.type === 'unclassified' ? 'unclassified' : `value:${serviceFilter.value}`}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val === 'all') setServiceFilter({ type: 'all' });
+                else if (val === 'unclassified') setServiceFilter({ type: 'unclassified' });
+                else setServiceFilter({ type: 'value', value: val.replace('value:', '') });
+              }}
               className="appearance-none pl-4 pr-10 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white cursor-pointer"
             >
-              <option value="">全部服务</option>
-              <option value="\0UNCATEGORIZED">未分类</option>
+              <option value="all">全部服务</option>
+              <option value="unclassified">未分类</option>
               {services.map((s) => (
-                <option key={s} value={s}>{s}</option>
+                <option key={s} value={`value:${s}`}>{s}</option>
               ))}
             </select>
             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
@@ -529,14 +535,19 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
           {/* 环境筛选 */}
           <div className="relative">
             <select
-              value={environmentFilter}
-              onChange={(e) => setEnvironmentFilter(e.target.value)}
+              value={environmentFilter.type === 'all' ? 'all' : environmentFilter.type === 'unclassified' ? 'unclassified' : `value:${environmentFilter.value}`}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val === 'all') setEnvironmentFilter({ type: 'all' });
+                else if (val === 'unclassified') setEnvironmentFilter({ type: 'unclassified' });
+                else setEnvironmentFilter({ type: 'value', value: val.replace('value:', '') });
+              }}
               className="appearance-none pl-4 pr-10 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white cursor-pointer"
             >
-              <option value="">全部环境</option>
-              <option value="\0UNCATEGORIZED">未分类</option>
+              <option value="all">全部环境</option>
+              <option value="unclassified">未分类</option>
               {environments.map((env) => (
-                <option key={env} value={env}>{env}</option>
+                <option key={env} value={`value:${env}`}>{env}</option>
               ))}
             </select>
             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />

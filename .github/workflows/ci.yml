@@ -70,6 +70,7 @@ jobs:
           pnpm run test:interview-entry
           pnpm run test:rag-stream
           pnpm run test:sse-stream
+          pnpm run test:kb-filter
 
       - name: Build frontend
         run: pnpm run build

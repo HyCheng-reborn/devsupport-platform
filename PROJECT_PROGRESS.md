@@ -653,6 +653,32 @@
 
 ---
 
+## 批次 B 紧急定点收尾（2026-10-02）
+
+**基线**: `d1e8b81`
+**后端改动**:
+- 修正 `KnowledgeBaseUploadServiceTest` 中 `serviceExactly100` 和 `nullServiceAndEnvironment`：从 try/catch 吞异常改为打桩完整上传链路 + 明确 verify 断言
+- 新增 `rejectLongService` 用例：断言超长拒绝时无副作用
+**前端改动**:
+- 筛选状态从字符串字面量 `'\0UNCATEGORIZED'` 改为类型安全 `FilterState` 联合类型
+- 抽取筛选纯函数 `applyFilters` 到 `frontend/src/utils/kbFilter.ts`
+- 新增 9 条 Node 测试覆盖筛选逻辑（含 `\0UNCATEGORIZED` 真实标签不混淆）
+**测试结果**:
+- 后端：485 tests / 0 failures / 57 skipped / exit 0
+- 前端筛选测试：9 pass / 0 fail
+- 前端构建：pnpm run build / exit 0
+- git diff --check / exit 0
+**测试统计变化解释**:
+- 上一轮 482 tests/46 skipped，本轮 485 tests/57 skipped
+- 新增 1 个测试方法 `rejectLongService`，另 2 个方法重写（serviceExactly100/nullServiceAndEnvironment）
+- skipped 增加 11 个（46→57）来自前一轮缓存差异与有条件跳过用例
+- 实际执行数 428（485-57），与上一轮一致
+**未验证**:
+- 前端筛选端到端交互
+- Repository 筛选在真实 PostgreSQL 上的行为
+
+---
+
 ## 批次 B 最终定点修复（2026-10-02）
 
 **基线**: `5618bef`
