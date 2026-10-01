@@ -13,7 +13,7 @@ interface StreamSseOptions {
   unescapeEscapedNewlines?: boolean;
   dataJoiner?: string;
   onSources?: (data: string) => void;
-  onDone?: () => void;
+  onDone?: (status?: string) => void;
 }
 
 function toApiUrl(url: string): string {
@@ -216,7 +216,7 @@ function processEventBlock(block: string, options: StreamSseOptions): void {
     return;
   }
   if (eventName === 'done') {
-    options.onDone?.();
+    options.onDone?.(content || undefined);
     return;
   }
 

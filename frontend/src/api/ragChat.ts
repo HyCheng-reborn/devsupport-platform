@@ -1,5 +1,6 @@
 import { request } from './request';
 import { streamSse } from './stream';
+import { parseDoneStatus, resolveFinalStatus, type MessageStatus } from './ragStreamStatus';
 
 // ========== 类型定义 ==========
 
@@ -26,7 +27,7 @@ export interface SourceReference {
   score: number | null;
 }
 
-export type MessageStatus = 'COMPLETED' | 'NO_RESULTS' | 'MODEL_FAILED' | 'CLIENT_DISCONNECTED';
+export type { MessageStatus };
 
 export interface RagChatMessage {
   id: number;
@@ -117,15 +118,18 @@ export const ragChatApi = {
 
   /**
    * 发送消息（流式SSE）
+   * onComplete 回传服务端确认的最终状态；done 未到达或状态不可识别时按 MODEL_FAILED 处理，
+   * 不会无条件当作 COMPLETED。
    */
   async sendMessageStream(
     sessionId: number,
     question: string,
     onMessage: (chunk: string) => void,
     onSources: (sourcesJson: string) => void,
-    onComplete: () => void,
+    onComplete: (status?: MessageStatus) => void,
     onError: (error: Error) => void
   ): Promise<void> {
+    let finalized = false;
     return streamSse({
       url: `/api/rag-chat/sessions/${sessionId}/messages/stream`,
       init: {
@@ -135,9 +139,22 @@ export const ragChatApi = {
       },
       onMessage,
       onSources: (data) => onSources(data),
-      onDone: () => onComplete(),
-      onComplete: () => onComplete(),
-      onError,
+      onDone: (rawStatus) => {
+        if (finalized) return;
+        finalized = true;
+        onComplete(resolveFinalStatus(parseDoneStatus(rawStatus)));
+      },
+      onComplete: () => {
+        // 流结束但没有 done 事件 = 服务端未确认成功（异常终止 / 持久化失败）
+        if (finalized) return;
+        finalized = true;
+        onComplete('MODEL_FAILED');
+      },
+      onError: (error) => {
+        if (finalized) return;
+        finalized = true;
+        onError(error);
+      },
       parseMode: 'event',
       trimDataPrefixSpace: false,
       unescapeEscapedNewlines: true,

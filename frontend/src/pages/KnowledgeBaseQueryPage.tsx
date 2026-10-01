@@ -5,6 +5,7 @@ import remarkGfm from 'remark-gfm';
 import {Virtuoso, type VirtuosoHandle} from 'react-virtuoso';
 import {knowledgeBaseApi, type KnowledgeBaseItem, type SortOption} from '../api/knowledgebase';
 import {ragChatApi, type RagChatSessionListItem, type SourceReference, type MessageStatus} from '../api/ragChat';
+import {selectSourcesForStatus, sourcesDisplayMode} from '../api/ragStreamStatus';
 import {formatDateOnly} from '../utils/date';
 import DeleteConfirmDialog from '../components/DeleteConfirmDialog';
 import CodeBlock from '../components/CodeBlock';
@@ -334,11 +335,14 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
             currentSources = [];
           }
         },
-        () => {
-          // onDone: 设置来源和状态
+        (status?: MessageStatus) => {
+          // 完成时使用服务端确认的最终状态，不再无条件写 COMPLETED；
+          // done 未携带可识别状态时已由 ragChat 回退为 MODEL_FAILED。
+          const finalStatus = status ?? 'MODEL_FAILED';
+          const sourcesForMessage = selectSourcesForStatus(currentSources, finalStatus);
           setMessages(prev => prev.map(m =>
             m.id === assistantMsgId
-              ? { ...m, content: fullContent, sources: currentSources, status: 'COMPLETED' as MessageStatus }
+              ? { ...m, content: fullContent, sources: sourcesForMessage, status: finalStatus }
               : m
           ));
           setLoading(false);
@@ -601,27 +605,34 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
                                   {loading && index === messages.length - 1 && (
                                     <span className="inline-block w-0.5 h-5 bg-primary-500 ml-1 animate-pulse" />
                                   )}
-                                  {msg.sources && msg.sources.length > 0 && (
-                                    <div className="mt-2 border-t border-gray-200 dark:border-slate-600 pt-2">
-                                      <div className="text-xs text-gray-500 dark:text-slate-400 mb-1">引用来源：</div>
-                                      {msg.sources.slice(0, 5).map((src, i) => (
-                                        <details key={i} className="mb-1 text-xs">
-                                          <summary className="cursor-pointer text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">
-                                            {src.documentName}
-                                            {src.score != null && (
-                                              <span className="text-gray-400 ml-1">({(src.score * 100).toFixed(0)}%)</span>
-                                            )}
-                                          </summary>
-                                          <p className="mt-1 text-gray-600 dark:text-slate-400 pl-3 whitespace-pre-wrap">
-                                            {src.contentSnippet}
-                                          </p>
-                                        </details>
-                                      ))}
-                                      {msg.sources.length > 5 && (
-                                        <div className="text-xs text-gray-400 dark:text-slate-500">还有 {msg.sources.length - 5} 个来源...</div>
-                                      )}
-                                    </div>
-                                  )}
+                                  {msg.sources && msg.sources.length > 0 && (() => {
+                                    const mode = sourcesDisplayMode(msg.status);
+                                    if (mode !== 'grounded' && mode !== 'degraded') return null;
+                                    const isGrounded = mode === 'grounded';
+                                    return (
+                                      <div className={`mt-2 border-t pt-2 ${isGrounded ? 'border-gray-200 dark:border-slate-600' : 'border-amber-200 dark:border-amber-700/50'}`}>
+                                        <div className="text-xs text-gray-500 dark:text-slate-400 mb-1">
+                                          {isGrounded ? '引用来源：' : '检索到的参考文档（本条回答未成功生成，仅供参考）：'}
+                                        </div>
+                                        {msg.sources.slice(0, 5).map((src, i) => (
+                                          <details key={i} className="mb-1 text-xs">
+                                            <summary className={`cursor-pointer ${isGrounded ? 'text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300' : 'text-amber-600 hover:text-amber-800 dark:text-amber-400'}`}>
+                                              {src.documentName}
+                                              {src.score != null && (
+                                                <span className="text-gray-400 ml-1">({(src.score * 100).toFixed(0)}%)</span>
+                                              )}
+                                            </summary>
+                                            <p className="mt-1 text-gray-600 dark:text-slate-400 pl-3 whitespace-pre-wrap">
+                                              {src.contentSnippet}
+                                            </p>
+                                          </details>
+                                        ))}
+                                        {msg.sources.length > 5 && (
+                                          <div className="text-xs text-gray-400 dark:text-slate-500">还有 {msg.sources.length - 5} 个来源...</div>
+                                        )}
+                                      </div>
+                                    );
+                                  })()}
                                   {msg.status && msg.status !== 'COMPLETED' && (
                                     <div className="mt-1 text-xs">
                                       {msg.status === 'NO_RESULTS' && (

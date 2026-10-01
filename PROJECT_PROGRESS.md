@@ -135,6 +135,7 @@
 
 ## 7. 变更记录（简短，倒序）
 
+- 2026-10-01 — **Phase 1 流式回答前端状态处理定点修复**（见 §10）。仅改前端：新增 `ragStreamStatus.ts` + 测试、`stream.ts` 透传 done 状态、`ragChat.ts` 收敛回调、`KnowledgeBaseQueryPage.tsx` 按状态写定 + 门控来源、`package.json` / `ci.yml` 注册新测试、本文件；消费 §9 后端 `done.status` 契约，不再无条件写 COMPLETED。未调外部 API / 数据库、未启 Docker。状态 `代码已写 · 离线通过（node --test 5 绿 + pnpm build exit 0）· 真实环境未验证`。
 - 2026-10-01 — **Phase 1 流式回答服务端最终状态与事件顺序定点修复**（见 §9）。仅改 `RagChatController` + `KnowledgeBaseQueryService` + 两处测试 + 本文件；未调付费 API、未启 Docker、未跑真实 L1、未动生产数据。状态 `代码已写 · 离线通过 · 真实环境未验证`。
 
 - 2026-09-30 — Phase 1 编码启动（见下方 §8）。
@@ -232,3 +233,42 @@
 - 「检索命中但模型输出恰为拒答模板」依赖 `resolveFinalStatus` 的关键词判定，真实模型输出的多样措辞是否都能落入 `isNoResultLike`，未经真实样本验证。
 - 在 Reactor 链中同步执行阻塞式 JDBC 落库（`@Transactional`）仍是既有形态，本轮未改线程模型。
 - 前端据 done 的新 `status` 字段区分展示属下一项任务，本文件只保证后端已带出该字段。
+
+## 10. Phase 1 流式回答前端状态处理定点修复
+
+**时间**: 2026-10-01（北京时间）
+**基线 HEAD**: `b85890f`（本轮修复前）
+**范围**: 只修前端流式回答（RAG Chat）的最终状态处理与来源展示，使其消费 §9 后端已带出的 `done.status` 契约；不改后端、不调外部 API / 数据库、不动无关页面。
+
+### 消费的后端契约（§9 已确定）
+
+- `done` 事件 data 为 `{"status":"<COMPLETED|NO_RESULTS|MODEL_FAILED|CLIENT_DISCONNECTED>"}`；仅成功落库后才发 `done`，落库失败 / 模型错误以 SSE `error` 事件或无 `done` 的流终止收场。
+- `sources` 事件在 `done` 之前发出；NO_RESULTS 时后端以 `[]` 落库、前端也应视为无依据。
+
+### 根因（修复前）
+
+- `stream.ts` 的 `done` 分支只调 `onDone?.()`、丢弃 data；页面在 `onDone` 里**无条件写 `status:'COMPLETED'`**、`sources:currentSources`，不看服务端确认状态。
+- 「无 `done` 确认」与「`onError`」都未收敛为失败态；有文档但拒答（NO_RESULTS）时仍会带来源呈现为有依据的回答。
+- 刷新恢复走 `getSessionDetail`，历史上未读取持久化的 `status` / `sources_json`，展示与实际落库不一致。
+
+### 修复
+
+- 新增纯逻辑模块 `frontend/src/api/ragStreamStatus.ts`：`parseDoneStatus`（解析 done data，缺失/非法/未知→`undefined`）、`resolveFinalStatus`（无确认回退 `MODEL_FAILED`，绝不当 COMPLETED）、`sourcesDisplayMode`（COMPLETED→grounded / NO_RESULTS→none / MODEL_FAILED·CLIENT_DISCONNECTED→degraded / 生成中→pending）、`selectSourcesForStatus`（NO_RESULTS 一律清空来源）。
+- `stream.ts`：`onDone?: (status?: string) => void`，`done` 分支把 data 透传给 `onDone`。
+- `ragChat.ts`：`MessageStatus` 收敛到 `ragStreamStatus` 再导出；`sendMessageStream` 用 `finalized` 单次护栏协调 `onDone`（解析服务端状态）/ `onComplete`（流结束却无 done→`MODEL_FAILED`）/ `onError`，`onComplete` 回传最终状态。
+- `KnowledgeBaseQueryPage.tsx`：完成回调按服务端状态写定、用 `selectSourcesForStatus` 决定来源；渲染用 `sourcesDisplayMode` 门控——仅 grounded 作为「引用来源」，degraded 降级为「参考文档（本条回答未成功生成，仅供参考）」，none/pending 不渲染；非 COMPLETED 显示状态徽标（未找到相关文档 / 回答生成失败 / 回答中断）。刷新恢复沿用 `m.status` + `m.sourcesJson` 经同一渲染管线呈现。
+
+### 测试
+
+- 新增 `frontend/src/api/ragStreamStatus.test.ts`（5 条，`node --test`）：四种状态解析；缺失/非法/未知→`undefined`；无确认回退 `MODEL_FAILED`；`sourcesDisplayMode` 各态；`selectSourcesForStatus` NO_RESULTS 清空。
+- `package.json` 新增脚本 `test:rag-stream`；`.github/workflows/ci.yml` frontend 任务加入 `pnpm run test:rag-stream`。
+- 验证命令（PowerShell，`frontend/` 下）：
+  - `node --test src/api/ragStreamStatus.test.ts` → 5 pass / 0 fail
+  - `pnpm run build`（`tsc && vite build`）→ exit 0（仅既有的 CSS `:where()` 语法告警与 chunk 体积告警，与本次改动无关）
+
+### 尚未验证的真实行为（不得写成已验证）
+
+- 未连真实后端跑过一次端到端 SSE：真实网络下 done/error/断流的实际时序、以及 `onComplete` 无 done 回退路径仅由单元级纯函数与代码走查保证。
+- 刷新恢复依赖后端确已持久化 `status` / `sources_json`（§9 后端侧形态），本轮未对真实 DB 落库结果做端到端核对。
+- degraded 展示假定 MODEL_FAILED / CLIENT_DISCONNECTED 时后端可能保留检索到的文档来源；真实拒答措辞能否稳定落入 NO_RESULTS（`isNoResultLike`）仍属后端侧未验证项。
+
