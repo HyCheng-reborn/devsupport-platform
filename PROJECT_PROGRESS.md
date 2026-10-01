@@ -372,4 +372,42 @@
 - 未连真实 LLM / 付费 Embedding / 真实 L1 / 生产数据库跑端到端 SSE；真实网络上 `\r\n` 跨 TCP 段的实际拆分时机、Spring WebFlux SSE 底层分帧行为未实测。
 - `isExplicitRefusal` 的强拒答词表基于现有模板与常见拒答构造归纳，真实模型输出的多样拒答措辞覆盖面未经线上样本验证。
 
+## 14. P1 定点修复：收窄最终拒答判定（修复 1ba2a57 确定性回归）
+
+**时间**: 2026-10-01（北京时间）
+**基线 HEAD**: `1ba2a57`（§13）
+**状态**: 代码已写 + 本地/离线测试通过；**待 Codex 复核**（未提前写成复核通过）。
+**范围**: 仅改最终拒答判定（`KnowledgeBaseQueryService.isExplicitRefusal`）与相关后端测试、进度文档。前端/P2、共享 `answerQuestionStream`、`isNoResultLike`、探测窗口 `normalizeStreamOutput`、SSE 协议、事务范围、schema、来源组装均不动；Controller 未重新注入 Repository。
+
+### 回归根因
+- `1ba2a57` 的 `isExplicitRefusal` 仍基于“起始句 `contains` STRONG_REFUSAL_MARKERS”，其中“找不到”“知识库中未”等宽泛子串会误伤正常故障排查答案。Codex 真实判定：以下两条旧版非拒答、`1ba2a57` 却误判为拒答（有检索文档时应为 COMPLETED，却变 NO_RESULTS 并清空来源）：
+  1. “找不到配置文件时，请先检查工作目录及挂载路径，并将配置放在应用指定的位置，随后重新启动服务。”
+  2. “知识库中未配置索引版本字段，需要先添加该字段并重新构建向量索引。”
+
+### 修复（只将“无法依据资料回答当前问题”的整句式拒答判为拒答）
+- 删除 `STRONG_REFUSAL_MARKERS` 宽泛子串列表，改为三个构造级正则常量：
+  - `REFUSAL_INABILITY`：同一分句内“无法/不能/难以/没法 …(≤12字)… 回答/作答/给出答案/给出答复”；
+  - `REFUSAL_EMPTY_RETRIEVAL`：“未/没有/未能/没能 …(≤8字)… 检索|找到|发现|查到|命中 …(≤8字)… (相关)?(信息|内容|资料|结果|依据)”——对象必须是“信息类”，因此不匹配“找不到配置文件”“知识库中未配置……字段”；
+  - `REFUSAL_NEGATION`：“并非/不是/并未/绝非 …(≤4字)… 无法/不能/没法”——出现时视为正常作答。
+- `isExplicitRefusal` 保留固定模板 `NO_RESULT_RESPONSE` 的 equals/startsWith 判定；非模板部分只看起始句，先过否定护栏，再依次匹配两个拒答构造。判定基于具体句式搭配 + 结构位置，不靠宽泛子串、不靠长度放行。
+
+### 保留的局限（规则边界）
+- 拒答语句若只出现在第一句之后（如“抱歉。未检索到相关信息。”）可能被当作 COMPLETED；若一段有效回答的**起始句**本身肯定式地断言“无法…回答”/“未检索到…信息”（罕见，多为条件/引用/否定句，已由否定护栏覆盖）仍可能误判。选择“起始句 + 构造级正则”是在不引入额外 LLM 调用/架构改造前提下的平衡。
+
+### 测试
+- 先写两条回归用例（上面反例）→ 对 `1ba2a57` 实现确认 FAIL（failures=2，行 252/261），修复后转绿。
+- `KnowledgeBaseQueryServiceTest.ResolveFinalStatusTests` 补全反例矩阵：条件句/引用错误文本/否定式拒答/信息不足描述句均 COMPLETED；固定模板与非模板明确拒答（无法根据现有资料回答 / 没有找到相关信息）均 NO_RESULTS；无文档/空输出保持 NO_RESULTS。
+- `RagChatControllerTest` 新增 `normalAnswerWithRealStatusJudgingPersistsCompletedWithSources`：**不 mock 最终状态**，用真实 `KnowledgeBaseQueryService.resolveFinalStatus` 判定反例 1，断言落库 COMPLETED 且保存/发送的 sources 非空（含 README.md，不为 `[]`）。
+
+### 验证（均为离线/本地，非真实环境；PowerShell 直取 `$LASTEXITCODE`，已消除管道对 stderr 的 NativeCommandError 干扰）
+- `./gradlew :app:compileJava :app:compileTestJava --no-daemon` → GRADLE_EXIT=0。
+- `./gradlew :app:test --tests '...KnowledgeBaseQueryServiceTest' --tests '...RagChatControllerTest' --no-daemon` → BUILD SUCCESSFUL；resolveFinalStatus 套件 tests=14/failures=0/errors=0/skipped=0，成功路径套件 tests=4/failures=0，顶层套件 tests=3/failures=0。
+- `./gradlew :app:test --no-daemon`（全量）→ GRADLE_EXIT=0，BUILD SUCCESSFUL，无 FAILED。
+- `git diff --check` → exit 0（无空白错误）。
+- 关于退出码：之前个别命令显示 exit 1 是因为 `2>&1 | Select-String` 将 Gradle 写入 stderr 的进度行当作 NativeCommandError；改用 `*>` 重定向到文件后 `$LASTEXITCODE` 真实为 0，已据此排查确认而非单纯归因于 stderr 告警。
+
+### 尚未验证的真实行为（不得写成已验证）
+- 未连真实 LLM / 付费 Embedding / 真实 L1 / 生产数据库跑端到端 SSE；真实模型输出的多样拒答措辞与正则覆盖面未经线上样本验证。
+- 当前状态为“待 Codex 复核”，不得提前写成复核通过。
+
 

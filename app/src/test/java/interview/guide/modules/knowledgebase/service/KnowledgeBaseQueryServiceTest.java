@@ -241,5 +241,69 @@ class KnowledgeBaseQueryServiceTest {
           "解决方法是将服务端口改为 8080。如果日志信息不足，请提高日志级别后重试。", docs);
       assertThat(status).isEqualTo(MessageStatus.COMPLETED);
     }
+
+    @Test
+    @DisplayName("回归1：'找不到配置文件'开头的正常排查答案应为_COMPLETED")
+    void troubleshootingStartingWithNotFound_returnsCOMPLETED() {
+      // Codex 真实判定：1ba2a57 因起始句 contains "找不到" 而误判为拒答。
+      List<Document> docs = List.of(createDoc("配置加载路径说明", 1L, 0.9));
+      String answer = "找不到配置文件时，请先检查工作目录及挂载路径，"
+          + "并将配置放在应用指定的位置，随后重新启动服务。";
+      assertThat(queryService.resolveFinalStatus(answer, docs)).isEqualTo(MessageStatus.COMPLETED);
+    }
+
+    @Test
+    @DisplayName("回归2：'知识库中未配置索引版本字段'的正常排查答案应为_COMPLETED")
+    void troubleshootingStartingWithKbNotConfigured_returnsCOMPLETED() {
+      // Codex 真实判定：1ba2a57 因起始句 contains "知识库中未" 而误判为拒答。
+      List<Document> docs = List.of(createDoc("向量索引构建流程", 1L, 0.9));
+      String answer = "知识库中未配置索引版本字段，需要先添加该字段并重新构建向量索引。";
+      assertThat(queryService.resolveFinalStatus(answer, docs)).isEqualTo(MessageStatus.COMPLETED);
+    }
+
+    @Test
+    @DisplayName("反例矩阵_条件句排查答案_COMPLETED")
+    void conditionalTroubleshooting_returnsCOMPLETED() {
+      List<Document> docs = List.of(createDoc("依赖安装步骤", 1L, 0.9));
+      // 条件句里出现"找不到"，但并非"无法回答"，是正常操作指导。
+      String answer = "如果找不到某个依赖，请先执行安装命令，然后重新启动服务。";
+      assertThat(queryService.resolveFinalStatus(answer, docs)).isEqualTo(MessageStatus.COMPLETED);
+    }
+
+    @Test
+    @DisplayName("反例矩阵_引用错误文本的答案_COMPLETED")
+    void quotingErrorTextAnswer_returnsCOMPLETED() {
+      List<Document> docs = List.of(createDoc("配置加载机制", 1L, 0.9));
+      // 正文引用了一段含"找不到"的报错文本，但整体是有效排查回答。
+      String answer = "启动报错信息为 '找不到 config.yaml'，请把该文件放到 classpath 根目录后重启。";
+      assertThat(queryService.resolveFinalStatus(answer, docs)).isEqualTo(MessageStatus.COMPLETED);
+    }
+
+    @Test
+    @DisplayName("反例矩阵_否定式拒答（并非无法回答）_COMPLETED")
+    void negatedRefusalPhrase_returnsCOMPLETED() {
+      List<Document> docs = List.of(createDoc("端口配置说明", 1L, 0.9));
+      // 起始句含"无法回答"但是被"并非"否定，应视为正常作答。
+      String answer = "并非无法回答，解决方法是将端口改为 8080 后重启。";
+      assertThat(queryService.resolveFinalStatus(answer, docs)).isEqualTo(MessageStatus.COMPLETED);
+    }
+
+    @Test
+    @DisplayName("反例矩阵_明确非模板拒答（无法根据现有资料回答）_NO_RESULTS")
+    void explicitNonTemplateRefusalInability_returnsNO_RESULTS() {
+      List<Document> docs = List.of(createDoc("一些相关内容", 1L, 0.9));
+      // 不是固定模板，但起始句明确"无法根据……回答"，应判为拒答。
+      String refusal = "无法根据现有资料回答您的问题，请补充更具体的关键词。";
+      assertThat(queryService.resolveFinalStatus(refusal, docs)).isEqualTo(MessageStatus.NO_RESULTS);
+    }
+
+    @Test
+    @DisplayName("反例矩阵_明确非模板拒答（未检索到相关信息）_NO_RESULTS")
+    void explicitNonTemplateRefusalEmptyRetrieval_returnsNO_RESULTS() {
+      List<Document> docs = List.of(createDoc("一些相关内容", 1L, 0.9));
+      // 信息类空检索句式，属于整段式拒答。
+      String refusal = "抱歉，没有找到相关信息，暂时无法回答。";
+      assertThat(queryService.resolveFinalStatus(refusal, docs)).isEqualTo(MessageStatus.NO_RESULTS);
+    }
   }
 }

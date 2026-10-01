@@ -7,6 +7,33 @@
 
 ---
 
+## 2026-10-01 — P1 定点修复：收窄最终拒答判定（修复 1ba2a57 确定性回归，待 Codex 复核）
+
+**基线**：`1ba2a57`（本任务前 HEAD，= Codex 二次复核通过并确认保留 P2/事件顺序的版本）
+**状态**：代码已写 + 本地/离线测试通过；**待 Codex 复核**（未提前写成复核通过）。
+**范围**：仅改 `KnowledgeBaseQueryService.isExplicitRefusal` 的最终拒答判定 + 相关后端测试 + 进度文档。未动共享 `answerQuestionStream`、`isNoResultLike`、探测窗口 `normalizeStreamOutput`、前端/SSE 协议/事务/schema/来源组装；Controller 未重新注入 Repository。
+
+### 改了什么
+- 删除 `STRONG_REFUSAL_MARKERS` 宽泛子串列表，新增三个构造级正则常量 `REFUSAL_INABILITY`（无法/不能…回答）、`REFUSAL_EMPTY_RETRIEVAL`（未/没有…检索|找到…信息|内容|资料…）、`REFUSAL_NEGATION`（并非/不是…无法/不能）。`isExplicitRefusal` 保留固定模板 equals/startsWith，非模板部分只看起始句，先过否定护栏再匹配两个拒答构造。新增 `import java.util.regex.Pattern`。
+- 测试：`KnowledgeBaseQueryServiceTest` 新增两条 Codex 反例回归用例（“找不到配置文件…”、“知识库中未配置索引版本字段…”）及反例矩阵（条件句/引用错误文本/否定式拒答/信息不足描述句=COMPLETED；固定模板与非模板明确拒答=NO_RESULTS）。`RagChatControllerTest` 新增 `normalAnswerWithRealStatusJudgingPersistsCompletedWithSources`（不 mock 状态，走真实 resolveFinalStatus，断言落库 COMPLETED + sources 非空）。
+
+### 为什么
+- `1ba2a57` 仍用“第一句 contains 宽泛子串”，导致含“找不到”/“知识库中未”的正常排查答案被误判 NO_RESULTS 并清空来源（确定性回归）。需只将“无法依据资料回答当前问题”的整句式拒答判为拒答，且不能仅删两个词/继续扩词表/靠长度放行。
+
+### 验证（均为离线/本地；PowerShell 直取 `$LASTEXITCODE`，已消除 `2>&1 | Select-String` 对 stderr 的 NativeCommandError 干扰）
+- 先写回归用例→对 `1ba2a57` 确认 FAIL（failures=2，行 252/261）；修复后转绿。
+- `./gradlew :app:compileJava :app:compileTestJava --no-daemon` → GRADLE_EXIT=0。
+- `./gradlew :app:test --tests '...KnowledgeBaseQueryServiceTest' --tests '...RagChatControllerTest' --no-daemon` → BUILD SUCCESSFUL（resolveFinalStatus 套件 tests=14/failures=0/errors=0/skipped=0；成功路径 tests=4/failures=0；顶层 tests=3/failures=0）。
+- `./gradlew :app:test --no-daemon`（全量）→ GRADLE_EXIT=0，BUILD SUCCESSFUL，无 FAILED。
+- `git diff --check` → exit 0。
+- 退出码不一致排查：旧写法显示 exit 1 系 `2>&1 | Select-String` 把 Gradle 的 stderr 进度行当作错误记录；`*>` 重定向到文件后 `$LASTEXITCODE` 真实为 0（已据此排查，非笼统归因 stderr 告警）。
+
+### 尚未验证（真实环境）
+- 未连真实 LLM / 付费 Embedding / 真实 L1 / 生产数据库跑端到端 SSE；真实模型输出的多样拒答措辞与正则覆盖面未经线上样本验证。
+- 规则边界：拒答句仅出现在第一句之后、或有效回答起始句本身肯定式断言“无法…回答”，仍可能误判（见 PROJECT_PROGRESS.md §14）。
+
+---
+
 ## 2026-10-01 — Codex 复核后的 P1/P2 定点修复与事件顺序测试补强
 
 **基线**：`1c3d4c7`（本任务前 HEAD，= Codex 复核的 master）

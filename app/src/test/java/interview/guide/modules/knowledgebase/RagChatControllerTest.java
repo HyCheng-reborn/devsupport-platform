@@ -1,10 +1,15 @@
 package interview.guide.modules.knowledgebase;
 
+import interview.guide.common.ai.LlmProviderRegistry;
 import interview.guide.modules.knowledgebase.model.MessageStatus;
 import interview.guide.modules.knowledgebase.model.RagChatDTO.SendMessageRequest;
 import interview.guide.modules.knowledgebase.model.RetrievalResult;
 import interview.guide.modules.knowledgebase.model.SourceReference;
+import interview.guide.modules.knowledgebase.service.KnowledgeBaseCountService;
+import interview.guide.modules.knowledgebase.service.KnowledgeBaseListService;
+import interview.guide.modules.knowledgebase.service.KnowledgeBaseQueryProperties;
 import interview.guide.modules.knowledgebase.service.KnowledgeBaseQueryService;
+import interview.guide.modules.knowledgebase.service.KnowledgeBaseVectorService;
 import interview.guide.modules.knowledgebase.service.RagChatSessionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -15,6 +20,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.document.Document;
+import org.springframework.core.io.DefaultResourceLoader;
 import org.springframework.http.codec.ServerSentEvent;
 import reactor.core.publisher.Flux;
 import reactor.test.StepVerifier;
@@ -30,6 +36,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -165,6 +172,45 @@ class RagChatControllerTest {
 
       assertThat(persistedAtSources).isTrue();
       assertThat(persistedAtDone).isTrue();
+    }
+
+    @Test
+    @DisplayName("Controller 协作：用真实 resolveFinalStatus 判定正常排查答案，落库 COMPLETED 且 sources 非空")
+    void normalAnswerWithRealStatusJudgingPersistsCompletedWithSources() throws Exception {
+      // 不 mock 最终状态判定：走真实 resolveFinalStatus，验证 P1 回归修复贯通 Controller。
+      KnowledgeBaseQueryProperties props = new KnowledgeBaseQueryProperties();
+      props.getRewrite().setEnabled(false);
+      KnowledgeBaseQueryService realQueryService = new KnowledgeBaseQueryService(
+          mock(LlmProviderRegistry.class), mock(KnowledgeBaseVectorService.class),
+          mock(KnowledgeBaseListService.class), mock(KnowledgeBaseCountService.class),
+          props, new DefaultResourceLoader());
+      RagChatController realController =
+          new RagChatController(sessionService, realQueryService, objectMapper);
+
+      List<Document> docs = List.of(doc());
+      // 旧版（1ba2a57）会因起始句含"找不到"而误判 NO_RESULTS；修复后应为 COMPLETED。
+      String answer = "找不到配置文件时，请先检查工作目录及挂载路径，"
+          + "并将配置放在应用指定的位置，随后重新启动服务。";
+      when(sessionService.prepareStreamMessage(SESSION_ID, QUESTION)).thenReturn(MESSAGE_ID);
+      when(sessionService.getStreamAnswer(SESSION_ID, QUESTION))
+          .thenReturn(resultWith(Flux.just(answer), docs));
+      when(sessionService.buildSourceReferences(anyList())).thenReturn(oneSource());
+
+      List<ServerSentEvent<String>> events =
+          realController.sendMessageStream(SESSION_ID, request()).collectList().block();
+
+      ArgumentCaptor<MessageStatus> statusCap = ArgumentCaptor.forClass(MessageStatus.class);
+      ArgumentCaptor<String> sourcesCap = ArgumentCaptor.forClass(String.class);
+      verify(sessionService).completeStreamMessage(
+          eq(MESSAGE_ID), eq(answer), statusCap.capture(), sourcesCap.capture());
+      assertThat(statusCap.getValue()).isEqualTo(MessageStatus.COMPLETED);
+      assertThat(sourcesCap.getValue()).contains("README.md").isNotEqualTo("[]");
+
+      ServerSentEvent<String> sources = events.get(events.size() - 2);
+      assertThat(sources.event()).isEqualTo("sources");
+      assertThat(sources.data()).contains("README.md");
+      ServerSentEvent<String> done = events.get(events.size() - 1);
+      assertThat(done.data()).contains("COMPLETED");
     }
 
     @Test

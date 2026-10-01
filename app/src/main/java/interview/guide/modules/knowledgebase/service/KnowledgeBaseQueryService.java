@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.regex.Pattern;
 
 /**
  * 知识库查询服务
@@ -43,15 +44,25 @@ public class KnowledgeBaseQueryService {
     private static final int MAX_REWRITE_HISTORY_CHAR = 200;
 
     /**
-     * 起始句强拒答构造：只有当回答的第一句本身就是"整段式无信息/无法回答"时，
-     * 才判定为明确拒答。刻意不包含"信息不足"这类易出现在正常解释里的歧义词，
-     * 避免把长回答正文中途的描述误判为拒答。真正的模板拒答另由 NO_RESULT_RESPONSE 匹配。
+     * 最终拒答只在"起始句"用整句式拒答构造识别，而非任意宽泛子串：
+     * <ul>
+     *   <li>{@link #REFUSAL_INABILITY}：同一分句内"无法/不能/难以/没法 … 回答/作答/给出答案"的搭配，
+     *       即明确表达"无法依据资料回答当前问题"；</li>
+     *   <li>{@link #REFUSAL_EMPTY_RETRIEVAL}："未/没有 + 检索|找到|发现|查到|命中 + (相关)? + 信息|内容|资料|结果|依据"，
+     *       对象必须是"信息类"，不匹配"找不到配置文件""知识库中未配置……字段"这类描述性排查用语；</li>
+     *   <li>{@link #REFUSAL_NEGATION}：对拒答的否定（如"并非无法回答"），出现时视为正常作答。</li>
+     * </ul>
+     * 固定无结果模板另由 {@code NO_RESULT_RESPONSE} 精确匹配；空输出 / 无文档由 {@code resolveFinalStatus} 处理。
      */
-    private static final List<String> STRONG_REFUSAL_MARKERS = List.of(
-        "未检索到", "检索不到", "没有找到", "找不到", "没有相关信息", "暂无相关",
-        "知识库中未", "知识库中没有", "相关资料中未", "所给资料中未",
-        "超出知识库", "无法根据提供内容", "无法根据所给内容", "无法根据给定内容",
-        "无法根据知识库", "无法回答");
+    private static final Pattern REFUSAL_INABILITY = Pattern.compile(
+        "(无法|不能|难以|没法)[^。．.！!？?\\n\\r]{0,12}(回答|作答|给出答案|给出答复)");
+
+    private static final Pattern REFUSAL_EMPTY_RETRIEVAL = Pattern.compile(
+        "(未|没有|未能|没能)[^。．.！!？?\\n\\r]{0,8}(检索|找到|发现|查到|命中)"
+            + "[^。．.！!？?\\n\\r]{0,8}(相关)?(信息|内容|资料|结果|依据)");
+
+    private static final Pattern REFUSAL_NEGATION = Pattern.compile(
+        "(并非|并不是|不是|并未|绝非)[^。．.！!？?\\n\\r]{0,4}(无法|不能|没法)");
 
     private final LlmProviderRegistry llmProviderRegistry;
     private final KnowledgeBaseVectorService vectorService;
@@ -426,15 +437,17 @@ public class KnowledgeBaseQueryService {
     }
 
     /**
-     * 判断最终正文是否为"整段式明确拒答"，区别于一段有效回答中偶带"信息不足"等描述性用语。
+     * 判断最终正文是否为"整段式明确拒答"，区别于一段有效回答中偶带的描述性用语或排查指令。
      * <p>探测窗口 {@code normalizeStreamOutput} 已把"开头即为无信息"的流收敛为固定模板
-     * {@code NO_RESULT_RESPONSE}；因此这里只需识别两类：
+     * {@code NO_RESULT_RESPONSE}；因此这里识别：
      * <ol>
      *   <li>正文等于/起始于固定无结果模板；</li>
-     *   <li>第一句本身就是强拒答构造（{@link #STRONG_REFUSAL_MARKERS}），而后续正文里出现
-     *       "信息不足"等词不作为拒答依据。</li>
+     *   <li>起始句本身就是"无法依据资料回答当前问题"的整句式拒答构造
+     *       （{@link #REFUSAL_INABILITY} / {@link #REFUSAL_EMPTY_RETRIEVAL}），且未被否定
+     *       （{@link #REFUSAL_NEGATION}）。</li>
      * </ol>
-     * 判定基于结构位置（整段/起始句），既非"全文任意位置含关键词"，也非靠长度放行。
+     * 判定只看起始句 + 具体句式搭配，既非"第一句含宽泛子串"，也非靠长度放行：
+     * 因此"找不到配置文件时……""知识库中未配置索引版本字段……""并非无法回答……"等正常排查答案不会被误伤。
      */
     private boolean isExplicitRefusal(String text) {
         if (text == null || text.isEmpty()) {
@@ -444,9 +457,17 @@ public class KnowledgeBaseQueryService {
         if (text.equals(NO_RESULT_RESPONSE) || text.startsWith(NO_RESULT_RESPONSE)) {
             return true;
         }
-        // 只看起始句（第一个句子终止符之前）；把描述性用语限制在"整段拒答"的判定之外
+        // 只看起始句（第一个句子终止符之前），把描述性/排查性用语限制在整段拒答判定之外
         String leadingSentence = text.split("[。．.！!？?\\n\\r]", 2)[0].trim();
-        return STRONG_REFUSAL_MARKERS.stream().anyMatch(leadingSentence::contains);
+        if (leadingSentence.isEmpty()) {
+            return false;
+        }
+        // 对拒答的否定（如"并非无法回答"）视为正常作答
+        if (REFUSAL_NEGATION.matcher(leadingSentence).find()) {
+            return false;
+        }
+        return REFUSAL_INABILITY.matcher(leadingSentence).find()
+            || REFUSAL_EMPTY_RETRIEVAL.matcher(leadingSentence).find();
     }
 
     /**
