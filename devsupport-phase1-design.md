@@ -1,7 +1,7 @@
 # DevSupport Phase 1 设计文档
 
 > 调研基线: `2cc5834`（Codex 六次定点源码复核通过）
-> 状态: **修订方案待 Codex 复核（第二轮）**
+> 状态: **第三轮修订待 Codex 复核**
 > 本轮只产出设计，不修改业务代码、不启动容器、不调用付费 API。
 
 ---
@@ -16,6 +16,7 @@
 | 异步向量化 | `VectorizeStreamConsumer` → `KnowledgeBaseVectorService.vectorizeAndStore()` | TokenTextSplitter ~800 tokens → DashScope text-embedding-v3 → pgvector 1024 维 COSINE |
 | RAG 流式问答 SSE 三事件 | `RagChatController.sendMessageStream()` 第 160-211 行 | data → sources → done(status)，AtomicBoolean 协调三条终止路径 |
 | 来源传递契约 | `RetrievalResult` record | 绑定 `Flux<String> contentStream` + `List<Document> sourceDocuments` |
+| 来源引用结构 | `SourceReference` record | 4 字段（kbId, documentName, contentSnippet, score），Phase 1 第三轮决策新增 service + environment 快照字段 |
 | 消息状态区分 | `MessageStatus` 枚举 | COMPLETED / NO_RESULTS / MODEL_FAILED / CLIENT_DISCONNECTED |
 | 来源持久化与回显 | `rag_chat_messages.sources_json` + `status` | Flyway V20260930，`completeStreamMessage()` 四参数签名 |
 | 多会话聊天 | `RagChatSessionService` | `rag_chat_sessions` + `rag_chat_messages` + 中间表 `rag_session_knowledge_bases` |
@@ -51,15 +52,15 @@
 
 1. **上传文档**：选择文件 → 填写名称（可选）→ 选择服务（如"用户中心"、"支付网关"）和环境（如"生产"、"预发"、"通用"）→ 提交
 2. **管理文档**：按服务/环境筛选 → 行内编辑服务/环境 → 查看向量化状态
-3. **RAG 问答**：选择知识库（自动继承服务/环境）→ 输入问题 → 流式获取带来源的回答 → 来源面板显示文档名 + 服务/环境标签
+3. **RAG 问答**：选择知识库（可参考服务/环境标签筛选）→ 输入问题 → 流式获取带来源的回答 → 来源面板显示文档名 + 提问时的服务/环境快照
 4. **会话管理**：会话绑定知识库 → 历史消息含来源和状态 → 刷新后恢复
 
 ### 2.2 功能边界
 
 **Phase 1 包含**：
 - 文档上传 + 服务/环境分类
-- RAG 问答 + 来源展示 + 刷新恢复
-- 按服务/环境筛选文档和检索
+- RAG 问答 + 来源展示（含提问时标签快照）+ 刷新恢复
+- 按服务/环境筛选文档（管理页面）
 
 **Phase 1 不包含**：
 - Runbook 自动化
@@ -79,48 +80,47 @@
 ### 3.2 Service 层（业务编排）
 
 - `KnowledgeBaseUploadService` — 上传方法增加 service/environment 参数
-- `KnowledgeBaseQueryService` — 检索前按 service/environment 查出 kbIds，再传入向量检索
+- `KnowledgeBaseQueryService` — 不改（检索范围由 kbIds 决定，不按 service/environment 过滤）
 - `KnowledgeBaseListService` — 新增 `listByService()`、`listByEnvironment()` 方法
-- `RagChatSessionService` — 已完善，无需改动
+- `RagChatSessionService` — `buildSourceReferences()` 新增 service/environment 快照字段获取
 
 ### 3.3 Repository 层
 
 - `KnowledgeBaseRepository` — 新增 `findByServiceAndEnvironment()`、`findAllServices()`、`findAllEnvironments()` 查询
 - `VectorRepository` — 不变（仍按 kb_id 过滤）
 
-### 3.4 服务/环境筛选完整请求链
+### 3.4 服务/环境作为组织标签的请求链
+
+**核心定位**：service/environment 是**管理页面的分类与组织标签**，用于帮助用户发现和整理知识。问答会话的检索范围**仍然由用户显式勾选的知识库（kbIds）决定**，服务端不按 service/environment 做强制隔离。
+
+**为什么不做服务端强制隔离**：
+- 现有会话机制（`rag_session_knowledge_bases` 中间表）已提供精确的 KB 级范围控制
+- 引入 service/environment 作为服务端强制过滤会增加复杂度（需校验会话 KB、处理 KB 改标签后的会话一致性等），收益不大
+- 用户通过勾选 KB 已能精确控制检索范围，service/environment 只是帮助筛选哪些 KB 可见
 
 **用户选择范围的位置**：
 - 在问答助手（`KnowledgeBaseQueryPage`）右栏选择知识库时，每个知识库卡片显示其 service/environment 标签
 - 用户通过勾选知识库间接选择范围（不新增独立的 service/environment 选择器）
 - 范围是**会话持久字段**（存在 `rag_session_knowledge_bases` 中间表），不是每次提问参数
+- 前端管理页面提供 service/environment 筛选帮助用户找到 KB，但勾选后范围由 kbIds 决定
 
-**与会话已有 knowledgeBaseIds 的交集**：
-- 用户切换知识库选择时，前端调用 `PUT /api/rag-chat/sessions/{id}/knowledge-bases` 更新关联
-- 后端 `RagChatSessionService.updateSessionKnowledgeBases()` 替换中间表记录
-- 提问时 `getStreamAnswer()` 从 session 获取最新 kbIds → 传入 `answerQuestionStream()`
-
-**交集为空时的防护**：
-- `KnowledgeBaseQueryService.answerQuestionStream()` L260 已有拦截：`knowledgeBaseIds.isEmpty()` → 返回 `NO_RESULT_RESPONSE`
-- 不会到达 `similaritySearch()`，不会触发无过滤全局搜索
-- 状态设为 `NO_RESULTS`
-
-**历史会话和旧客户端兼容**：
-- 历史会话的 `rag_session_knowledge_bases` 关联不变，无需迁移
-- 旧客户端仍通过现有 API 操作，service/environment 只是知识库的附加属性
+**服务端不校验**：
+- `RagChatController`、`RagChatSessionService`、`KnowledgeBaseQueryService` 不做 service/environment 校验
+- 不校验会话中的 KB 是否属于某 service/environment
+- 检索范围完全由 kbIds 决定
 
 **涉及文件清单**：
 
 | 层 | 文件 | 改动 |
 |---|---|---|
-| Controller | `RagChatController` | 不改（kbIds 从 session 获取） |
-| DTO | `RagChatDTO.MessageDTO` | 不改（sourcesJson 已含来源） |
-| Service | `RagChatSessionService` | 不改（kbIds 从 session entity 获取） |
-| Service | `KnowledgeBaseQueryService` | 不改（空 kbIds 已拦截） |
-| Repository | `KnowledgeBaseRepository` | 新增 `findByServiceAndEnvironment()` |
+| Controller | `RagChatController` | 不改 |
+| Service | `RagChatSessionService` | 不改 |
+| Service | `KnowledgeBaseQueryService` | 不改 |
+| Repository | `KnowledgeBaseRepository` | 新增 `findByService()`、`findByEnvironment()`、`findAllServices()`、`findAllEnvironments()` |
+| Controller | `KnowledgeBaseController` | 列表端点增加 `?service=&environment=` 查询参数 |
+| 前端 | `KnowledgeBaseManagePage.tsx` | 增加 service/environment 筛选下拉和行内编辑 |
 | 前端 | `KnowledgeBaseQueryPage.tsx` | 右栏知识库列表显示 service/environment 标签 |
-| 前端 | `api/knowledgebase.ts` | 列表 API 返回 service/environment 字段 |
-| 测试 | `KnowledgeBaseQueryServiceTest` | 新增空 kbIds 返回 NO_RESULTS 的测试 |
+| 前端 | `api/knowledgebase.ts` | 列表 API 增加筛选参数，返回 service/environment 字段 |
 
 ### 3.5 候选 API 变更
 
@@ -133,37 +133,52 @@
 
 ### 3.6 数据模型变更
 
-**反例分析**：同一文件（如 `deployment-guide.md`）需同时适用于"支付网关/生产"和"支付网关/预发"。
-
-**方案选择**：
-
-| 方案 | 描述 | 优劣 |
-|------|------|------|
-| A. 一对一标签 | 每条 KB 记录绑定一个 service + 一个 environment | 简单，但同一文件需上传两次（不同标签） |
-| B. 多值关联 | KB 与 service/environment 多对多 | 灵活，但 fileHash 唯一约束阻止同一文件多条记录 |
-| C. 显式通用范围 | 一条 KB 记录可有 service=A, environment=通用 | 最简，覆盖 80% 场景 |
-
-**Phase 1 选择方案 C**（理由）：
-- fileHash 全局唯一（`@Column(nullable=false, unique=true)`），同一文件只能有一条 KB 记录
-- 方案 B 需要解除 fileHash 唯一约束，影响去重语义，改动范围大
-- 方案 A 需用户重复上传同一文件，体验差
-- 方案 C 与现有 `category` 模式一致：一个 KB 记录有一个 service + 一个 environment，`environment="通用"` 表示跨环境适用
-
-**最小 schema**：
+**迁移脚本**（不设 DEFAULT，旧行保持 NULL）：
 ```sql
 ALTER TABLE knowledge_bases ADD COLUMN service VARCHAR(100);
-ALTER TABLE knowledge_bases ADD COLUMN environment VARCHAR(50) DEFAULT '通用';
+ALTER TABLE knowledge_bases ADD COLUMN environment VARCHAR(50);
 CREATE INDEX idx_kb_service ON knowledge_bases(service);
 CREATE INDEX idx_kb_environment ON knowledge_bases(environment);
 ```
+
+**三种场景规则**：
+
+| 场景 | service | environment | 检索行为 |
+|------|---------|-------------|----------|
+| 旧行（迁移前已存在） | NULL | NULL | 视为“未分类”，只在用户未选任何筛选条件时显示 |
+| 新上传（未填标签） | NULL | NULL | 同旧行，视为“未分类” |
+| 新上传（填了标签） | 用户填写值 | 用户填写值或“通用” | 按标签筛选时参与 |
+
+**新旧客户端上传缺失标签时的行为**：
+- 旧客户端（不传 service/environment）：后端收到 null，存为 NULL
+- 新客户端（传了 service 但没传 environment）：service 存用户值，environment 存 NULL
+- 前端上传表单：service 和 environment 都是可选字段
 
 **唯一性/去重语义**：不变。fileHash 仍全局唯一，同一文件只存一条记录。
 
 **编辑行为**：用户可在管理页面修改 service/environment（类似现有 category 行内编辑）。
 
-**旧数据迁移**：已有记录的 service=NULL, environment=NULL。检索时 NULL 视为"未分类"，不参与按 service/environment 的筛选（除非用户明确选择"未分类"）。
+**验证用例**（H2/Mockito 可测）：
+- 上传不传标签 → entity.service = null, entity.environment = null
+- 上传传 service="支付网关" → entity.service = "支付网关"
+- 列表筛选 service="支付网关" → 只返回 service 匹配的 KB（不含 NULL）
 
-### 3.7 事务与异步边界
+### 3.7 同一文件跨服务的产品边界
+
+**Phase 1 不支持**同一文件跨服务独立归属。fileHash 全局唯一约束保持不变。
+
+**重复上传到另一服务时的行为**：
+- 用户已为“支付网关”上传了 `deploy.md`（fileHash=abc123）
+- 另一用户尝试为“用户中心”上传同一文件（fileHash=abc123）
+- 后端检测到 fileHash 重复 → 返回已有记录信息，**不修改原记录的 service/environment**
+- 前端显示提示：“该文件已存在（名称: deploy.md，服务: 支付网关），如需为不同服务建立独立条目，请修改文件内容后重新上传”
+- **不静默返回原 KB，不偷偷改原标签**
+
+**理由**：
+- 解除 fileHash 唯一约束需要改动去重逻辑、向量 metadata、会话关联、来源快照，影响面太大
+- Phase 1 明确不支持，后续阶段评估
+
+### 3.8 事务与异步边界
 
 - `@Transactional` 只在 Service 层
 - LLM/S3/Embedding 调用不在事务内
@@ -187,25 +202,45 @@ event: done     → {"status":"<finalStatus>"}
 
 ### 4.1.1 来源快照策略
 
-**Phase 1 不修改 SourceReference 字段**：
-- 当前 4 字段（kbId, documentName, contentSnippet, score）足够
-- 来源面板显示 service/environment 时，通过 kbId 反查 `KnowledgeBaseEntity` 获取（前端已有 kbId）
-- 不在 sourcesJson 中冗余存储 service/environment
+**核心语义**：来源面板显示**提问当时的标签快照**，不是 KB 当前标签。
 
-**历史消息兼容**：
-- 已持久化的 sourcesJson 不含 service/environment，前端通过 kbId 实时查询
-- 如果 KB 被删除，kbId 查不到记录 → 来源面板显示"已删除的文档"
+**具体规则**：
 
-**文档改标签后旧回答**：
-- 旧回答的 sourcesJson 中 kbId 不变
-- 前端通过 kbId 查当前 service/environment → 显示最新值
-- 这是"快照时来源，实时查标签"策略
+| 场景 | 来源面板显示 |
+|------|-------------|
+| 正常回答 | 显示提问时的 service/environment（快照） |
+| KB 后来改了标签 | 旧回答仍显示旧标签（快照不变） |
+| KB 被删除 | 显示“已删除的文档”（kbId 查不到记录） |
+| lookup 失败（DB 异常） | 降级显示 documentName（originalFilename），不显示 service/environment |
+
+**实现方式**：在 `SourceReference` record 中新增两个可选字段：
+```java
+public record SourceReference(
+    Long kbId,
+    String documentName,
+    String contentSnippet,
+    Double score,
+    String service,      // 新增：提问时的 service 快照
+    String environment   // 新增：提问时的 environment 快照
+) {}
+```
+
+**sourcesJson 快照**：`buildSourceReferences()` 在构建来源时一并查询并写入 service/environment。历史消息直接读取 sourcesJson，不实时查 KB 表。
+
+**与 sourcesJson 快照不同步是产品约定**：明确声明来源标签是提问时刻的快照，后续 KB 标签变更不影响已持久化的来源。
+
+**批量获取和刷新恢复**：
+- `getSessionDetail()` 返回的消息已包含 sourcesJson（含 service/environment 快照）
+- 前端从 sourcesJson 直接解析，无需额外 API 调用
+- 刷新页面后重新加载会话详情即可恢复
+
+**DTO/API/前端改动范围**：
+- 后端 `SourceReference.java`：新增 service + environment 字段
+- 后端 `RagChatSessionService.buildSourceReferences()`：查询时一并获取 service/environment
+- 前端 `ragChat.ts` 的 `SourceReference` 接口：新增 service + environment 字段
+- 前端 `KnowledgeBaseQueryPage.tsx` 来源面板：显示 service/environment 标签
 
 **SSE 契约不变**：data → 持久化 → sources → done(status)
-
-**开发批次文件范围修订**：
-- 后端：`KnowledgeBaseRepository`（新增查询）、`KnowledgeBaseListService`（新增筛选）、`KnowledgeBaseController`（新增参数）
-- 前端：`KnowledgeBaseQueryPage.tsx`（来源面板通过 kbId 查标签）、`KnowledgeBaseManagePage.tsx`（service/environment 编辑）
 
 ### 4.2 纯文本 Flux<String> 端点
 
@@ -226,18 +261,17 @@ event: done     → {"status":"<finalStatus>"}
 
 ### 5.1 可复用（无需改动）
 
-- `KnowledgeBaseQueryPage.tsx` — 来源面板已完善
 - `stream.ts` — SSE 解析（onSources/onDone）已完善
-- `ragChat.ts` — SourceReference 类型已定义
 
 ### 5.2 需新增改动
 
 | 文件 | 改动 |
 |------|------|
-| `KnowledgeBaseUploadPage.tsx` / `FileUploadCard.tsx` | 上传表单增加服务/环境输入 |
+| `KnowledgeBaseUploadPage.tsx` / `FileUploadCard.tsx` | 上传表单增加服务/环境输入（可选字段） |
 | `KnowledgeBaseManagePage.tsx` | 增加服务/环境筛选列和筛选下拉 |
 | `api/knowledgebase.ts` | 上传 API 增加 service/environment 参数；列表 API 增加筛选参数 |
-| 来源面板 | 显示服务/环境标签（可选增强） |
+| `api/ragChat.ts` | `SourceReference` 接口新增 service + environment 字段 |
+| `KnowledgeBaseQueryPage.tsx` | 来源面板显示 service/environment 快照标签；右栏知识库列表显示标签 |
 
 ---
 
@@ -262,39 +296,38 @@ event: done     → {"status":"<finalStatus>"}
 ### 批次 A：服务/环境数据模型
 
 - **文件**：`KnowledgeBaseEntity.java`、`V20261001__add_service_environment.sql`、`KnowledgeBaseRepository.java`
+- **内容**：新增 service/environment 列，不设 DEFAULT；旧行保持 NULL；新增查询方法
 - **依赖**：无
-- **验收**：`./gradlew :app:compileJava` 通过；Flyway 迁移在 `ddl-auto: validate` 下兼容
-- **回退**：已应用的 Flyway 迁移不能通过删除脚本回退，需新增反向迁移脚本（`ALTER TABLE ... DROP COLUMN ...`）。未应用的迁移（还在开发中）可以安全删除
+- **验收**：`./gradlew :app:compileJava` 通过
+- **测试**：H2/Mockito 可测（上传不传标签 → null；传标签 → 用户值；列表筛选 → 只返回匹配）
+- **回退**：已应用的 Flyway 迁移不能通过删除脚本回退，需新增反向迁移脚本。未应用的迁移可以安全删除
 - **未验证**：真实数据库迁移
 
-### 批次 B：上传与筛选 API
+### 批次 B：上传 API + 管理页面筛选
 
-- **文件**：`KnowledgeBaseUploadService.java`、`KnowledgeBaseController.java`、`KnowledgeBaseListService.java`
+- **文件**：`KnowledgeBaseUploadService.java`、`KnowledgeBaseController.java`、`KnowledgeBaseListService.java`、`KnowledgeBaseUploadPage.tsx`、`FileUploadCard.tsx`、`KnowledgeBaseManagePage.tsx`、`api/knowledgebase.ts`
+- **内容**：上传方法增加 service/environment 参数（可选）；列表端点增加筛选参数；前端上传表单增加可选字段；管理页面增加筛选下拉和行内编辑
 - **依赖**：批次 A
-- **验收**：`./gradlew :app:test --no-daemon` 通过
+- **验收**：`./gradlew :app:test --no-daemon` 通过 + `cd frontend && pnpm run build` 通过
+- **测试**：H2/Mockito 可测（上传带/不带标签、列表筛选）
 - **回退**：恢复旧方法签名
-- **未验证**：前端联调
-
-### 批次 C：前端服务/环境交互
-
-- **文件**：`KnowledgeBaseUploadPage.tsx`、`FileUploadCard.tsx`、`KnowledgeBaseManagePage.tsx`、`api/knowledgebase.ts`
-- **依赖**：批次 B
-- **验收**：`cd frontend && pnpm run build` 通过
-- **回退**：git revert
 - **未验证**：真实上传端到端
 
-### 批次 D：RAG 检索按服务/环境过滤
+### 批次 C：SourceReference 增加 service/environment 字段 + 前端来源面板
 
-- **文件**：`KnowledgeBaseQueryService.java`、`RagChatSessionService.java`
+- **文件**：`SourceReference.java`、`RagChatSessionService.java`（`buildSourceReferences()`）、`api/ragChat.ts`、`KnowledgeBaseQueryPage.tsx`
+- **内容**：SourceReference 新增 service + environment 字段；`buildSourceReferences()` 查询时一并获取 service/environment；前端来源面板显示快照标签
 - **依赖**：批次 A
-- **验收**：现有测试仍通过 + 新增过滤测试
-- **回退**：恢复旧检索逻辑
-- **未验证**：真实检索质量
+- **验收**：`./gradlew :app:test --no-daemon` 通过 + `cd frontend && pnpm run build` 通过
+- **测试**：H2/Mockito 可测（buildSourceReferences 返回含 service/environment 的 SourceReference）
+- **回退**：恢复旧 SourceReference 签名
+- **未验证**：真实检索端到端
 
-### 批次 E：文档与进度更新
+### 批次 D：文档更新
 
 - **文件**：`README.md`、`AGENTS.md`、`PROJECT_PROGRESS.md`、`CHANGES.md`
-- **依赖**：批次 A-D
+- **内容**：文档内容与实现一致
+- **依赖**：批次 A-C
 - **验收**：文档内容与实现一致
 
 ---
@@ -315,47 +348,53 @@ event: done     → {"status":"<finalStatus>"}
 
 ### 9.1 跨服务/跨环境串检索
 
-- **风险**：用户选了"用户中心/生产"的知识库，但检索时 kbIds 过滤错误地包含了其他服务的文档
-- **防护**：`similaritySearch()` 的 `filterExpression` 只传入按 service/environment 筛选后的 kbIds
-- **测试点**：上传两个不同服务的文档，检索时验证只返回选中服务的文档
+- **风险**：用户选了“用户中心”的知识库，但检索时 kbIds 过滤错误地包含了其他服务的文档
+- **防护**：service/environment 是组织标签，检索范围由用户勾选的 kbIds 决定。`similaritySearch()` 的 `filterExpression` 只传入用户勾选的 kbIds
+- **服务端不校验**：不校验会话中的 KB 是否属于某 service/environment
+- **测试点**：上传两个不同服务的文档，检索时验证只返回用户勾选的 KB 对应的文档
 
 ### 9.2 旧文档 NULL 检索语义
 
-**三种检索语义**：
+**三种场景规则**（与 §3.6 一致）：
 
-| 文档标签 | 检索行为 |
+| 文档标签 | 管理页面筛选行为 |
 |----------|----------|
-| service=NULL, environment=NULL（未分类） | 只在选择"未分类"时参与检索 |
-| service=A, environment=通用 | 选择 service=A 的任意环境时参与检索 |
-| service=A, environment=生产 | 只在选择 service=A + environment=生产 时参与检索 |
+| service=NULL, environment=NULL（未分类） | 只在用户未选任何筛选条件时显示 |
+| service=A, environment=NULL | 选择 service=A 时显示 |
+| service=A, environment=生产 | 选择 service=A + environment=生产 时显示 |
 
-**跨服务反例**：用户选 service=支付网关，检索不应返回 service=用户中心 的文档。
-- 防护：前端筛选 kbIds 时只传入 service=支付网关 的 KB IDs
-- `similaritySearch()` 的 `buildKbFilterExpression()` 只包含这些 kbIds
-- fallback 路径的 `isDocInKnowledgeBases()` 也只检查这些 kbIds
+**注意**：service/environment 是管理页面的分类标签，不影响向量检索本身。检索范围始终由 kbIds 决定。
 
-**跨环境反例**：用户选 service=支付网关 + environment=生产，检索不应返回 environment=预发 的文档。
-- 防护：kbIds 筛选时同时匹配 service + environment
-- `environment=通用` 的文档在 service 匹配时参与检索（跨环境适用）
+### 9.3 VectorService fallback 的 Phase 1 策略
 
-**两条路径验证**：
-- 主路径 `buildKbFilterExpression(kbIds)`：只构建传入 kbIds 的过滤表达式
-- 回退路径 `isDocInKnowledgeBases(doc, kbIds)`：只检查 doc 的 kb_id 是否在传入列表中
-- 两条路径都只能返回最终允许的 kbIds 对应的文档
+**主路径**：`buildKbFilterExpression(kbIds)` 构建 pgvector 过滤表达式，在数据库层面限制检索范围。
 
-### 9.3 来源与实际检索范围不一致
+**Fallback 路径**：主路径过滤表达式失败时（如 pgvector 扩展异常），执行无前置过滤的全局候选检索（topK*3 扩大召回），然后在应用层按 `kb_id` 做本地过滤。
+
+**Fallback 的局限**：检索执行范围（recall）不受 kbIds 约束，只有最终返回结果受约束。这意味着向量索引中不属于目标 KB 的文档可能参与了距离计算，影响排序质量。
+
+**Phase 1 允许 fallback 存在**：
+- Fallback 是容错机制，改为“直接失败”会降低可用性
+- 当前 kbIds 来自用户显式勾选，范围已经很小（通常 < 10 个 KB）
+- 排序质量影响在实际场景中可接受
+
+**反例测试**（H2/Mockito 可测）：
+- Mock VectorStore 主路径抛异常 → 验证 fallback 路径只返回 kbIds 范围内的文档
+- 构造不属于 kbIds 的 Document → 验证 fallback 本地过滤将其排除
+
+### 9.4 来源与实际检索范围不一致
 
 - **风险**：sources 中的 documentName 来自不在本次检索范围内的知识库
 - **防护**：`buildSourceReferences()` 只处理本次检索返回的 `List<Document>`
 - **测试点**：验证每个 SourceReference.kbId 在请求的 kbIds 列表中
 
-### 9.4 SSE 中断后刷新恢复
+### 9.5 SSE 中断后刷新恢复
 
 - **风险**：客户端断开后重新加载会话，消息状态丢失或显示为正常完成
 - **防护**：`doOnCancel` 持久化 `CLIENT_DISCONNECTED` 状态，`getSessionDetail` 返回持久化状态
 - **测试点**：模拟中断后查询消息状态，验证 status=CLIENT_DISCONNECTED
 
-### 9.5 历史数据迁移造成的信息混用
+### 9.6 历史数据迁移造成的信息混用
 
 - **风险**：后续引入权限时，历史数据未标权限导致信息泄露
 - **防护**：Phase 1 不涉及权限，数据模型预留扩展点（service/environment 字段可为 null）
@@ -365,9 +404,8 @@ event: done     → {"status":"<finalStatus>"}
 
 ## 10. 未解决的问题
 
-1. **service/environment 字段设计**：用两个独立 varchar 字段（类似 category），还是合并为 JSON tags 字段？独立字段查询更简单，JSON tags 更灵活
-2. **旧文档的 service 默认值**：是 NULL（视为"通用"）还是要求用户补填？
-3. **环境枚举**：是否预定义环境列表（生产/预发/测试/通用），还是自由文本？
-4. **vector metadata 是否增加 service/environment**：如果增加，可在向量层直接过滤（性能更好）；如果不增加，通过 kbIds 间接过滤（改动更小）
-5. **Controller 直接持有 Repository**：`RagChatController` 当前只注入 `RagChatSessionService`、`KnowledgeBaseQueryService`、`ObjectMapper`，无 Repository 直接注入（已在 `bab3a62` 修正）
-6. **`queryKnowledgeBaseStream` 错误兜底**：适配 `RetrievalResult` 后的兜底是否完整？
+1. **环境枚举**：是否预定义环境列表（生产/预发/测试/通用），还是自由文本？
+2. **后续阶段是否解除 fileHash 唯一约束**：Phase 1 不支持同一文件跨服务独立归属，后续阶段评估
+3. **vector metadata 是否增加 service/environment**：如果增加，可在向量层直接过滤（性能更好）；当前通过 kbIds 间接过滤（改动更小）
+4. **权限系统**：后续是否需要基于 service/environment 的权限控制？
+5. **`queryKnowledgeBaseStream` 错误兜底**：适配 `RetrievalResult` 后的兜底是否完整？

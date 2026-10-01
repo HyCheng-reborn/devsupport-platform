@@ -1,3 +1,9 @@
+**2026-10-01 -- DevSupport Phase 1 设计文档第三轮修订（仅文档）**
+- 改了什么：按 Codex 第二轮复核 5 个阻塞点修订 `devsupport-phase1-design.md`：(1) service/environment 定位为组织标签非检索隔离；(2) 迁移不设 DEFAULT，旧行 NULL = 未分类；(3) 不支持同文件跨服务，重复上传返回提示；(4) 来源标签 = 提问时快照，SourceReference 新增字段；(5) fallback 允许存在，如实描述语义限制
+- 为什么：消除过度承诺，确保每项决策可实现、可验证
+- 验证：纯文档改动
+- 尚未验证的真实行为：所有设计均未经真实环境验证
+
 **2026-10-01 -- DevSupport Phase 1 设计文档第二轮修订（仅文档）**
 - 改了什么：按 Codex 复核 5 点意见修订 `devsupport-phase1-design.md`：补全服务/环境筛选请求链、确定方案 C（显式通用范围）、明确 NULL 检索语义、定义来源快照策略、修正 Flyway 回退/S3 bucket/Controller 注入事实错误
 - 为什么：方案尚不能进入批次 A，需补齐决策依据

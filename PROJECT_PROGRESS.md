@@ -562,3 +562,11 @@
 **基线 HEAD**: `05a123c`
 **状态**: 修订方案待 Codex 复核
 **文件**: `devsupport-phase1-design.md`
+
+## DevSupport Phase 1 设计文档第三轮修订
+
+**时间**: 2026-10-01
+**基线 HEAD**: `7ed3eb3`
+**状态**: 第三轮修订待 Codex 复核
+**文件**: `devsupport-phase1-design.md`
+**关键决策**: service/environment = 组织标签；fileHash 唯一不变；来源快照语义；fallback 允许
