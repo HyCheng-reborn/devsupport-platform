@@ -34,20 +34,38 @@ public class KnowledgeBaseListService {
     private final FileStorageService fileStorageService;
 
     /**
-     * 获取知识库列表（支持状态过滤和排序）
+     * 获取知识库列表（支持状态过滤、排序和 service/environment 筛选）
      * 
      * @param vectorStatus 向量化状态，null 表示不过滤
      * @param sortBy 排序字段，null 或 "time" 表示按时间排序
+     * @param service 服务标签，null 或空表示不过滤
+     * @param environment 环境标签，null 或空表示不过滤
      * @return 知识库列表
      */
-    public List<KnowledgeBaseListItemDTO> listKnowledgeBases(VectorStatus vectorStatus, String sortBy) {
+    public List<KnowledgeBaseListItemDTO> listKnowledgeBases(VectorStatus vectorStatus, String sortBy,
+                                                              String service, String environment) {
         List<KnowledgeBaseEntity> entities;
         
-        // 如果指定了状态，按状态过滤
+        boolean hasService = service != null && !service.isBlank();
+        boolean hasEnvironment = environment != null && !environment.isBlank();
+        
         if (vectorStatus != null) {
+            // 状态过滤优先，然后在内存中按 service/environment 筛选
             entities = knowledgeBaseRepository.findByVectorStatusOrderByUploadedAtDesc(vectorStatus);
+            if (hasService || hasEnvironment) {
+                entities = filterByServiceEnvironment(entities, service, environment);
+            }
+        } else if (hasService && hasEnvironment) {
+            entities = knowledgeBaseRepository.findByServiceAndEnvironmentOrderByUploadedAtDesc(
+                service.trim(), environment.trim());
+        } else if (hasService) {
+            entities = knowledgeBaseRepository.findByServiceOrderByUploadedAtDesc(service.trim());
+        } else if (hasEnvironment) {
+            // 仅 environment 筛选：需要自定义查询，因为 Repository 没有 findByEnvironment 方法
+            entities = knowledgeBaseRepository.findAllByOrderByUploadedAtDesc().stream()
+                .filter(e -> environment.trim().equals(e.getEnvironment()))
+                .toList();
         } else {
-            // 否则获取所有知识库
             entities = knowledgeBaseRepository.findAllByOrderByUploadedAtDesc();
         }
         
@@ -60,17 +78,36 @@ public class KnowledgeBaseListService {
     }
 
     /**
+     * 在内存中按 service/environment 过滤实体列表
+     */
+    private List<KnowledgeBaseEntity> filterByServiceEnvironment(List<KnowledgeBaseEntity> entities,
+                                                                   String service, String environment) {
+        boolean hasService = service != null && !service.isBlank();
+        boolean hasEnvironment = environment != null && !environment.isBlank();
+        String svc = hasService ? service.trim() : null;
+        String env = hasEnvironment ? environment.trim() : null;
+        
+        return entities.stream()
+            .filter(e -> {
+                if (hasService && !svc.equals(e.getService())) return false;
+                if (hasEnvironment && !env.equals(e.getEnvironment())) return false;
+                return true;
+            })
+            .toList();
+    }
+
+    /**
      * 获取所有知识库列表（保持向后兼容）
      */
     public List<KnowledgeBaseListItemDTO> listKnowledgeBases() {
-        return listKnowledgeBases(null, null);
+        return listKnowledgeBases(null, null, null, null);
     }
 
     /**
      * 按向量化状态获取知识库列表（保持向后兼容）
      */
     public List<KnowledgeBaseListItemDTO> listKnowledgeBasesByStatus(VectorStatus vectorStatus) {
-        return listKnowledgeBases(vectorStatus, null);
+        return listKnowledgeBases(vectorStatus, null, null, null);
     }
 
     /**
@@ -109,6 +146,20 @@ public class KnowledgeBaseListService {
     }
 
     /**
+     * 获取所有服务标签
+     */
+    public List<String> getAllServices() {
+        return knowledgeBaseRepository.findAllServices();
+    }
+
+    /**
+     * 获取所有环境标签
+     */
+    public List<String> getAllEnvironments() {
+        return knowledgeBaseRepository.findAllEnvironments();
+    }
+
+    /**
      * 根据分类获取知识库列表
      */
     public List<KnowledgeBaseListItemDTO> listByCategory(String category) {
@@ -133,6 +184,19 @@ public class KnowledgeBaseListService {
         log.info("更新知识库分类: id={}, category={}", id, category);
     }
 
+    /**
+     * 更新知识库服务/环境标签
+     */
+    @Transactional
+    public void updateLabels(Long id, String service, String environment) {
+        KnowledgeBaseEntity entity = knowledgeBaseRepository.findById(id)
+            .orElseThrow(() -> new BusinessException(ErrorCode.KNOWLEDGE_BASE_NOT_FOUND, "知识库不存在"));
+        entity.setService(service != null && !service.isBlank() ? service.trim() : null);
+        entity.setEnvironment(environment != null && !environment.isBlank() ? environment.trim() : null);
+        knowledgeBaseRepository.save(entity);
+        log.info("更新知识库标签: id={}, service={}, environment={}", id, service, environment);
+    }
+
     // ========== 搜索功能 ==========
 
     /**
@@ -153,7 +217,7 @@ public class KnowledgeBaseListService {
      * 按指定字段排序获取知识库列表（保持向后兼容）
      */
     public List<KnowledgeBaseListItemDTO> listSorted(String sortBy) {
-        return listKnowledgeBases(null, sortBy);
+        return listKnowledgeBases(null, sortBy, null, null);
     }
 
     /**

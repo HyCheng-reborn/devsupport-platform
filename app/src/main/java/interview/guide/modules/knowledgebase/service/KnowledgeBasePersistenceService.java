@@ -41,7 +41,10 @@ public class KnowledgeBasePersistenceService {
                 "id", kb.getId(),
                 "name", kb.getName(),
                 "fileSize", kb.getFileSize(),
-                "contentLength", 0  // 不再存储content，所以长度为0
+                "contentLength", 0,  // 不再存储content，所以长度为0
+                "service", kb.getService() != null ? kb.getService() : "",
+                "environment", kb.getEnvironment() != null ? kb.getEnvironment() : "",
+                "accessCount", kb.getAccessCount()
             ),
             "storage", Map.of(
                 "fileKey", kb.getStorageKey() != null ? kb.getStorageKey() : "",
@@ -56,12 +59,15 @@ public class KnowledgeBasePersistenceService {
      */
     @Transactional(rollbackFor = Exception.class)
     public KnowledgeBaseEntity saveKnowledgeBase(MultipartFile file, String name, String category,
+                                                  String service, String environment,
                                                   String storageKey, String storageUrl, String fileHash) {
         try {
             KnowledgeBaseEntity kb = new KnowledgeBaseEntity();
             kb.setFileHash(fileHash);
             kb.setName(name != null && !name.trim().isEmpty() ? name : extractNameFromFilename(file.getOriginalFilename()));
             kb.setCategory(category != null && !category.trim().isEmpty() ? category.trim() : null);
+            kb.setService(service != null && !service.trim().isEmpty() ? service.trim() : null);
+            kb.setEnvironment(environment != null && !environment.trim().isEmpty() ? environment.trim() : null);
             kb.setOriginalFilename(file.getOriginalFilename());
             kb.setFileSize(file.getSize());
             kb.setContentType(file.getContentType());

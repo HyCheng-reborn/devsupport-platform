@@ -10,6 +10,8 @@ public record KnowledgeBaseListItemDTO(
     Long id,
     String name,
     String category,
+    String service,
+    String environment,
     String originalFilename,
     Long fileSize,
     String contentType,

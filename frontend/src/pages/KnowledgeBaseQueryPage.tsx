@@ -818,7 +818,19 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
                                         <span
                                             className="font-medium text-slate-800 dark:text-white text-xs truncate flex-1">{kb.name}</span>
                                       </div>
-                                      <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5 ml-5">{formatFileSize(kb.fileSize)}</p>
+                                      <div className="flex items-center gap-1.5 mt-0.5 ml-5 flex-wrap">
+                                        <p className="text-xs text-slate-400 dark:text-slate-500">{formatFileSize(kb.fileSize)}</p>
+                                        {kb.service && (
+                                          <span className="px-1.5 py-0.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-[10px] rounded">
+                                            {kb.service}
+                                          </span>
+                                        )}
+                                        {kb.environment && (
+                                          <span className="px-1.5 py-0.5 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 text-[10px] rounded">
+                                            {kb.environment}
+                                          </span>
+                                        )}
+                                      </div>
                                     </div>
                                   ))}
                                 </div>

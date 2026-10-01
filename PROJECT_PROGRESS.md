@@ -604,3 +604,33 @@
 **证据区分**：
 - 本轮能查看的原始证据：测试 XML 文件存在于 `app/build/test-results/test/`，其中 `KnowledgeBaseRepositoryIntegrationTest.xml` 显示 tests=5 / failures=0 / errors=0 / skipped=0（timestamp=2026-10-01T17:07:47.076Z）
 - 此前 Agent 报告：Flyway 迁移验证（隔离 PostgreSQL 容器 pgvector/pgvector:pg16:5433，7/7 迁移成功）——本轮未重新执行，无法独立复核原始日志；`app/build/` 下无 `.log` 文件
+
+---
+
+## DevSupport Phase 1 批次 B 实施
+
+**时间**: 2026-10-02
+**基线 HEAD**: `7101e0f`
+**状态**: 编译通过，测试通过，待提交
+**后端改动**:
+- `KnowledgeBaseController.java`：上传增加 service/environment 参数；列表增加筛选；新增 3 个端点
+- `KnowledgeBaseUploadService.java`：传递 service/environment
+- `KnowledgeBasePersistenceService.java`：保存/重复处理增加 service/environment
+- `KnowledgeBaseListService.java`：筛选逻辑 + getAllServices/getAllEnvironments/updateLabels
+- `KnowledgeBaseListItemDTO.java`：新增 service/environment 字段
+- 新增测试：KnowledgeBasePersistenceServiceTest (6) + KnowledgeBaseListServiceTest (8)
+**前端改动**:
+- `api/knowledgebase.ts`：新增标签 API 客户端
+- `KnowledgeBaseManagePage.tsx`：筛选下拉 + 标签列 + 行内编辑
+- `KnowledgeBaseUploadPage.tsx`：标签输入 + 重复上传提示
+- `FileUploadCard.tsx`：标签输入组件
+- `KnowledgeBaseQueryPage.tsx`：知识库选择列表显示标签
+**测试结果**:
+- 后端：461 tests / 0 failures / exit 0
+- 前端：pnpm run build / exit 0
+**未验证**:
+- Repository 筛选在真实 PostgreSQL 上的行为
+- 前端端到端交互
+**批次 C 待办**:
+- SourceReference 新增 service/environment 快照字段
+- 前端来源面板显示标签

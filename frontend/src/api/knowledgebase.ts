@@ -10,6 +10,8 @@ export interface KnowledgeBaseItem {
   id: number;
   name: string;
   category: string | null;
+  service: string | null;
+  environment: string | null;
   originalFilename: string;
   fileSize: number;
   contentType: string;
@@ -40,6 +42,8 @@ export interface UploadKnowledgeBaseResponse {
     id: number;
     name: string;
     category: string;
+    service?: string;
+    environment?: string;
     fileSize: number;
     contentLength: number;
   };
@@ -183,7 +187,7 @@ export const knowledgeBaseApi = {
   /**
    * 上传知识库文件
    */
-  async uploadKnowledgeBase(file: File, name?: string, category?: string): Promise<UploadKnowledgeBaseResponse> {
+  async uploadKnowledgeBase(file: File, name?: string, category?: string, service?: string, environment?: string): Promise<UploadKnowledgeBaseResponse> {
     const formData = new FormData();
     formData.append('file', file);
     if (name) {
@@ -191,6 +195,12 @@ export const knowledgeBaseApi = {
     }
     if (category) {
       formData.append('category', category);
+    }
+    if (service) {
+      formData.append('service', service);
+    }
+    if (environment) {
+      formData.append('environment', environment);
     }
     return request.upload<UploadKnowledgeBaseResponse>('/api/knowledgebase/upload', formData);
   },
@@ -205,13 +215,19 @@ export const knowledgeBaseApi = {
   /**
    * 获取所有知识库列表
    */
-  async getAllKnowledgeBases(sortBy?: SortOption, vectorStatus?: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED'): Promise<KnowledgeBaseItem[]> {
+  async getAllKnowledgeBases(sortBy?: SortOption, vectorStatus?: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED', service?: string, environment?: string): Promise<KnowledgeBaseItem[]> {
     const params = new URLSearchParams();
     if (sortBy) {
       params.append('sortBy', sortBy);
     }
     if (vectorStatus) {
       params.append('vectorStatus', vectorStatus);
+    }
+    if (service !== undefined && service !== '') {
+      params.append('service', service);
+    }
+    if (environment !== undefined && environment !== '') {
+      params.append('environment', environment);
     }
     const queryString = params.toString();
     return request.get<KnowledgeBaseItem[]>(`/api/knowledgebase/list${queryString ? `?${queryString}` : ''}`);
@@ -259,6 +275,33 @@ export const knowledgeBaseApi = {
    */
   async updateCategory(id: number, category: string | null): Promise<void> {
     return request.put(`/api/knowledgebase/${id}/category`, { category });
+  },
+
+  // ========== 服务/环境标签 ==========
+
+  /**
+   * 获取所有服务标签
+   */
+  async getAllServices(): Promise<string[]> {
+    return request.get<string[]>('/api/knowledgebase/services');
+  },
+
+  /**
+   * 获取所有环境标签
+   */
+  async getAllEnvironments(): Promise<string[]> {
+    return request.get<string[]>('/api/knowledgebase/environments');
+  },
+
+  /**
+   * 更新知识库服务/环境标签
+   */
+  async updateLabels(id: number, service?: string, environment?: string): Promise<void> {
+    const params = new URLSearchParams();
+    if (service !== undefined) params.append('service', service);
+    if (environment !== undefined) params.append('environment', environment);
+    const queryString = params.toString();
+    return request.put(`/api/knowledgebase/${id}/labels${queryString ? `?${queryString}` : ''}`, null);
   },
 
   // ========== 搜索 ==========

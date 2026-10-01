@@ -129,51 +129,96 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
   const [savingCategory, setSavingCategory] = useState(false);
   const categoryInputRef = useRef<HTMLInputElement>(null);
 
+  // 服务/环境标签状态
+  const [serviceFilter, setServiceFilter] = useState<string>('');
+  const [environmentFilter, setEnvironmentFilter] = useState<string>('');
+  const [services, setServices] = useState<string[]>([]);
+  const [environments, setEnvironments] = useState<string[]>([]);
+
+  // 服务/环境编辑状态
+  const [editingLabelsId, setEditingLabelsId] = useState<number | null>(null);
+  const [editingService, setEditingService] = useState('');
+  const [editingEnvironment, setEditingEnvironment] = useState('');
+  const [savingLabels, setSavingLabels] = useState(false);
+  const serviceInputRef = useRef<HTMLInputElement>(null);
+
   // 重新向量化状态
   const [revectorizing, setRevectorizing] = useState<number | null>(null);
 
   // 加载数据（不显示loading状态，用于轮询）
   const loadDataSilent = useCallback(async () => {
     try {
-      const [statsData, kbList, categoryList] = await Promise.all([
+      const needClientFilter = serviceFilter === '__uncategorized__' || environmentFilter === '__uncategorized__';
+      const apiService = !needClientFilter && serviceFilter ? serviceFilter : undefined;
+      const apiEnvironment = !needClientFilter && environmentFilter ? environmentFilter : undefined;
+
+      const [statsData, kbList, categoryList, servicesList, envsList] = await Promise.all([
         knowledgeBaseApi.getStatistics(),
         searchKeyword
           ? knowledgeBaseApi.search(searchKeyword)
           : selectedCategory
           ? knowledgeBaseApi.getByCategory(selectedCategory)
-          : knowledgeBaseApi.getAllKnowledgeBases(sortBy),
+          : knowledgeBaseApi.getAllKnowledgeBases(sortBy, undefined, apiService, apiEnvironment),
         knowledgeBaseApi.getAllCategories(),
+        knowledgeBaseApi.getAllServices(),
+        knowledgeBaseApi.getAllEnvironments(),
       ]);
       setStats(statsData);
-      setKnowledgeBases(kbList);
+      let filteredList = kbList;
+      if (needClientFilter) {
+        filteredList = kbList.filter(kb => {
+          if (serviceFilter === '__uncategorized__' && kb.service !== null && kb.service !== undefined) return false;
+          if (environmentFilter === '__uncategorized__' && kb.environment !== null && kb.environment !== undefined) return false;
+          return true;
+        });
+      }
+      setKnowledgeBases(filteredList);
       setCategories(categoryList);
+      setServices(servicesList);
+      setEnvironments(envsList);
     } catch (error) {
       console.error('加载数据失败:', error);
     }
-  }, [searchKeyword, sortBy, selectedCategory]);
+  }, [searchKeyword, sortBy, selectedCategory, serviceFilter, environmentFilter]);
 
   // 加载数据
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const [statsData, kbList, categoryList] = await Promise.all([
+      const needClientFilter = serviceFilter === '__uncategorized__' || environmentFilter === '__uncategorized__';
+      const apiService = !needClientFilter && serviceFilter ? serviceFilter : undefined;
+      const apiEnvironment = !needClientFilter && environmentFilter ? environmentFilter : undefined;
+
+      const [statsData, kbList, categoryList, servicesList, envsList] = await Promise.all([
         knowledgeBaseApi.getStatistics(),
         searchKeyword
           ? knowledgeBaseApi.search(searchKeyword)
           : selectedCategory
           ? knowledgeBaseApi.getByCategory(selectedCategory)
-          : knowledgeBaseApi.getAllKnowledgeBases(sortBy),
+          : knowledgeBaseApi.getAllKnowledgeBases(sortBy, undefined, apiService, apiEnvironment),
         knowledgeBaseApi.getAllCategories(),
+        knowledgeBaseApi.getAllServices(),
+        knowledgeBaseApi.getAllEnvironments(),
       ]);
       setStats(statsData);
-      setKnowledgeBases(kbList);
+      let filteredList = kbList;
+      if (needClientFilter) {
+        filteredList = kbList.filter(kb => {
+          if (serviceFilter === '__uncategorized__' && kb.service !== null && kb.service !== undefined) return false;
+          if (environmentFilter === '__uncategorized__' && kb.environment !== null && kb.environment !== undefined) return false;
+          return true;
+        });
+      }
+      setKnowledgeBases(filteredList);
       setCategories(categoryList);
+      setServices(servicesList);
+      setEnvironments(envsList);
     } catch (error) {
       console.error('加载数据失败:', error);
     } finally {
       setLoading(false);
     }
-  }, [searchKeyword, sortBy, selectedCategory]);
+  }, [searchKeyword, sortBy, selectedCategory, serviceFilter, environmentFilter]);
 
   useEffect(() => {
     loadData();
@@ -277,6 +322,51 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
       handleSaveCategory(id);
     } else if (e.key === 'Escape') {
       handleCancelEditCategory();
+    }
+  };
+
+  // 开始编辑服务/环境标签
+  const handleStartEditLabels = (kb: KnowledgeBaseItem) => {
+    setEditingLabelsId(kb.id);
+    setEditingService(kb.service || '');
+    setEditingEnvironment(kb.environment || '');
+    setTimeout(() => {
+      serviceInputRef.current?.focus();
+    }, 50);
+  };
+
+  // 取消编辑标签
+  const handleCancelEditLabels = () => {
+    setEditingLabelsId(null);
+    setEditingService('');
+    setEditingEnvironment('');
+  };
+
+  // 保存标签
+  const handleSaveLabels = async (id: number) => {
+    try {
+      setSavingLabels(true);
+      const serviceToSave = editingService.trim() || undefined;
+      const envToSave = editingEnvironment.trim() || undefined;
+      await knowledgeBaseApi.updateLabels(id, serviceToSave, envToSave);
+      setEditingLabelsId(null);
+      setEditingService('');
+      setEditingEnvironment('');
+      await loadData();
+    } catch (error) {
+      console.error('更新标签失败:', error);
+    } finally {
+      setSavingLabels(false);
+    }
+  };
+
+  // 处理标签输入框按键
+  const handleLabelsKeyDown = (e: React.KeyboardEvent, id: number) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleSaveLabels(id);
+    } else if (e.key === 'Escape') {
+      handleCancelEditLabels();
     }
   };
 
@@ -394,6 +484,46 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
             </select>
             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
           </div>
+
+          {/* 服务筛选 */}
+          <div className="relative">
+            <select
+              value={serviceFilter}
+              onChange={(e) => {
+                setServiceFilter(e.target.value);
+                setSearchKeyword('');
+                setSelectedCategory(null);
+              }}
+              className="appearance-none pl-4 pr-10 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white cursor-pointer"
+            >
+              <option value="">全部服务</option>
+              <option value="__uncategorized__">未分类</option>
+              {services.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+          </div>
+
+          {/* 环境筛选 */}
+          <div className="relative">
+            <select
+              value={environmentFilter}
+              onChange={(e) => {
+                setEnvironmentFilter(e.target.value);
+                setSearchKeyword('');
+                setSelectedCategory(null);
+              }}
+              className="appearance-none pl-4 pr-10 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white cursor-pointer"
+            >
+              <option value="">全部环境</option>
+              <option value="__uncategorized__">未分类</option>
+              {environments.map((env) => (
+                <option key={env} value={env}>{env}</option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+          </div>
         </div>
       </div>
 
@@ -424,6 +554,12 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
                 </th>
                   <th className="text-left px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300">
                   分类
+                </th>
+                  <th className="text-left px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300">
+                  服务
+                </th>
+                  <th className="text-left px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300">
+                  环境
                 </th>
                   <th className="text-left px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300">
                   大小
@@ -530,6 +666,125 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
                           >
                             <Edit3 className="w-3.5 h-3.5" />
                           </button>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </td>
+                  {/* 服务列 */}
+                  <td className="px-6 py-4">
+                    <AnimatePresence mode="wait">
+                      {editingLabelsId === kb.id ? (
+                        <motion.div
+                          key="editing-service"
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          className="flex items-center gap-2"
+                        >
+                          <input
+                            ref={serviceInputRef}
+                            type="text"
+                            value={editingService}
+                            onChange={(e) => setEditingService(e.target.value)}
+                            onKeyDown={(e) => handleLabelsKeyDown(e, kb.id)}
+                            placeholder="服务"
+                            list="service-suggestions"
+                            className="w-24 px-2 py-1 text-sm border border-primary-300 dark:border-primary-600 rounded focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+                            disabled={savingLabels}
+                          />
+                          <datalist id="service-suggestions">
+                            {services.map((s) => (
+                              <option key={s} value={s} />
+                            ))}
+                          </datalist>
+                        </motion.div>
+                      ) : (
+                        <motion.div
+                          key="display-service"
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          className="flex items-center gap-2 group/label"
+                        >
+                          {kb.service ? (
+                            <span className="px-2 py-1 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded text-sm">
+                              {kb.service}
+                            </span>
+                          ) : (
+                            <span className="px-2 py-1 bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500 rounded text-sm">未分类</span>
+                          )}
+                          <button
+                            onClick={() => handleStartEditLabels(kb)}
+                            className="p-1 text-slate-400 hover:text-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/30 rounded opacity-0 group-hover/label:opacity-100 transition-all"
+                            title="编辑标签"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </td>
+                  {/* 环境列 */}
+                  <td className="px-6 py-4">
+                    <AnimatePresence mode="wait">
+                      {editingLabelsId === kb.id ? (
+                        <motion.div
+                          key="editing-env"
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          className="flex items-center gap-2"
+                        >
+                          <input
+                            type="text"
+                            value={editingEnvironment}
+                            onChange={(e) => setEditingEnvironment(e.target.value)}
+                            onKeyDown={(e) => handleLabelsKeyDown(e, kb.id)}
+                            placeholder="环境"
+                            list="environment-suggestions"
+                            className="w-24 px-2 py-1 text-sm border border-primary-300 dark:border-primary-600 rounded focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+                            disabled={savingLabels}
+                          />
+                          <datalist id="environment-suggestions">
+                            {environments.map((env) => (
+                              <option key={env} value={env} />
+                            ))}
+                          </datalist>
+                          <button
+                            onClick={() => handleSaveLabels(kb.id)}
+                            disabled={savingLabels}
+                            className="p-1 text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 rounded transition-colors disabled:opacity-50"
+                            title="保存"
+                          >
+                            {savingLabels ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Check className="w-4 h-4" />
+                            )}
+                          </button>
+                          <button
+                            onClick={handleCancelEditLabels}
+                            disabled={savingLabels}
+                            className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600 rounded transition-colors disabled:opacity-50"
+                            title="取消"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </motion.div>
+                      ) : (
+                        <motion.div
+                          key="display-env"
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                        >
+                          {kb.environment ? (
+                            <span className="px-2 py-1 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded text-sm">
+                              {kb.environment}
+                            </span>
+                          ) : (
+                            <span className="px-2 py-1 bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500 rounded text-sm">未分类</span>
+                          )}
                         </motion.div>
                       )}
                     </AnimatePresence>

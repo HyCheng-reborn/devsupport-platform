@@ -27,10 +27,16 @@ export interface FileUploadCardProps {
   nameLabel?: string;
   /** 错误信息 */
   error?: string;
+  /** 是否显示服务/环境输入 */
+  showLabelInputs?: boolean;
+  /** 服务标签建议列表 */
+  serviceSuggestions?: string[];
+  /** 环境标签建议列表 */
+  environmentSuggestions?: string[];
   /** 文件选择回调 */
   onFileSelect?: (file: File) => void;
   /** 上传回调 */
-  onUpload: (file: File, name?: string) => void;
+  onUpload: (file: File, name?: string, service?: string, environment?: string) => void;
   /** 返回回调 */
   onBack?: () => void;
 }
@@ -48,6 +54,9 @@ export default function FileUploadCard({
   namePlaceholder = '留空则使用文件名',
   nameLabel = '名称（可选）',
   error,
+  showLabelInputs = false,
+  serviceSuggestions = [],
+  environmentSuggestions = [],
   onFileSelect,
   onUpload,
   onBack,
@@ -55,6 +64,8 @@ export default function FileUploadCard({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [name, setName] = useState('');
+  const [service, setService] = useState('');
+  const [environment, setEnvironment] = useState('');
 
   const handleDragOver = useCallback((e: DragEvent) => {
     e.preventDefault();
@@ -86,7 +97,7 @@ export default function FileUploadCard({
 
   const handleUpload = () => {
     if (!selectedFile) return;
-    onUpload(selectedFile, name.trim() || undefined);
+    onUpload(selectedFile, name.trim() || undefined, service.trim() || undefined, environment.trim() || undefined);
   };
 
   const formatFileSize = (bytes: number): string => {
@@ -237,6 +248,54 @@ export default function FileUploadCard({
             disabled={uploading}
             onClick={(e) => e.stopPropagation()}
           />
+        </motion.div>
+      )}
+
+      {/* 服务/环境标签输入 */}
+      {showLabelInputs && selectedFile && (
+        <motion.div
+          className="mt-4 bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-lg dark:shadow-slate-900/50"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">服务标签（可选）</label>
+              <input
+                type="text"
+                value={service}
+                onChange={(e) => setService(e.target.value)}
+                placeholder="如：支付网关、用户中心"
+                list="upload-service-suggestions"
+                className="w-full px-4 py-3 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500"
+                disabled={uploading}
+                onClick={(e) => e.stopPropagation()}
+              />
+              <datalist id="upload-service-suggestions">
+                {serviceSuggestions.map((s) => (
+                  <option key={s} value={s} />
+                ))}
+              </datalist>
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">环境标签（可选）</label>
+              <input
+                type="text"
+                value={environment}
+                onChange={(e) => setEnvironment(e.target.value)}
+                placeholder="如：生产、预发、测试"
+                list="upload-environment-suggestions"
+                className="w-full px-4 py-3 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500"
+                disabled={uploading}
+                onClick={(e) => e.stopPropagation()}
+              />
+              <datalist id="upload-environment-suggestions">
+                {environmentSuggestions.map((env) => (
+                  <option key={env} value={env} />
+                ))}
+              </datalist>
+            </div>
+          </div>
         </motion.div>
       )}
 

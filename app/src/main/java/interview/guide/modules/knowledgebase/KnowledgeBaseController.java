@@ -61,7 +61,9 @@ public class KnowledgeBaseController {
     @GetMapping("/api/knowledgebase/list")
     public Result<List<KnowledgeBaseListItemDTO>> getAllKnowledgeBases(
             @RequestParam(value = "sortBy", required = false) String sortBy,
-            @RequestParam(value = "vectorStatus", required = false) String vectorStatus) {
+            @RequestParam(value = "vectorStatus", required = false) String vectorStatus,
+            @RequestParam(value = "service", required = false) String service,
+            @RequestParam(value = "environment", required = false) String environment) {
         
         VectorStatus status = null;
         if (vectorStatus != null && !vectorStatus.isBlank()) {
@@ -72,7 +74,7 @@ public class KnowledgeBaseController {
             }
         }
         
-        return Result.success(listService.listKnowledgeBases(status, sortBy));
+        return Result.success(listService.listKnowledgeBases(status, sortBy, service, environment));
     }
 
     /**
@@ -168,6 +170,22 @@ public class KnowledgeBaseController {
     }
 
     /**
+     * 获取所有服务标签
+     */
+    @GetMapping("/api/knowledgebase/services")
+    public Result<List<String>> getAllServices() {
+        return Result.success(listService.getAllServices());
+    }
+
+    /**
+     * 获取所有环境标签
+     */
+    @GetMapping("/api/knowledgebase/environments")
+    public Result<List<String>> getAllEnvironments() {
+        return Result.success(listService.getAllEnvironments());
+    }
+
+    /**
      * 根据分类获取知识库列表
      */
     @GetMapping("/api/knowledgebase/category/{category}")
@@ -192,6 +210,17 @@ public class KnowledgeBaseController {
         return Result.success(null);
     }
 
+    /**
+     * 更新知识库服务/环境标签
+     */
+    @PutMapping("/api/knowledgebase/{id}/labels")
+    public Result<Void> updateLabels(@PathVariable Long id,
+                                     @RequestParam(value = "service", required = false) String service,
+                                     @RequestParam(value = "environment", required = false) String environment) {
+        listService.updateLabels(id, service, environment);
+        return Result.success(null);
+    }
+
     // ========== 上传下载 API ==========
 
     /**
@@ -203,8 +232,10 @@ public class KnowledgeBaseController {
     public Result<Map<String, Object>> uploadKnowledgeBase(
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "name", required = false) String name,
-            @RequestParam(value = "category", required = false) String category) {
-        return Result.success(uploadService.uploadKnowledgeBase(file, name, category));
+            @RequestParam(value = "category", required = false) String category,
+            @RequestParam(value = "service", required = false) String service,
+            @RequestParam(value = "environment", required = false) String environment) {
+        return Result.success(uploadService.uploadKnowledgeBase(file, name, category, service, environment));
     }
 
     /**

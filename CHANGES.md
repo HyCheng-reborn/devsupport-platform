@@ -1,3 +1,15 @@
+**2026-10-02 -- DevSupport Phase 1 批次 B 实施（上传 API + 管理页面标签）**
+- 改了什么：
+  - 后端：上传 API 增加 service/environment 可选参数；列表 API 增加筛选；新增 GET /services、GET /environments、PUT /{id}/labels 端点；重复上传响应包含已有 KB 的 service/environment
+  - 前端：管理页面增加服务/环境筛选下拉和行内编辑；上传页面增加标签输入；问答页知识库选择列表显示标签
+  - 测试：新增 14 个测试（PersistenceService 6 + ListService 8），全量 461 tests / 0 failures
+- 为什么：Phase 1 批次 B 落地，贯通 service/environment 标签的上传/展示/筛选/编辑
+- 验证：`./gradlew :app:test --no-daemon` exit 0（461/0/0）；`cd frontend && pnpm run build` exit 0
+- 尚未验证的真实行为：
+  - Repository 筛选查询在真实 PostgreSQL 上的行为（H2 已验证）
+  - 前端标签编辑端到端交互（需启动完整服务）
+  - 批次 C：来源快照 service/environment 字段、前端来源面板标签展示
+
 **2026-10-02 -- DevSupport Phase 1 批次 A 定点补证（代码+文档）**
 - 改了什么：
   - 修复 KnowledgeBaseRepositoryTest：删除 mock 非空断言，改为集成测试
@@ -19,13 +31,13 @@
   - 新增 Entity 和 Repository 测试
   - 修正设计文档：批次验收表述、来源快照降级、fallback 假设标注
 - 为什么：Phase 1 批次 A 落地，同步修正设计文档与实现一致
-- 验证：`./gradlew :app:compileJava` exit 0；`./gradlew :app:test` exit 1（GradleWorkerMain 环境问题，非代码问题）
+- 验证：`./gradlew :app:compileJava` exit 0；`./gradlew :app:test` exit 1（GradleWorkerMain 启动故障；设置纯 ASCII 的 GRADLE_USER_HOME 后 worker 能启动、测试能执行；具体作用因素尚未隔离确认）
 - 尚未验证的真实行为：Flyway 迁移（需真实 PostgreSQL）、单元测试（需修复 Gradle 环境）、重复上传响应扩展（批次 B）
 
 **2026-10-01 -- DevSupport Phase 1 批次 A：service/environment 数据模型**
 - 改了什么：(1) 新增 Flyway 迁移 `V20261001__add_service_environment.sql`，为 `knowledge_bases` 表添加 `service VARCHAR(100)` 和 `environment VARCHAR(50)` 列及索引；(2) `KnowledgeBaseEntity` 新增 `service`/`environment` 字段及 getter/setter，`@Table(indexes=...)` 加入新索引；(3) `KnowledgeBaseRepository` 新增 4 个查询方法（findByService、findByServiceAndEnvironment、findAllServices、findAllEnvironments）；(4) 新增 `KnowledgeBaseEntityTest` 和 `KnowledgeBaseRepositoryTest` 单元测试
 - 为什么：DevSupport Phase 1 批次 A，为知识库新增服务/环境组织标签的数据模型层，不涉及业务逻辑变更
-- 验证：`./gradlew :app:compileJava` 退出码 0（BUILD SUCCESSFUL）；`./gradlew :app:test --no-daemon` 退出码 1（GradleWorkerMain ClassNotFoundException，环境问题，非代码问题）
+- 验证：`./gradlew :app:compileJava` 退出码 0（BUILD SUCCESSFUL）；`./gradlew :app:test --no-daemon` 退出码 1（GradleWorkerMain 启动故障；设置纯 ASCII 的 GRADLE_USER_HOME 后 worker 能启动、测试能执行；具体作用因素尚未隔离确认）
 - 尚未验证的真实行为：(1) Flyway 迁移需真实 PostgreSQL 验证（当前无可用实例）；(2) 测试因 Gradle worker 崩溃无法执行，需修复 Gradle/Java 环境后重试
 
 **2026-10-01 -- DevSupport Phase 1 设计文档第三轮修订（仅文档）**
