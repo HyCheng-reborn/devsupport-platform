@@ -735,3 +735,15 @@
 - 前端筛选测试：9 pass / 0 fail / exit 0
 **未解决**:
 - Git 历史中的旧密码仍可通过历史提交读取（不做强推）
+
+---
+
+## 凭据语法修正（2026-10-02）
+
+**基线**: `ee8f5f5`（凭据收口） → 本轮（语法修正）
+**改动**:
+- `application.yml`：将 `${POSTGRES_PASSWORD:?...}` 改为 `${POSTGRES_PASSWORD}`
+- 旧语法是非标准 bash 风格，Spring 无法解析
+**验证**:
+- TCP 认证验证：新密码 exit 0，错误密码 exit 2
+- Docker Compose 对缺失变量替换为空字符串（不报错）

@@ -1,3 +1,15 @@
+**2026-10-02 -- fix: correct Spring placeholder syntax for POSTGRES_PASSWORD**
+- 改了什么：
+  - application.yml 将 `${POSTGRES_PASSWORD:?POSTGRES_PASSWORD environment variable is required}` 改为 `${POSTGRES_PASSWORD}`
+  - 旧语法是非标准 bash 风格，Spring 无法解析，即使设置了环境变量也不会生效
+  - 新语法：环境变量缺失时在数据库连接层报错（标准 Spring 行为）
+- 为什么：旧语法导致凭据永远无法正确注入
+- 验证：
+  - TCP 认证验证：新密码 exit 0，错误密码 exit 2
+  - 注意：Docker Compose 对缺失变量替换为空字符串（不报错）
+- 尚未验证的真实行为：
+  - Spring Boot 启动时环境变量缺失的具体报错信息
+
 **2026-10-02 -- DevSupport Phase 1 凭据处置最终验证**
 - 改了什么：
   - application.yml 移除 POSTGRES_PASSWORD 默认值 `changeme`，改为 `${POSTGRES_PASSWORD:?POSTGRES_PASSWORD environment variable is required}`，缺少时启动失败
