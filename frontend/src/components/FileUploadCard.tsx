@@ -266,6 +266,7 @@ export default function FileUploadCard({
                 value={service}
                 onChange={(e) => setService(e.target.value)}
                 placeholder="如：支付网关、用户中心"
+                maxLength={100}
                 list="upload-service-suggestions"
                 className="w-full px-4 py-3 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500"
                 disabled={uploading}
@@ -284,6 +285,7 @@ export default function FileUploadCard({
                 value={environment}
                 onChange={(e) => setEnvironment(e.target.value)}
                 placeholder="如：生产、预发、测试"
+                maxLength={50}
                 list="upload-environment-suggestions"
                 className="w-full px-4 py-3 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500"
                 disabled={uploading}

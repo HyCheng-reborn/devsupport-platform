@@ -153,7 +153,10 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
     // 搜索关键词筛选
     if (searchKeyword.trim()) {
       const kw = searchKeyword.trim().toLowerCase();
-      items = items.filter(kb => kb.name.toLowerCase().includes(kw));
+      items = items.filter(kb =>
+        kb.name.toLowerCase().includes(kw) ||
+        (kb.originalFilename && kb.originalFilename.toLowerCase().includes(kw))
+      );
     }
 
     // 分类筛选
@@ -162,14 +165,14 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
     }
 
     // service 筛选
-    if (serviceFilter === '__uncategorized__') {
+    if (serviceFilter === '\0UNCATEGORIZED') {
       items = items.filter(kb => kb.service === null || kb.service === undefined);
     } else if (serviceFilter) {
       items = items.filter(kb => kb.service === serviceFilter);
     }
 
     // environment 筛选
-    if (environmentFilter === '__uncategorized__') {
+    if (environmentFilter === '\0UNCATEGORIZED') {
       items = items.filter(kb => kb.environment === null || kb.environment === undefined);
     } else if (environmentFilter) {
       items = items.filter(kb => kb.environment === environmentFilter);
@@ -515,7 +518,7 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
               className="appearance-none pl-4 pr-10 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white cursor-pointer"
             >
               <option value="">全部服务</option>
-              <option value="__uncategorized__">未分类</option>
+              <option value="\0UNCATEGORIZED">未分类</option>
               {services.map((s) => (
                 <option key={s} value={s}>{s}</option>
               ))}
@@ -531,7 +534,7 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
               className="appearance-none pl-4 pr-10 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white cursor-pointer"
             >
               <option value="">全部环境</option>
-              <option value="__uncategorized__">未分类</option>
+              <option value="\0UNCATEGORIZED">未分类</option>
               {environments.map((env) => (
                 <option key={env} value={env}>{env}</option>
               ))}

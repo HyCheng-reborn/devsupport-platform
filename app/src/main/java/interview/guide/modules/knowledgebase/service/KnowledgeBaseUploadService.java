@@ -47,12 +47,23 @@ public class KnowledgeBaseUploadService {
      */
     public Map<String, Object> uploadKnowledgeBase(MultipartFile file, String name, String category,
                                                      String service, String environment) {
+        // 0. 校验 service/environment 长度（在 S3/fileHash/Redis 调用之前）
+        String trimmedService = service != null ? service.trim() : null;
+        String trimmedEnvironment = environment != null ? environment.trim() : null;
+
+        if (trimmedService != null && trimmedService.length() > 100) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "service 长度不能超过 100 个字符");
+        }
+        if (trimmedEnvironment != null && trimmedEnvironment.length() > 50) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "environment 长度不能超过 50 个字符");
+        }
+
         // 1. 验证文件
         fileValidationService.validateFile(file, MAX_FILE_SIZE, "知识库");
 
         String fileName = file.getOriginalFilename();
         log.info("收到知识库上传请求: {}, 大小: {} bytes, category: {}, service: {}, environment: {}",
-            fileName, file.getSize(), category, service, environment);
+            fileName, file.getSize(), category, trimmedService, trimmedEnvironment);
 
         // 2. 验证文件类型
         String contentType = parseService.detectContentType(file);
@@ -78,7 +89,7 @@ public class KnowledgeBaseUploadService {
         log.info("知识库已存储到RustFS: {}", fileKey);
 
         // 6. 保存知识库元数据到数据库（状态为 PENDING）
-        KnowledgeBaseEntity savedKb = persistenceService.saveKnowledgeBase(file, name, category, service, environment, fileKey, fileUrl, fileHash);
+        KnowledgeBaseEntity savedKb = persistenceService.saveKnowledgeBase(file, name, category, trimmedService, trimmedEnvironment, fileKey, fileUrl, fileHash);
 
         // 7. 发送向量化任务到 Redis Stream（异步处理）
         vectorizeStreamProducer.sendVectorizeTask(savedKb.getId(), content);

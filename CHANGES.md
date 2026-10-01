@@ -1,3 +1,19 @@
+**2026-10-02 -- DevSupport Phase 1 批次 B 最终定点修复**
+- 改了什么：
+  - 后端 `KnowledgeBaseUploadService.uploadKnowledgeBase` 在 S3/fileHash/Redis 调用之前校验 service≤100/environment≤50，超长抛 BusinessException
+  - 前端 `FileUploadCard.tsx` service/environment 输入框添加 maxLength={100}/maxLength={50}
+  - 管理页搜索改为同时匹配 name 和 originalFilename（不区分大小写）
+  - “未分类”哨兵值从 `__uncategorized__` 改为 `\0UNCATEGORIZED`（NULL 字符前缀，避免用户输入冲突）
+  - 新增 `KnowledgeBaseUploadServiceTest` 4 个测试用例（service超长/environment超长/边界100/null兼容）
+- 为什么：批次 B 最终补证，确保上传前校验、搜索语义完整、哨兵值安全
+- 验证：
+  - `./gradlew :app:test --no-daemon` exit 0（485 tests / 0 failures / 57 skipped）
+  - `cd frontend && pnpm run build` exit 0
+  - `git diff --check` exit 0
+- 尚未验证的真实行为：
+  - 前端筛选端到端交互（需启动完整服务）
+  - Repository 筛选查询在真实 PostgreSQL 上的行为
+
 **2026-10-02 -- DevSupport Phase 1 批次 B 定点修复**
 - 改了什么：
   - 修复管理页 service/environment 筛选组合逻辑（“未分类”哨兵值 `__uncategorized__` 不入数据库，纯前端过滤 NULL）

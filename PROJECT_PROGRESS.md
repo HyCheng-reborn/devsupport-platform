@@ -650,3 +650,23 @@
 **未验证**:
 - 前端筛选端到端交互
 - Repository 筛选在真实 PostgreSQL 上的行为
+
+---
+
+## 批次 B 最终定点修复（2026-10-02）
+
+**基线**: `5618bef`
+**后端改动**:
+- `KnowledgeBaseUploadService.uploadKnowledgeBase` 在 S3/fileHash/Redis 调用之前校验 service≤100/environment≤50，超长抛 BusinessException
+- 新增 `KnowledgeBaseUploadServiceTest` 4 个测试用例（service超长/environment超长/边界100/null兼容）
+**前端改动**:
+- `FileUploadCard.tsx` service/environment 输入框添加 maxLength={100}/maxLength={50}
+- `KnowledgeBaseManagePage.tsx` 搜索改为同时匹配 name 和 originalFilename（不区分大小写）
+- “未分类”哨兵值从 `__uncategorized__` 改为 `\0UNCATEGORIZED`（NULL 字符前缀，避免用户输入冲突）
+**测试结果**:
+- 后端：485 tests / 0 failures / 57 skipped / exit 0
+- 前端：pnpm run build / exit 0
+- git diff --check / exit 0
+**未验证**:
+- 前端筛选端到端交互
+- Repository 筛选在真实 PostgreSQL 上的行为
