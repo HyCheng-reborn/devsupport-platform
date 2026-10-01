@@ -14,6 +14,7 @@ import interview.guide.modules.knowledgebase.model.RagChatDTO.SessionListItemDTO
 import interview.guide.modules.knowledgebase.model.RagChatMessageEntity;
 import interview.guide.modules.knowledgebase.model.RagChatSessionEntity;
 import interview.guide.modules.knowledgebase.model.RetrievalResult;
+import interview.guide.modules.knowledgebase.model.SourceReference;
 import interview.guide.modules.knowledgebase.repository.KnowledgeBaseRepository;
 import interview.guide.modules.knowledgebase.repository.RagChatMessageRepository;
 import interview.guide.modules.knowledgebase.repository.RagChatSessionRepository;
@@ -22,12 +23,17 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.document.Document;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * RAG 聊天会话服务
@@ -182,6 +188,49 @@ public class RagChatSessionService {
 
         log.info("加载历史上下文: sessionId={}, historySize={}", sessionId, history.size());
         return queryService.answerQuestionStream(kbIds, question, history);
+    }
+
+    /**
+     * 从检索文档列表构建来源引用。
+     * 从每个 Document 的 metadata 中提取 kb_id，批量查询知识库获取原始文件名（documentName）。
+     * 来源顺序与入参 docs 保持一致，不改变字段含义与 SSE 序列化契约。
+     *
+     * @param docs 检索到的文档列表
+     * @return 来源引用列表
+     */
+    public List<SourceReference> buildSourceReferences(List<Document> docs) {
+        if (docs == null || docs.isEmpty()) {
+            return List.of();
+        }
+
+        // 提取所有 kb_id
+        Set<Long> kbIds = docs.stream()
+            .map(doc -> doc.getMetadata() != null ? doc.getMetadata().get("kb_id") : null)
+            .filter(id -> id instanceof Number)
+            .map(id -> ((Number) id).longValue())
+            .collect(Collectors.toSet());
+
+        // 批量查询知识库获取原始文件名
+        Map<Long, String> kbFilenameMap = new HashMap<>();
+        if (!kbIds.isEmpty()) {
+            List<KnowledgeBaseEntity> kbs = knowledgeBaseRepository.findAllById(kbIds);
+            for (KnowledgeBaseEntity kb : kbs) {
+                kbFilenameMap.put(kb.getId(), kb.getOriginalFilename());
+            }
+        }
+
+        // 构建来源引用（顺序与 docs 一致）
+        return docs.stream()
+            .map(doc -> {
+                Object kbIdObj = doc.getMetadata() != null ? doc.getMetadata().get("kb_id") : null;
+                Long kbId = kbIdObj instanceof Number ? ((Number) kbIdObj).longValue() : null;
+                String docName = kbId != null ? kbFilenameMap.getOrDefault(kbId, "未知文档") : "未知文档";
+                String text = doc.getText();
+                String snippet = text != null && text.length() > 200 ? text.substring(0, 200) + "..." : text;
+                Double score = doc.getScore();
+                return new SourceReference(kbId, docName, snippet, score);
+            })
+            .toList();
     }
 
     /**

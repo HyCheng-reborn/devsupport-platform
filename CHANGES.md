@@ -7,6 +7,29 @@
 
 ---
 
+## 2026-10-01 — RagChatController 来源组装责任下沉到 Service（Controller 不再持有 Repository）
+
+**基线**：`bab3a62`（本任务前 HEAD）
+**范围**：只把 `buildSourceReferences` 的数据库查询与来源组装从 `KnowledgeBaseQueryService` 移入已持有 `KnowledgeBaseRepository` 的 `RagChatSessionService`，让 `RagChatController` 不再直接注入 Repository。未改数据库 schema、未改其他端点、未改来源字段/排序/SSE 序列化/状态持久化契约、未调外部 API / 数据库。
+
+### 改了什么
+- `RagChatSessionService`：新增 `buildSourceReferences(List<Document> docs)`，复用自身 `knowledgeBaseRepository` 字段批量查 `originalFilename` 组装 `SourceReference`；来源顺序、字段含义、截断与「未知文档」回退与原实现一致。
+- `KnowledgeBaseQueryService`：删除 `buildSourceReferences(docs, kbRepo)` 及随之不再使用的 `KnowledgeBaseEntity`/`SourceReference`/`KnowledgeBaseRepository` import。
+- `RagChatController`：移除 `KnowledgeBaseRepository` 字段与 import，改调 `sessionService.buildSourceReferences(result.sourceDocuments())`；`resolveFinalStatus` 仍走 `queryService`，SSE 事件顺序与持久化不变。
+- 测试：`RagChatControllerTest` 构造函数去掉 repository 参数、来源打桩改为 `sessionService.buildSourceReferences(anyList())`；`KnowledgeBaseQueryServiceTest` 删除已迁移的来源用例与无用 import；来源提取用例迁到 `RagChatSessionServiceTest`（新增 4 条，含未知 kb 回退）。
+
+### 为什么
+- 原设计中 `buildSourceReferences` 放在 `KnowledgeBaseQueryService` 却需要 `KnowledgeBaseRepository`，导致 Controller 仅为把 Repository 传进去而直接持有 Repository，违反 Controller 不碰数据访问的分层职责。`RagChatSessionService` 本就持有该 Repository 且已是 Controller 协作者，是来源组装的自然归属。
+
+### 验证
+- `./gradlew :app:compileJava :app:compileTestJava --no-daemon` → exit 0
+- `./gradlew :app:test --tests '...RagChatControllerTest' --tests '...RagChatSessionServiceTest' --tests '...KnowledgeBaseQueryServiceTest' --tests '...SourceReferenceTest' --no-daemon --rerun` → exit 0（四套件 failures=0 errors=0，含迁移后的来源用例）
+
+### 尚未验证（真实环境）
+- 未连真实 LLM/数据库跑端到端 SSE；来源组装仅由单元测试与 Controller 打桩覆盖，真实 `findAllById` 命中/缺行路径未做集成验证。
+
+---
+
 ## 2026-10-01 — KnowledgeBaseController 流式错误兜底语义定点恢复
 
 **基线**：`376ef5a`（本任务前 HEAD）

@@ -2,22 +2,31 @@ package interview.guide.modules.knowledgebase.service;
 
 import interview.guide.infrastructure.mapper.KnowledgeBaseMapper;
 import interview.guide.infrastructure.mapper.RagChatMapper;
+import interview.guide.modules.knowledgebase.model.KnowledgeBaseEntity;
 import interview.guide.modules.knowledgebase.model.MessageStatus;
 import interview.guide.modules.knowledgebase.model.RagChatMessageEntity;
+import interview.guide.modules.knowledgebase.model.SourceReference;
 import interview.guide.modules.knowledgebase.repository.KnowledgeBaseRepository;
 import interview.guide.modules.knowledgebase.repository.RagChatMessageRepository;
 import interview.guide.modules.knowledgebase.repository.RagChatSessionRepository;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.ai.document.Document;
 
+import java.lang.reflect.Field;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.Mockito.*;
 
 /**
@@ -55,6 +64,34 @@ class RagChatSessionServiceTest {
     msg.setType(RagChatMessageEntity.MessageType.ASSISTANT);
     msg.setMessageOrder(1);
     return msg;
+  }
+
+  /**
+   * 构建带 kb_id metadata 和 score 的 Document
+   */
+  private Document createDoc(String text, Long kbId, Double score) {
+    Map<String, Object> metadata = new HashMap<>();
+    if (kbId != null) {
+      metadata.put("kb_id", kbId);
+    }
+    Document doc = new Document(text, metadata);
+    if (score != null) {
+      setScore(doc, score);
+    }
+    return doc;
+  }
+
+  /**
+   * 通过反射设置 Document 的 score（Spring AI 2.0.0 未暴露 setScore 方法）
+   */
+  private static void setScore(Document doc, Double score) {
+    try {
+      Field scoreField = Document.class.getDeclaredField("score");
+      scoreField.setAccessible(true);
+      scoreField.set(doc, score);
+    } catch (ReflectiveOperationException e) {
+      throw new RuntimeException("Failed to set Document score via reflection", e);
+    }
   }
 
   // ========== completeStreamMessage 测试 ==========
@@ -119,5 +156,73 @@ class RagChatSessionServiceTest {
     assertThat(msg.getCompleted()).isTrue();
     assertThat(msg.getSourcesJson()).isEqualTo("[]");
     verify(messageRepository).save(msg);
+  }
+
+  // ========== buildSourceReferences 来源提取测试 ==========
+
+  @Nested
+  @DisplayName("buildSourceReferences 来源提取测试")
+  class BuildSourceReferencesTests {
+
+    @Test
+    @DisplayName("buildSourceReferences_从Document提取来源_保持顺序与截断")
+    void extractsSourceReferencesFromDocuments() {
+      List<Document> docs = List.of(
+          createDoc("这是一段来自简历的文本内容，用于测试来源引用功能", 10L, 0.92),
+          createDoc("A".repeat(300), 20L, 0.75) // 长文本，测试截断
+      );
+
+      KnowledgeBaseEntity kb10 = new KnowledgeBaseEntity();
+      kb10.setId(10L);
+      kb10.setOriginalFilename("张三_简历.pdf");
+
+      KnowledgeBaseEntity kb20 = new KnowledgeBaseEntity();
+      kb20.setId(20L);
+      kb20.setOriginalFilename("李四_简历.docx");
+
+      when(knowledgeBaseRepository.findAllById(anySet())).thenReturn(List.of(kb10, kb20));
+
+      List<SourceReference> refs = ragChatSessionService.buildSourceReferences(docs);
+
+      assertThat(refs).hasSize(2);
+
+      // 第一个来源
+      assertThat(refs.get(0).kbId()).isEqualTo(10L);
+      assertThat(refs.get(0).documentName()).isEqualTo("张三_简历.pdf");
+      assertThat(refs.get(0).contentSnippet()).isEqualTo("这是一段来自简历的文本内容，用于测试来源引用功能");
+      assertThat(refs.get(0).score()).isEqualTo(0.92);
+
+      // 第二个来源 — 验证截断
+      assertThat(refs.get(1).kbId()).isEqualTo(20L);
+      assertThat(refs.get(1).documentName()).isEqualTo("李四_简历.docx");
+      assertThat(refs.get(1).contentSnippet()).hasSize(203); // 200 + "..."
+      assertThat(refs.get(1).contentSnippet()).endsWith("...");
+      assertThat(refs.get(1).score()).isEqualTo(0.75);
+    }
+
+    @Test
+    @DisplayName("buildSourceReferences_未知kb回退未知文档且来源不丢")
+    void unknownKb_fallsBackToUnknownName() {
+      List<Document> docs = List.of(createDoc("一段内容", 99L, 0.5));
+      when(knowledgeBaseRepository.findAllById(anySet())).thenReturn(List.of());
+
+      List<SourceReference> refs = ragChatSessionService.buildSourceReferences(docs);
+
+      assertThat(refs).hasSize(1);
+      assertThat(refs.get(0).kbId()).isEqualTo(99L);
+      assertThat(refs.get(0).documentName()).isEqualTo("未知文档");
+    }
+
+    @Test
+    @DisplayName("buildSourceReferences_空列表返回空")
+    void emptyDocs_returnsEmpty() {
+      assertThat(ragChatSessionService.buildSourceReferences(List.of())).isEmpty();
+    }
+
+    @Test
+    @DisplayName("buildSourceReferences_null列表返回空")
+    void nullDocs_returnsEmpty() {
+      assertThat(ragChatSessionService.buildSourceReferences(null)).isEmpty();
+    }
   }
 }

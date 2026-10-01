@@ -13,7 +13,6 @@ import interview.guide.modules.knowledgebase.model.RagChatDTO.UpdateKnowledgeBas
 import interview.guide.modules.knowledgebase.model.RagChatDTO.UpdateTitleRequest;
 import interview.guide.modules.knowledgebase.model.RetrievalResult;
 import interview.guide.modules.knowledgebase.model.SourceReference;
-import interview.guide.modules.knowledgebase.repository.KnowledgeBaseRepository;
 import interview.guide.modules.knowledgebase.service.KnowledgeBaseQueryService;
 import interview.guide.modules.knowledgebase.service.RagChatSessionService;
 import jakarta.validation.Valid;
@@ -46,7 +45,6 @@ public class RagChatController {
 
     private final RagChatSessionService sessionService;
     private final KnowledgeBaseQueryService queryService;
-    private final KnowledgeBaseRepository knowledgeBaseRepository;
     private final ObjectMapper objectMapper;
 
     /**
@@ -139,9 +137,8 @@ public class RagChatController {
         // 2. 获取检索结果（包含流式响应和来源文档）
         RetrievalResult result = sessionService.getStreamAnswer(sessionId, request.question());
 
-        // 3. 构建来源列表
-        List<SourceReference> sources = queryService.buildSourceReferences(
-            result.sourceDocuments(), knowledgeBaseRepository);
+        // 3. 构建来源列表（来源组装与数据库查询责任归入会话 Service）
+        List<SourceReference> sources = sessionService.buildSourceReferences(result.sourceDocuments());
         String sourcesJson = null;
         try {
             sourcesJson = objectMapper.writeValueAsString(sources);

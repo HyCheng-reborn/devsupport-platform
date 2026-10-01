@@ -4,7 +4,6 @@ import interview.guide.modules.knowledgebase.model.MessageStatus;
 import interview.guide.modules.knowledgebase.model.RagChatDTO.SendMessageRequest;
 import interview.guide.modules.knowledgebase.model.RetrievalResult;
 import interview.guide.modules.knowledgebase.model.SourceReference;
-import interview.guide.modules.knowledgebase.repository.KnowledgeBaseRepository;
 import interview.guide.modules.knowledgebase.service.KnowledgeBaseQueryService;
 import interview.guide.modules.knowledgebase.service.RagChatSessionService;
 import org.junit.jupiter.api.BeforeEach;
@@ -46,8 +45,6 @@ class RagChatControllerTest {
   private RagChatSessionService sessionService;
   @Mock
   private KnowledgeBaseQueryService queryService;
-  @Mock
-  private KnowledgeBaseRepository knowledgeBaseRepository;
 
   private final ObjectMapper objectMapper = new ObjectMapper();
   private RagChatController controller;
@@ -59,7 +56,7 @@ class RagChatControllerTest {
   @BeforeEach
   void setUp() {
     controller = new RagChatController(
-        sessionService, queryService, knowledgeBaseRepository, objectMapper);
+        sessionService, queryService, objectMapper);
   }
 
   // ========== 辅助方法 ==========
@@ -97,7 +94,7 @@ class RagChatControllerTest {
       when(sessionService.prepareStreamMessage(SESSION_ID, QUESTION)).thenReturn(MESSAGE_ID);
       when(sessionService.getStreamAnswer(SESSION_ID, QUESTION))
           .thenReturn(resultWith(Flux.just("项目的后端端口", "是 8080"), docs));
-      when(queryService.buildSourceReferences(anyList(), eq(knowledgeBaseRepository))).thenReturn(oneSource());
+      when(sessionService.buildSourceReferences(anyList())).thenReturn(oneSource());
       when(queryService.resolveFinalStatus("项目的后端端口是 8080", docs))
           .thenReturn(MessageStatus.COMPLETED);
 
@@ -130,7 +127,7 @@ class RagChatControllerTest {
       when(sessionService.prepareStreamMessage(SESSION_ID, QUESTION)).thenReturn(MESSAGE_ID);
       when(sessionService.getStreamAnswer(SESSION_ID, QUESTION))
           .thenReturn(resultWith(Flux.just("部分回答"), docs));
-      when(queryService.buildSourceReferences(anyList(), eq(knowledgeBaseRepository))).thenReturn(oneSource());
+      when(sessionService.buildSourceReferences(anyList())).thenReturn(oneSource());
       when(queryService.resolveFinalStatus(anyString(), any())).thenReturn(MessageStatus.COMPLETED);
       doThrow(new RuntimeException("DB down"))
           .when(sessionService).completeStreamMessage(anyLong(), anyString(), any(), anyString());
@@ -157,7 +154,7 @@ class RagChatControllerTest {
     when(sessionService.prepareStreamMessage(SESSION_ID, QUESTION)).thenReturn(MESSAGE_ID);
     when(sessionService.getStreamAnswer(SESSION_ID, QUESTION))
         .thenReturn(resultWith(Flux.just(refusal), docs));
-    when(queryService.buildSourceReferences(anyList(), eq(knowledgeBaseRepository))).thenReturn(oneSource());
+    when(sessionService.buildSourceReferences(anyList())).thenReturn(oneSource());
     // 真实判定逻辑在 Service 层测试；此处按"文档存在但拒答"契约桩为 NO_RESULTS
     when(queryService.resolveFinalStatus(refusal, docs)).thenReturn(MessageStatus.NO_RESULTS);
 
@@ -187,7 +184,7 @@ class RagChatControllerTest {
     when(sessionService.prepareStreamMessage(SESSION_ID, QUESTION)).thenReturn(MESSAGE_ID);
     when(sessionService.getStreamAnswer(SESSION_ID, QUESTION))
         .thenReturn(resultWith(Flux.error(new RuntimeException("LLM服务不可用")), docs));
-    when(queryService.buildSourceReferences(anyList(), eq(knowledgeBaseRepository))).thenReturn(oneSource());
+    when(sessionService.buildSourceReferences(anyList())).thenReturn(oneSource());
 
     StepVerifier.create(controller.sendMessageStream(SESSION_ID, request()))
         .expectError()
@@ -208,7 +205,7 @@ class RagChatControllerTest {
     when(sessionService.prepareStreamMessage(SESSION_ID, QUESTION)).thenReturn(MESSAGE_ID);
     when(sessionService.getStreamAnswer(SESSION_ID, QUESTION))
         .thenReturn(resultWith(Flux.just("已输出的部分").concatWith(Flux.never()), docs));
-    when(queryService.buildSourceReferences(anyList(), eq(knowledgeBaseRepository))).thenReturn(oneSource());
+    when(sessionService.buildSourceReferences(anyList())).thenReturn(oneSource());
 
     StepVerifier.create(controller.sendMessageStream(SESSION_ID, request()))
         .expectNextMatches(e -> "data".equals(e.event()))

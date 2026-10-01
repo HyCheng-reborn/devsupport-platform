@@ -4,13 +4,10 @@ import interview.guide.common.ai.LlmProviderRegistry;
 import interview.guide.common.ai.PromptSecurityConstants;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
-import interview.guide.modules.knowledgebase.model.KnowledgeBaseEntity;
 import interview.guide.modules.knowledgebase.model.MessageStatus;
 import interview.guide.modules.knowledgebase.model.QueryRequest;
 import interview.guide.modules.knowledgebase.model.QueryResponse;
 import interview.guide.modules.knowledgebase.model.RetrievalResult;
-import interview.guide.modules.knowledgebase.model.SourceReference;
-import interview.guide.modules.knowledgebase.repository.KnowledgeBaseRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -287,49 +284,6 @@ public class KnowledgeBaseQueryService {
             return MessageStatus.NO_RESULTS;
         }
         return MessageStatus.COMPLETED;
-    }
-
-    /**
-     * 从检索文档列表构建来源引用。
-     * 从每个 Document 的 metadata 中提取 kb_id，批量查询知识库获取原始文件名。
-     *
-     * @param docs 检索到的文档列表
-     * @param kbRepo 知识库 Repository
-     * @return 来源引用列表
-     */
-    public List<SourceReference> buildSourceReferences(List<Document> docs, KnowledgeBaseRepository kbRepo) {
-        if (docs == null || docs.isEmpty()) {
-            return List.of();
-        }
-
-        // 提取所有 kb_id
-        Set<Long> kbIds = docs.stream()
-            .map(doc -> doc.getMetadata() != null ? doc.getMetadata().get("kb_id") : null)
-            .filter(id -> id instanceof Number)
-            .map(id -> ((Number) id).longValue())
-            .collect(Collectors.toSet());
-
-        // 批量查询知识库
-        Map<Long, String> kbFilenameMap = new HashMap<>();
-        if (!kbIds.isEmpty()) {
-            List<KnowledgeBaseEntity> kbs = kbRepo.findAllById(kbIds);
-            for (KnowledgeBaseEntity kb : kbs) {
-                kbFilenameMap.put(kb.getId(), kb.getOriginalFilename());
-            }
-        }
-
-        // 构建来源引用
-        return docs.stream()
-            .map(doc -> {
-                Object kbIdObj = doc.getMetadata() != null ? doc.getMetadata().get("kb_id") : null;
-                Long kbId = kbIdObj instanceof Number ? ((Number) kbIdObj).longValue() : null;
-                String docName = kbId != null ? kbFilenameMap.getOrDefault(kbId, "未知文档") : "未知文档";
-                String text = doc.getText();
-                String snippet = text != null && text.length() > 200 ? text.substring(0, 200) + "..." : text;
-                Double score = doc.getScore();
-                return new SourceReference(kbId, docName, snippet, score);
-            })
-            .toList();
     }
 
     private QueryContext buildQueryContext(String originalQuestion, List<Message> history) {

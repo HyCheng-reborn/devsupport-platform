@@ -135,6 +135,7 @@
 
 ## 7. 变更记录（简短，倒序）
 
+- 2026-10-01 — **RagChatController 来源组装责任下沉到 Service**（见 §12）。将 `buildSourceReferences` 的数据库查询与来源组装从 `KnowledgeBaseQueryService` 移入已持有 `KnowledgeBaseRepository` 的 `RagChatSessionService`，`RagChatController` 不再直接注入 Repository。仅改这两个 Service + Controller + 三处测试 + 本文件；未改来源字段/排序/SSE 序列化/状态持久化契约、未改 schema、未动其他端点、未调外部 API / 数据库。状态 `代码已写 · 离线通过（compileJava/compileTestJava exit 0 + RagChatControllerTest/RagChatSessionServiceTest/KnowledgeBaseQueryServiceTest/SourceReferenceTest 全绿 :app:test exit 0）· 真实环境未验证`。
 - 2026-10-01 — **`KnowledgeBaseController.queryKnowledgeBaseStream()` 流式错误兜底语义定点恢复**（见 §11）。仅改该端点 + 新增 `KnowledgeBaseControllerStreamTest` + 本文件；未改共享的 `answerQuestionStream`、未改 RagChatController 的 SSE 协议。未调外部 API / 数据库、未启 Docker。状态 `代码已写 · 离线通过（新类 7 用例 + RagChatControllerTest/QueryServiceTest 全绿，:app:test exit 0）· 真实环境未验证`。
 - 2026-10-01 — **Phase 1 流式回答前端状态处理定点修复**（见 §10）。仅改前端：新增 `ragStreamStatus.ts` + 测试、`stream.ts` 透传 done 状态、`ragChat.ts` 收敛回调、`KnowledgeBaseQueryPage.tsx` 按状态写定 + 门控来源、`package.json` / `ci.yml` 注册新测试、本文件；消费 §9 后端 `done.status` 契约，不再无条件写 COMPLETED。未调外部 API / 数据库、未启 Docker。状态 `代码已写 · 离线通过（node --test 5 绿 + pnpm build exit 0）· 真实环境未验证`。
 - 2026-10-01 — **Phase 1 流式回答服务端最终状态与事件顺序定点修复**（见 §9）。仅改 `RagChatController` + `KnowledgeBaseQueryService` + 两处测试 + 本文件；未调付费 API、未启 Docker、未跑真实 L1、未动生产数据。状态 `代码已写 · 离线通过 · 真实环境未验证`。
@@ -303,4 +304,34 @@
 
 - 未连真实后端跑过一次端到端 SSE：真实网络上 Flux.error 与中断的实际时序、Spring WebFlux/SSE 对错误终止的底层行为未实测。
 - “同步抛错”分支在当前服务形态下几乎不会触发（Service 内部已 catch 并包为 `Flux.error`）；try/catch 为防御，主要真实路径是 `(B)` 中 `emitted=false` 分支。
+
+## 12. RagChatController 来源组装责任下沉到 Service
+
+**时间**: 2026-10-01（北京时间）
+**基线 HEAD**: `bab3a62`（本轮前）
+**范围**: 只把 `buildSourceReferences` 的数据库查询与来源组装从 `KnowledgeBaseQueryService` 移入 `RagChatSessionService`，让 `RagChatController` 不再直接持有 `KnowledgeBaseRepository`。保持来源字段、排序、SSE 序列化、状态持久化与现有接口兼容；不改数据库 schema、不动其他端点。
+
+### 为何 Controller 之前直接注入 Repository
+
+- `buildSourceReferences(List<Document> docs, KnowledgeBaseRepository kbRepo)` 原本住在 `KnowledgeBaseQueryService`，但需要 Repository 才能由 `kb_id` 反查 `KnowledgeBaseEntity.originalFilename` 作为 `SourceReference.documentName`。Service 自己并未持有 Repository，于是 Controller 仅为把这个 Repository 参数传进去而直接注入了 `KnowledgeBaseRepository`——违反 Controller 不碰数据访问的分层职责。
+- `SourceReference.documentName` 的来源：从每个检索 `Document` 的 metadata 取 `kb_id`，批量 `findAllById` 查 `knowledge_bases` 表，取 `originalFilename`（原始文件名，不可被用户修改）；命中不到时回退“未知文档”。
+
+### 修复（仅换调用方与归属）
+
+- `RagChatSessionService` 新增 `buildSourceReferences(List<Document> docs)`，复用自身已有的 `knowledgeBaseRepository` 字段；逻辑、顺序、截断（200 + `...`）、未知回退与原实现逐字一致。
+- `KnowledgeBaseQueryService` 删除该方法及不再使用的 `KnowledgeBaseEntity`/`SourceReference`/`KnowledgeBaseRepository` import（`Set`/`Map`/`HashMap`/`Collectors` 仍被其他方法使用，保留）。
+- `RagChatController` 移除 `KnowledgeBaseRepository` 字段与 import，改调 `sessionService.buildSourceReferences(result.sourceDocuments())`；`resolveFinalStatus` 仍走 `queryService`，SSE 事件顺序、来源 JSON 序列化、完成/错误/取消三路持久化均未变。
+
+### 测试
+
+- `RagChatControllerTest`：构造函数改为三参（去掉 repository mock），五处来源打桩改为 `sessionService.buildSourceReferences(anyList())`。
+- 来源提取用例从 `KnowledgeBaseQueryServiceTest` 迁到 `RagChatSessionServiceTest`（新增 4 条：顺序与截断 / 未知 kb 回退 / 空列表 / null）；`KnowledgeBaseQueryServiceTest` 删除旧来源用例及无用 import。
+- 验证命令（PowerShell，`$env:GRADLE_USER_HOME="C:\temp\gradle-tmp"`）：
+  - `./gradlew :app:compileJava :app:compileTestJava --no-daemon` → exit 0
+  - `./gradlew :app:test --tests '...RagChatControllerTest' --tests '...RagChatSessionServiceTest' --tests '...KnowledgeBaseQueryServiceTest' --tests '...SourceReferenceTest' --no-daemon --rerun` → exit 0（四套件 failures=0 errors=0）
+
+### 尚未验证的真实行为（不得写成已验证）
+
+- 纯重构，未连真实 LLM / 数据库跑端到端 SSE；来源组装仅由单元测试与 Controller 打桩覆盖，真实 `findAllById` 命中 / 缺行路径未做集成验证。
+- `buildSourceReferences` 在 `RagChatSessionService` 中不开事务（与原先在 QueryService 中时一致）；只依赖一次批量 `findAllById`，未新增循环查库。
 
