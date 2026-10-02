@@ -58,7 +58,7 @@ app:
       dashscope:
         base-url: https://dashscope.aliyuncs.com/compatible-mode
         api-key: test-api-key
-      model: qwen3.5-flash
+        model: qwen3.5-flash
       lmstudio:
         base-url: http://localhost:1234
         api-key: lm-studio

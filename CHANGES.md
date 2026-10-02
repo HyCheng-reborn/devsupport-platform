@@ -1,3 +1,11 @@
+**2026-10-03 -- I-3 切片 3：VoiceInterviewIntegrationTest 恢复（YAML 缩进修复 + WebSocket 测试环境修复）**
+- 修复 `application-test.yml` dashscope provider model 属性缩进（6 → 8 空格）
+- `@SpringBootTest` → `@SpringBootTest(webEnvironment = RANDOM_PORT)` 支持 WebSocket
+- 测试构建器 `.roleType(...)` → `.skillId(...)`（服务层用 skillId 填充 roleType）
+- 定点：10 tests / 0 failures / 0 errors / 0 skipped
+- 全量：508 tests / 0 failures / 0 errors / 3 skipped（较此前 13 减少 10）
+- 未改任何生产代码
+
 **2026-10-03 -- I-3 切片 2：Provider 禁用策略实施（PROVIDER_NOT_FOUND vs PROVIDER_DISABLED）**
 - 新增 `PROVIDER_DISABLED(11012, "LLM Provider 已禁用")` ErrorCode
 - `LlmProviderRegistry.loadProviderOrThrow` 拆为两步判断：先查 not-found，再判 disabled

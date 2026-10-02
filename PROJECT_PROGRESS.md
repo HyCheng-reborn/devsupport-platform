@@ -136,6 +136,7 @@
 
 ## 7. 变更记录（简短，倒序）
 
+- 2026-10-03 — **I-3 切片 3：VoiceInterviewIntegrationTest 恢复（YAML 缩进修复 + WebSocket 测试环境修复）** — 已完成。定点 10/10 全绿，全量 508/0/0/3。
 - 2026-10-03 — **I-2 RateLimitIntegrationTest Docker 验证 — 已完成**。使用 Testcontainers + `redis:7-alpine` 实跑 4 个 `RateLimitIntegrationTest` 测试：`testRateLimit`、`testMultiRule`、`testExpiredPermitsRemainWhenLaterRuleRejects`、`testIndependentCountPerDimension`，定点 4/4 全部通过。全量 `:app:test`：508 tests, 0 failures, 0 errors, 46 skipped（较此前 50 skipped 减少 4，即 RateLimitIntegrationTest 4 个用例从跳过转为通过）。环境：Docker Desktop 29.7.2，Testcontainers 自动拉起 `redis:7-alpine` 容器，退出码 0。**注意：这是 Testcontainers 隔离容器验证，不是生产 Redis 实例验证**。未修改任何业务代码、测试代码或配置文件。
 - 2026-10-02 — **I-5 POSTGRES_PASSWORD 必填校验（方案 A）— 已完成**。新增 `PostgresPasswordValidator`（`EnvironmentPostProcessor`），在 `prepareEnvironment` 阶段校验 `POSTGRES_PASSWORD`，仅对 `jdbc:postgresql:` URL 生效，H2 等自动跳过。新增 3 个文件：`app/src/main/java/interview/guide/common/config/PostgresPasswordValidator.java`、`app/src/main/resources/META-INF/spring.factories`、`app/src/test/java/interview/guide/common/config/PostgresPasswordValidatorTest.java`。测试覆盖：9 个单元+集成测试（U1-U8 + I1 集成时序），全量 508 测试通过（0 失败）。H2 回归：`KnowledgeBaseRepositoryIntegrationTest` 5 个测试通过。三角度审查（生命周期/测试隔离/变更范围）全部 PASS。未验证：真实 PostgreSQL 连接认证、Flyway 迁移、LLM/Embedding、SSE、生产部署。未修改 `application.yml`、`build.gradle`、`App.java` 等任何已有文件。
 
@@ -968,6 +969,28 @@ START `2026-10-02 16:44:47+08` / END `16:45:45+08`（**57s**）→ **FOCUSED_EXI
 **验证**：
 - 定点：`LlmProviderRegistryTest` 11 tests / 0 failures / 0 errors / 0 skipped
 - 全量：508 tests / 0 failures / 0 errors / 13 skipped（较此前 14 减少 1，恢复 disabled provider 测试）
+
+**未验证**：
+- 未启动 Docker/PostgreSQL/Redis/S3
+- 未调用 LLM/Embedding
+
+## I-3 切片 3：VoiceInterviewIntegrationTest 恢复（YAML 缩进修复 + WebSocket 测试环境修复）
+
+**状态**：`真实环境已验证`。定点 10/10 全绿，全量 508/0/0/3。Redis 7 容器由 docker-compose.dev.yml 启动。
+
+**背景**：`VoiceInterviewIntegrationTest` 10 个测试此前因 `@Disabled` 被跳过。I-3 切片 1 移除了 `@Disabled`，但定点测试发现两个问题：
+1. `application-test.yml` 第 61 行 `dashscope` provider 的 `model` 属性缩进错误（6 空格应为 8 空格），导致 YAML 解析失败
+2. `@SpringBootTest` 默认 MOCK web 环境不支持 WebSocket，需改为 `RANDOM_PORT`
+
+**改了什么**：
+- `application-test.yml`：修复 dashscope provider model 属性缩进（6 → 8 空格）
+- `VoiceInterviewIntegrationTest.java`：
+  - `@SpringBootTest` → `@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)`
+  - 测试构建器 `.roleType(...)` → `.skillId(...)`（服务层 `createSession` 使用 `skillId` 填充 `roleType`，`roleType` 字段已废弃）
+
+**验证**：
+- 定点：`VoiceInterviewIntegrationTest` 10 tests / 0 failures / 0 errors / 0 skipped
+- 全量：508 tests / 0 failures / 0 errors / 3 skipped（较此前 13 减少 10，恢复 VoiceInterviewIntegrationTest 全部 10 个测试）
 
 **未验证**：
 - 未启动 Docker/PostgreSQL/Redis/S3

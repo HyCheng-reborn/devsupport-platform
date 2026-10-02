@@ -27,14 +27,9 @@ import static org.junit.jupiter.api.Assertions.*;
  *   <li>Configuration validation</li>
  * </ul>
  */
-@SpringBootTest
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
-@org.junit.jupiter.api.Disabled(
-    "Pending: 测试环境下 application-test.yml 的 app.ai.providers 配置漂移，Spring context 启动后 "
-        + "VoiceInterviewService.createSession 通过 LlmProviderRegistry 解析 module-default provider "
-        + "时 NPE。独立 PR 修 test profile 配置后再启用。"
-)
-@DisplayName("语音面试集成测试（待修复）")
+@DisplayName("语音面试集成测试")
 class VoiceInterviewIntegrationTest {
 
     @Autowired
@@ -61,7 +56,7 @@ class VoiceInterviewIntegrationTest {
         void testCompleteInterviewFlow() {
             // Step 1: Create session
             CreateSessionRequest createRequest = CreateSessionRequest.builder()
-                .roleType("ali-p8")
+                .skillId("ali-p8")
                 .introEnabled(true)
                 .techEnabled(true)
                 .projectEnabled(true)
@@ -108,7 +103,7 @@ class VoiceInterviewIntegrationTest {
         void testPhaseTransition() {
             // Create session with INTRO and TECH phases
             CreateSessionRequest request = CreateSessionRequest.builder()
-                .roleType("byteance-algo")
+                .skillId("byteance-algo")
                 .introEnabled(true)
                 .techEnabled(true)
                 .projectEnabled(false)
@@ -140,7 +135,7 @@ class VoiceInterviewIntegrationTest {
         @DisplayName("会话持久化 - 数据库存储和检索")
         void testSessionPersistence() {
             CreateSessionRequest request = CreateSessionRequest.builder()
-                .roleType("tencent-backend")
+                .skillId("tencent-backend")
                 .introEnabled(true)
                 .plannedDuration(25)
                 .build();
@@ -164,7 +159,7 @@ class VoiceInterviewIntegrationTest {
         @DisplayName("多阶段会话 - 验证所有阶段都能正确初始化")
         void testMultiPhaseSession() {
             CreateSessionRequest request = CreateSessionRequest.builder()
-                .roleType("ali-p8")
+                .skillId("ali-p8")
                 .introEnabled(true)
                 .techEnabled(true)
                 .projectEnabled(true)
@@ -222,7 +217,7 @@ class VoiceInterviewIntegrationTest {
         void testEmptyConfiguration() {
             // Create session with minimal configuration
             CreateSessionRequest request = CreateSessionRequest.builder()
-                .roleType("ali-p8")
+                .skillId("ali-p8")
                 .build();
 
             SessionResponseDTO sessionResponse = voiceInterviewService.createSession(request);
@@ -236,16 +231,16 @@ class VoiceInterviewIntegrationTest {
         void testDifferentRoleTypes() {
             String[] roleTypes = {"ali-p8", "byteance-algo", "tencent-backend"};
 
-            for (String roleType : roleTypes) {
+            for (String skillId : roleTypes) {
                 CreateSessionRequest request = CreateSessionRequest.builder()
-                    .roleType(roleType)
+                    .skillId(skillId)
                     .plannedDuration(30)
                     .build();
 
                 SessionResponseDTO sessionResponse = voiceInterviewService.createSession(request);
 
-                assertNotNull(sessionResponse, "Session should be created for role: " + roleType);
-                assertEquals(roleType, sessionResponse.getRoleType());
+                assertNotNull(sessionResponse, "Session should be created for skill: " + skillId);
+                assertEquals(skillId, sessionResponse.getRoleType());
             }
         }
     }
