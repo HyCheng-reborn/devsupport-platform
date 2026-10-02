@@ -1,0 +1,2 @@
+org.springframework.boot.EnvironmentPostProcessor=\
+interview.guide.common.config.PostgresPasswordValidator

@@ -1,3 +1,13 @@
+**2026-10-02 -- I-5 POSTGRES_PASSWORD 必填校验（方案 A）**
+- 新增 `PostgresPasswordValidator`：`EnvironmentPostProcessor`，在 `prepareEnvironment` 阶段校验 `POSTGRES_PASSWORD`，仅对 `jdbc:postgresql:` URL 生效，H2 等自动跳过
+- 新增 `META-INF/spring.factories`：注册 EPP
+- 新增 `PostgresPasswordValidatorTest`：9 个测试（U1-U8 + I1 集成时序）
+- 全量测试 507 通过，0 失败
+- H2 回归：`KnowledgeBaseRepositoryIntegrationTest` 5 个测试通过
+- 三角度审查（生命周期/测试隔离/变更范围）：全部 PASS
+- 未修改 `application.yml`、`build.gradle`、`App.java` 等任何已有文件
+- 未验证：真实 PostgreSQL 连接认证、Flyway 迁移、LLM/Embedding、SSE、生产部署
+
 **2026-10-02 -- 文档：PROJECT_PROGRESS.md 顶部补跨机器 remote 别名映射（仅文档，不改代码/配置）**
 - 改了什么：在 `PROJECT_PROGRESS.md` 顶部环境说明新增一行，明确两台机器的 remote 别名差异：本机 `devsupport`=HyCheng-reborn/devsupport-platform（推送目标）、`origin`=Snailclimb/interview-guide（上游、勿推）；另一台验证机的 `origin`=HyCheng-reborn/devsupport-platform，故批次 C/D 文档里「push 到 origin/master」等同于本机的「push 到 devsupport/master」；判断目标仓库以 remote URL 为准。
 - 为什么：批次 C/D 的记录在另一台机器上把推送目标写作 `origin`，与本机别名相反，跨机器阅读易误读为推到上游。
