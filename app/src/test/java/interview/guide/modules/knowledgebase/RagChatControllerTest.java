@@ -175,6 +175,50 @@ class RagChatControllerTest {
     }
 
     @Test
+    @DisplayName("Controller 协作：service/environment 同时出现在 sources 事件 JSON 与持久化 sourcesJson，且保持 data→持久化成功→sources→done 顺序")
+    void sourceTagsAppearInSourcesEventAndPersistedJson() {
+      List<Document> docs = List.of(doc());
+      when(sessionService.prepareStreamMessage(SESSION_ID, QUESTION)).thenReturn(MESSAGE_ID);
+      when(sessionService.getStreamAnswer(SESSION_ID, QUESTION))
+          .thenReturn(resultWith(Flux.just("项目的后端端口是 8080"), docs));
+      // oneSource() 携带提问时刻标签：service=支付网关、environment=生产
+      when(sessionService.buildSourceReferences(anyList())).thenReturn(oneSource());
+      when(queryService.resolveFinalStatus("项目的后端端口是 8080", docs))
+          .thenReturn(MessageStatus.COMPLETED);
+
+      AtomicBoolean assertedAtSources = new AtomicBoolean(false);
+
+      StepVerifier.create(controller.sendMessageStream(SESSION_ID, request()))
+          // 1) 先发 data chunk
+          .expectNextMatches(e -> "data".equals(e.event()))
+          // 2) 收到 sources 的瞬间：持久化必须已成功，且两处都含标签值与字段名
+          .expectNextMatches(e -> {
+            if (!"sources".equals(e.event())) {
+              return false;
+            }
+            ArgumentCaptor<String> captured = ArgumentCaptor.forClass(String.class);
+            verify(sessionService, times(1)).completeStreamMessage(
+                eq(MESSAGE_ID), eq("项目的后端端口是 8080"),
+                eq(MessageStatus.COMPLETED), captured.capture());
+            // 持久化的 sourcesJson 含标签值与字段名
+            assertThat(captured.getValue())
+                .contains("\"service\"").contains("支付网关")
+                .contains("\"environment\"").contains("生产");
+            // sources 事件 data 同样含标签值与字段名
+            assertThat(e.data())
+                .contains("\"service\"").contains("支付网关")
+                .contains("\"environment\"").contains("生产");
+            assertedAtSources.set(true);
+            return true;
+          })
+          // 3) done 在 sources 之后发出，携带最终状态
+          .expectNextMatches(e -> "done".equals(e.event()) && e.data().contains("COMPLETED"))
+          .verifyComplete();
+
+      assertThat(assertedAtSources).isTrue();
+    }
+
+    @Test
     @DisplayName("Controller 协作：用真实 resolveFinalStatus 判定正常排查答案，落库 COMPLETED 且 sources 非空")
     void normalAnswerWithRealStatusJudgingPersistsCompletedWithSources() throws Exception {
       // 不 mock 最终状态判定：走真实 resolveFinalStatus，验证 P1 回归修复贯通 Controller。

@@ -768,8 +768,9 @@
 - sourcesJson 序列化包含 service/environment 字段
 
 ---
-**批次 C 前端**（commit `713f36b`）
-**基线**: `713f36b`（批次 C 后端 `61bc503`）
+**批次 C 前端**（最终推送 commit `f4ac4b9`）
+**基线**: `61bc503`（批次 C 后端）
+> 提交历史说明：批次 C 前端本地曾依次为 `713f36b` → `d5b84bd`(amend) → `f4ac4b9`(amend)，`f4ac4b9` 经 force push 覆盖前两个引用；三者代码内容完全一致，当前有效引用以 `f4ac4b9` 为准。
 **改动**:
 - `frontend/src/api/ragChat.ts`：`SourceReference` 接口新增可选 `service` / `environment` 字段
 - `frontend/src/pages/KnowledgeBaseQueryPage.tsx`：来源面板渲染蓝色（service）和绿色（environment）标签；两字段均空时显示「无标签」
@@ -780,15 +781,25 @@
 - 真实上传端到端后来源面板实际显示效果
 
 ---
-**批次 C 前端筛选**（commit `d5b84bd`）
-**基线**: `d5b84bd`（批次 C 前端标签展示）
-**改动**:
-- 实现前端来源筛选逻辑，支持按 service/environment 过滤来源项
-- 新增/修改前端过滤相关测试，覆盖各种筛选场景
-- 构建配置优化（vite.config.ts 调整）
-- 清理未使用的导入和变量
-**验证**:
-- `pnpm run build` exit 0
-- 前端 filter 测试 9 pass / 0 fail（新增测试用例覆盖筛选逻辑）
-**未验证**:
-- 真实 SSE 返回的来源数据在实际页面上的筛选交互效果
+**批次 C 前端展示修正（纠正原「前端筛选」不实记录）**
+> 本块之前错误描述为「批次 C 前端筛选（commit `d5b84bd`）/ 实现来源筛选逻辑 / 新增过滤测试 / 改 `vite.config.ts`」，与当前代码不符，现纠正如下。
+**当前代码事实**（HEAD `f4ac4b9`）:
+- 批次 C 前端**只在来源面板展示** `service`（蓝）/`environment`（绿）标签，两者皆空显示「无标签」，向后兼容旧 `sourcesJson`；`documentName`/`score`/`contentSnippet` 与 `slice(0, 5)` 排序未变。
+- **未实现任何来源筛选**：`KnowledgeBaseQueryPage.tsx` 无 `filter`/筛选/过滤 逻辑；**未改 `vite.config.ts`**；**未新增前端过滤测试**（所谓 9 pass 是批次 B 管理页 `kbFilter` 既有套件）。
+- `d5b84bd` 已被 force push 覆盖但本地 reflog 可取；与 `f4ac4b9` 差异仅为上述夸大的文档行（纯新增、零删除），代码/测试无丢失，因此无需恢复代码。
+- 批次 C 目标是展示来源标签；若后续确实需要来源筛选，应作为独立需求单独开展，本轮不自行扩展。
+
+---
+**批次 C 收尾修正（本轮，基线 HEAD `f4ac4b9`）**
+> 单线收尾：force push 查清、Compose 密码必填校验、来源快照关键测试。逐项据实记录「已验证 / 被环境阻塞」。
+
+1. force push 与 `d5b84bd`：已查清。`d5b84bd` 本地 reflog 完整可取；`git diff d5b84bd f4ac4b9` 仅命中两份文档且纯新增零删除，批次 C 代码文件完全一致 → force push 未覆盖任何代码/测试，无需恢复。CHANGES.md/PROJECT_PROGRESS.md 中「来源筛选已实现」等夸大描述已按当前代码纠正为「仅展示标签」。
+2. Compose 密码必填校验：`docker-compose.yml`（2 处）+ `docker-compose.dev.yml`（1 处）改用 `${POSTGRES_PASSWORD:?...}`。`docker compose config` 实测（脱敏）：缺失→exit 1、空值→exit 1、哑值→exit 0、dev 缺失→exit 1。Spring `${POSTGRES_PASSWORD}`（无默认）为 fail-closed 静态分析，未实跑 bootRun。
+3. 来源快照关键测试：
+   - 前端：`sourceDisplay.ts` 展示映射 + `sourceDisplay.test.ts`（`node --test` exit 0，9/9 通过），`KnowledgeBaseQueryPage.tsx` 改为实际调用该映射；`pnpm run build` exit 0。**已实跑通过**。
+   - 后端：`RagChatControllerTest` 新增标签协作测试、`RagChatSessionServiceTest` 新增标签/NULL 保留测试；`compileJava`/`compileTestJava` exit 0（**编译通过**）。
+
+**尚未验证（据实标注）**：
+- 后端 `:app:test` **执行被环境阻塞**：forked 测试 worker 启动即 `ClassNotFoundException: GradleWorkerMain`（Gradle 9.6.1 + JDK 25 已知环境级故障），本会话 4 种调用策略（含单类定点）均复现，无 test-results XML。新增后端测试的实际运行通过/失败未取到，不以编译或旧 XML 冒充。
+- Spring 缺变量真实启动堆栈、生产库 Flyway DDL、真实 LLM/Embedding、端到端 SSE、上传后来源面板实际显示。
+- 旧密码状态：仅「错误密码被拒绝，旧密码状态未验证」，未做历史泄露旧密码 TCP 认证，不声称「已失效」。

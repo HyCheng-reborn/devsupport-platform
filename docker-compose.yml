@@ -16,7 +16,7 @@ services:
     container_name: interview-postgres
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD 未设置：请在 .env 或环境变量中提供数据库密码（缺失或为空均拒绝启动）}
       POSTGRES_DB: interview_guide
     volumes:
       # 数据持久化：确保容器重启或删除后，数据库数据不丢失
@@ -145,7 +145,7 @@ services:
       POSTGRES_PORT: 5432
       POSTGRES_DB: interview_guide
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD 未设置：请在 .env 或环境变量中提供数据库密码（缺失或为空均拒绝启动）}
       
       # === Redis 连接 ===
       REDIS_HOST: redis

@@ -214,6 +214,40 @@ class RagChatSessionServiceTest {
     }
 
     @Test
+    @DisplayName("buildSourceReferences_透传 service/environment 标签；KB 存在但标签为 NULL 时来源标签也为 NULL")
+    void carriesTagsAndNullTags() {
+      List<Document> docs = List.of(
+          createDoc("有标签的内容", 10L, 0.9),
+          createDoc("无标签的内容", 20L, 0.8)
+      );
+
+      KnowledgeBaseEntity tagged = new KnowledgeBaseEntity();
+      tagged.setId(10L);
+      tagged.setOriginalFilename("支付网关说明.md");
+      tagged.setService("支付网关");
+      tagged.setEnvironment("生产");
+
+      KnowledgeBaseEntity untagged = new KnowledgeBaseEntity();
+      untagged.setId(20L);
+      untagged.setOriginalFilename("空白文档.md");
+      // service/environment 保持默认 null → 命中 KB 但标签为 NULL
+
+      when(knowledgeBaseRepository.findAllById(anySet())).thenReturn(List.of(tagged, untagged));
+
+      List<SourceReference> refs = ragChatSessionService.buildSourceReferences(docs);
+
+      assertThat(refs).hasSize(2);
+      // 顺序保持：第一条带标签
+      assertThat(refs.get(0).documentName()).isEqualTo("支付网关说明.md");
+      assertThat(refs.get(0).service()).isEqualTo("支付网关");
+      assertThat(refs.get(0).environment()).isEqualTo("生产");
+      // 第二条命中 KB 但标签 NULL → 来源标签为 null（前端渲染为“无标签”）
+      assertThat(refs.get(1).documentName()).isEqualTo("空白文档.md");
+      assertThat(refs.get(1).service()).isNull();
+      assertThat(refs.get(1).environment()).isNull();
+    }
+
+    @Test
     @DisplayName("buildSourceReferences_空列表返回空")
     void emptyDocs_returnsEmpty() {
       assertThat(ragChatSessionService.buildSourceReferences(List.of())).isEmpty();

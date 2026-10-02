@@ -1,15 +1,39 @@
-**2026-10-02 -- DevSupport Phase 1 批次 C 前端：来源筛选与过滤实现**
+**2026-10-02 -- 批次 C 收尾修正（3/3）：补充来源快照关键测试（前端已实跑，后端执行被环境阻塞）**
 - 改了什么：
-  - 实现前端来源筛选逻辑，支持按 service/environment 过滤来源项
-  - 新增/修改前端过滤相关测试，覆盖各种筛选场景
-  - 构建配置优化（vite.config.ts 调整）
-  - 清理未使用的导入和变量
-- 为什么：来源面板需要支持用户按服务/环境维度筛选来源，提升大量来源时的可查阅性
-- 验证：
-  - `pnpm run build` exit 0
-  - 前端 filter 测试 9 pass / 0 fail（新增测试用例覆盖筛选逻辑）
-- 尚未验证的真实行为：
-  - 真实 SSE 返回的来源数据在实际页面上的筛选交互效果
+  - 后端 `RagChatControllerTest`（SuccessPath）新增 `sourceTagsAppearInSourcesEventAndPersistedJson`：以 `oneSource()`（service=支付网关、environment=生产）+ COMPLETED 桩，用 StepVerifier 断言事件顺序 `data → 持久化成功 → sources → done`，并在收到 sources 的瞬间捕获持久化入参，断言持久化 `sourcesJson` 与 sources 事件 `data` **同时**包含 `"service"`/`"environment"` 字段名与标签值。
+  - 后端 `RagChatSessionServiceTest`（BuildSourceReferencesTests）新增 `carriesTagsAndNullTags`：两条来源，一条命中带标签 KB、一条命中 `service/environment` 为 null 的 KB，断言批量单次查询下标签透传、NULL 标签保留 null、来源顺序不变；既有批量/顺序/缺失 KB 回退/空输入测试全部保留。
+  - 前端新增可单测展示映射 `frontend/src/utils/sourceDisplay.ts`（`toSourceTagView`）+ `sourceDisplay.test.ts`；并把 `KnowledgeBaseQueryPage.tsx` 来源面板改为**实际调用**该映射渲染标签（非孤立辅助函数），文档名/snippet/score/顺序与 `slice(0,5)` 展示口径不变。
+- 为什么：批次 C 的验收核心是来源标签进入 SSE/持久化快照并在前端展示；需要可控测试锁定 service/environment 的端到端字段与向后兼容。
+- 验证（真实命令 + 退出码）：
+  - 前端 `node --test src/utils/sourceDisplay.test.ts` → 退出码 0，tests 9 / pass 9 / fail 0（覆盖新标签、null、旧 JSON 缺字段 undefined、空串归一、score 百分比与 null、文档名片段透传、数组映射保序保量）。
+  - 前端 `pnpm run build`（tsc && vite build）→ 退出码 0，产出 `KnowledgeBaseQueryPage-*.js`（仅 chunk>500kB 警告，非错误）。
+  - 后端 `./gradlew :app:compileJava :app:compileTestJava --no-daemon` → 退出码 0（新测试与既有测试均编译通过）。
+  - 后端 `./gradlew :app:test --no-daemon --tests ...`（含 `--rerun-tasks`、daemon 模式、单类定点共 4 种调用）→ 退出码 1，**非断言失败**：forked 测试 worker 启动即 `java.lang.ClassNotFoundException: worker...GradleWorkerMain` + `Could not write standard input to Gradle Test Executor`，无任何 test-results XML 产出。经确认为本机已知环境级故障（Gradle 9.6.1 + JDK 25 worker 类加载），同一现象在批次 A 记录中已出现，且对本会话未改动的既有测试同样复现。
+- 尚未验证的真实行为（据实标注，不以编译或旧 XML 冒充）：
+  - 后端新增/既有单元测试的**实际执行结果**（被 Gradle worker 环境故障阻塞，未取到通过/失败）。
+  - 真实上传端到端后来源面板显示、真实 LLM/Embedding、生产库 Flyway DDL、端到端 SSE。
+
+**2026-10-02 -- 批次 C 收尾修正（2/3）：Compose 密码变量改为必填语法并验证**
+- 改了什么：
+  - `docker-compose.yml`（db 服务与 app 服务两处）与 `docker-compose.dev.yml` 的 `POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}` → `${POSTGRES_PASSWORD:?...（缺失或为空均拒绝启动）}`，采用 Compose 支持的必填插值语法。
+  - 原裸 `${VAR}` 在变量缺失/为空时仅警告并替换为空串（容器可能以空密码启动）；改为 `:?` 后缺失与空值都明确报错退出。
+- 为什么：避免数据库以空密码被拉起，落实凭据必填校验。
+- 验证（`docker compose config`，全程脱敏、未打印任何真实密码）：
+  - 变量缺失（把 compose 复制到无 `.env` 的目录）→ 退出码 1，报 `required variable POSTGRES_PASSWORD is missing a value`。
+  - 变量存在但为空（临时 `.env` 写 `POSTGRES_PASSWORD=`）→ 退出码 1，同一必填错误。
+  - 提供哑值 `dummy_batchc_config_test_not_real` → 退出码 0，正常渲染、无插值错误。
+  - `docker-compose.dev.yml` 变量缺失 → 退出码 1。
+- Spring 配置单独确认：`application.yml` 使用 `${POSTGRES_PASSWORD}`（无默认值），占位符不可解析时 DataSource bean 创建报错、context 启动失败（fail-closed）；本轮为源码/配置静态分析，**未实跑 bootRun 验证缺变量启动**。
+- 旧密码状态：本轮未以历史泄露旧密码做 TCP 认证测试，故只记录为「错误密码被拒绝，旧密码状态未验证」，不声称「旧密码已失效」。
+- 尚未验证的真实行为：真实容器启动时 `:?` 报错的确切呈现、Spring 缺变量启动的实际堆栈（未做真实启动验证）。
+
+**2026-10-02 -- 批次 C 收尾修正（1/3）：纠正 force push 后的不实文档记录（仅文档，不改代码）**
+- 背景：当前 HEAD `f4ac4b9` 是把已推送的 `d5b84bd` 经 `git commit --amend` 后覆盖而来。本地 reflog 链：`713f36b`(原始提交) → `d5b84bd`(amend) → `f4ac4b9`(amend)，三者父提交同为 `61bc503`。
+- force push 影响查清：`d5b84bd` 对象在本地 reflog 中完整可取（`git cat-file -t d5b84bd` = commit）。`git diff d5b84bd f4ac4b9` 仅命中 `CHANGES.md` / `PROJECT_PROGRESS.md`，且为**纯新增、零删除**；批次 C 代码文件 `frontend/src/api/ragChat.ts`、`frontend/src/pages/KnowledgeBaseQueryPage.tsx` 在两者间**完全一致**。故 force push **未覆盖任何代码或测试**，`f4ac4b9` 的树是 `d5b84bd` 的超集，**无需恢复代码、也没有需要恢复的被覆盖内容**。
+- 不实描述来源：`d5b84bd → f4ac4b9` 多出的正是下面这些夸大的文档行——把批次 C 写成「实现前端来源筛选逻辑 / 新增过滤测试 / 改 vite.config.ts」，并错误归因到已失效的 `d5b84bd`。实际批次 C 前端**只展示来源标签**，未做任何来源筛选。
+- 本条作用：以当前代码为准，撤除「来源筛选已实现」的不实表述；批次 C 目标保持在来源标签展示，不自行扩展为来源筛选功能。
+- 验证：本轮纯文档修正；`git diff --check` 结果见本轮收尾提交记录。
+- 尚未验证：无（本条仅文档）。
 
 **2026-10-02 -- DevSupport Phase 1 批次 C 前端：来源面板展示 service/environment 标签**
 - 改了什么：
