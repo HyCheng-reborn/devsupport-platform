@@ -1,6 +1,7 @@
 # PROJECT_PROGRESS — 跨对话任务进度唯一入口
 
 > 本项目（远程仓库 `HyCheng-reborn/devsupport-platform`，本地目录名仍为 `interview-guide`）的进度事实源。
+> **跨机器 remote 别名映射（读文档前先对齐，避免 `origin` 误读）**：本机 `devsupport` = `HyCheng-reborn/devsupport-platform`（推送目标），本机 `origin` = `Snailclimb/interview-guide`（上游，**勿推**）；另一台验证机（批次 C/D 补验）的 `origin` = `HyCheng-reborn/devsupport-platform`，故其文档/提交记录里的「push 到 `origin/master`」等同于本机的「push 到 `devsupport/master`」。判断实际目标仓库一律以 remote URL 为准，不要只看别名。
 > 新会话接手时先读本文件，再读「交接区」列出的文件。
 > 最近更新：**2026-09-30 方案第二轮修订（北京时间）**，作者 Qoder。
 

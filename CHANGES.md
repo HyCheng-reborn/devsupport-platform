@@ -1,3 +1,9 @@
+**2026-10-02 -- 文档：PROJECT_PROGRESS.md 顶部补跨机器 remote 别名映射（仅文档，不改代码/配置）**
+- 改了什么：在 `PROJECT_PROGRESS.md` 顶部环境说明新增一行，明确两台机器的 remote 别名差异：本机 `devsupport`=HyCheng-reborn/devsupport-platform（推送目标）、`origin`=Snailclimb/interview-guide（上游、勿推）；另一台验证机的 `origin`=HyCheng-reborn/devsupport-platform，故批次 C/D 文档里「push 到 origin/master」等同于本机的「push 到 devsupport/master」；判断目标仓库以 remote URL 为准。
+- 为什么：批次 C/D 的记录在另一台机器上把推送目标写作 `origin`，与本机别名相反，跨机器阅读易误读为推到上游。
+- 验证：本轮纯文档；remote 映射依据本机 `git remote -v`（devsupport→HyCheng-reborn/devsupport-platform，origin→Snailclimb/interview-guide）与已同步的 `devsupport/master`（现 HEAD `8cd17c7`）核实；`git diff --check` 结果见本条收尾记录。
+- 尚未验证：无（本条仅文档）。
+
 **2026-10-02 -- 批次 D：文档更新（README.md + AGENTS.md 面向 DevSupport 重定位，仅文档，不改代码/配置）**
 - 范围：严格按 `devsupport-phase1-design.md` §7 批次 D 白名单——`README.md` + `AGENTS.md` 面向 DevSupport 展示层重定位；`PROJECT_PROGRESS.md` / `CHANGES.md` 已随每批次同步，本条即批次 D 完成记录。**未修改** `.env.example` / `SETUP_API_KEYS.md` / `docs/voice-*` / `frontend/README.md`（stock Vite template）/ 业务代码 / 构建配置 / wrapper / docker-compose / prompts / 前端 / `.env`（本机仍不存在）。
 - `README.md` 关键变更：
