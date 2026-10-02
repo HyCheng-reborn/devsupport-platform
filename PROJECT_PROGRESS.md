@@ -803,3 +803,54 @@
 - 后端 `:app:test` **执行被环境阻塞**：forked 测试 worker 启动即 `ClassNotFoundException: GradleWorkerMain`（Gradle 9.6.1 + JDK 25 已知环境级故障），本会话 4 种调用策略（含单类定点）均复现，无 test-results XML。新增后端测试的实际运行通过/失败未取到，不以编译或旧 XML 冒充。
 - Spring 缺变量真实启动堆栈、生产库 Flyway DDL、真实 LLM/Embedding、端到端 SSE、上传后来源面板实际显示。
 - 旧密码状态：仅「错误密码被拒绝，旧密码状态未验证」，未做历史泄露旧密码 TCP 认证，不声称「已失效」。
+
+---
+
+## 批次 C 后端 :app:test 独立干净检出补验（2026-10-02，仅验证记录）
+
+> 上节「尚未验证」中“后端 `:app:test` 执行被环境阻塞、实际运行通过/失败未取到”这一缺口，本轮由独立干净检出上两次真实执行覆盖（定点 + 全量）。不改代码/构建配置/wrapper，不重开 P1 文本规则。
+
+**基线 HEAD**: `a9f6d30b043de4e754049f8e43ab0933ccea0e36`（`ls-remote` 确认与 `origin/master` 一致、无新增提交）。
+**a9f6d30 直接改动**：`RagChatControllerTest.java`（新增 `sourceTagsAppearInSourcesEventAndPersistedJson`）、`RagChatSessionServiceTest.java`（新增 `carriesTagsAndNullTags`）；`SourceReferenceSnapshotTest.java` 由前置 `61bc503` 引入，a9f6d30 未再动，但仍属本轮目标。
+**方法**：`git worktree add --detach` 于被 git 忽略的 `build/verify-batch-c-a9f6d30` 建立独立干净检出（HEAD=a9f6d30、工作树 clean）；清空 `app/build/test-results/test`（前置 XML=0）后按用户指定命令原样运行。主仓工作树保持 clean，`.env` 不存在、`gradle-wrapper.properties` 未动，未复制故障工作副本的 `build` / `.gradle` / worker 缓存。
+**工具链（同机同工具链，非“跨机”）**：Gradle 9.6.1（wrapper `distributionUrl` 默认 `gradle-9.6.1-bin.zip`，未替换）；Temurin OpenJDK `25.0.4.1+1-LTS`；hostname `MSI`；OS `10.0.26200`（Win11 25H2）；`JAVA_HOME=C:\Program Files\Eclipse Adoptium\jdk-25.0.4.101-hotspot\`；`~/.gradle` 与故障会话同源，未删缓存。
+**外部依赖核对**：`:app:test` 默认 excludeTags `real-eval`（不触发真实 LLM / 付费 Embedding / 真实 L1 / 生产库）；H2 内存库、Flyway 关闭；Redis/S3 以 `@MockBean` 打桩；`RateLimitIntegrationTest` 标 `@Testcontainers(disabledWithoutDocker = true)`，本机 Docker Desktop 未运行时自动跳过。**本轮未启动任何外部服务、未调用真实 LLM/Embedding/L1/生产库、未启动任何容器**。
+
+### 定点结果（用户指定命令严格原样执行）
+```
+.\gradlew.bat :app:test --no-daemon --console=plain `
+  --tests "interview.guide.modules.knowledgebase.RagChatControllerTest" `
+  --tests "interview.guide.modules.knowledgebase.service.RagChatSessionServiceTest" `
+  --tests "interview.guide.modules.knowledgebase.service.SourceReferenceSnapshotTest"
+```
+START `2026-10-02 16:44:47+08` / END `16:45:45+08`（**57s**）→ **FOCUSED_EXIT=0，BUILD SUCCESSFUL**。新生成 **10 个 XML 套件**，timestamp `2026-10-02T08:45:42-45Z` = 本地 16:45:42-45，与本轮窗口一致。`RagChatControllerTest` 顶层 3 + `$SuccessPath` 7 = 10；`RagChatSessionServiceTest` 顶层 4 + `$BuildSourceReferencesTests` 5 = 9；`SourceReferenceSnapshotTest` 6 个 @Nested 合计 10。**定点合计 29 tests / 0 failures / 0 errors / 0 skipped**；日志中 `GradleWorkerMain / ClassNotFoundException / FAILED / BUILD FAILED` 0 次。
+
+### 全量结果
+```
+.\gradlew.bat :app:test --no-daemon --console=plain
+```
+首次 16:50:43 被 Qoder 沙箱瞬时“拒绝访问”（0.16s 未进入 Gradle、无 XML、非 Gradle 内部错误）；稍候 5s 重试：START `2026-10-02 16:51:07+08` / END `16:53:50+08`（**2m42s**）→ **FULL_EXIT=0，BUILD SUCCESSFUL**，`:app:test` 实际执行（“5 actionable tasks: 1 executed, 4 up-to-date”）。新生成 **107 个 XML 套件，合计 tests=499 / failures=0 / errors=0 / skipped=50**（较批次 B 时的 455 新增 44 个用例）。批次 C 三个目标类在全量运行里同样 0 failures / 0 errors / 0 skipped。日志中 `GradleWorkerMain / ClassNotFoundException / BUILD FAILED` 0 次。
+
+### 50 个 skipped 归因（区分可复跑与需代码/配置修复）
+| 类别 | skipped | 原因 | 需满足条件 |
+|---|---:|---|---|
+| `RateLimitIntegrationTest` | 4 | 类级 `@Testcontainers(disabledWithoutDocker = true)`，本机 Docker Desktop 未运行 | 启动 Docker Desktop，自动拉 `redis:7-alpine` |
+| `VoiceInterviewServiceTest` (8 @Nested) | 32 | 类级 `@Disabled`：“`setUp` 未向 `VoiceInterviewService` 注入 `LlmProviderRegistry` mock、导致 NPE；留作下一步独立 PR 修复” | 需代码修复 |
+| `VoiceInterviewIntegrationTest` (3 @Nested) | 10 | 类级 `@Disabled`：“`application-test.yml` 的 `app.ai.providers` 配置漂移、Spring context 启动后 `VoiceInterviewService.createSession` 通过 `LlmProviderRegistry` 解析 module-default provider 时 NPE” | 需修 test profile 配置 |
+| `VoiceInterviewServicePauseTest` | 1 | `@Disabled`：“`VoiceInterviewService` constructor 变更后待重写” | 需重写 |
+| `VoiceInterviewPromptServiceTest` | 1 | `@Disabled`：“`RolePrompt` / `getRolePrompt` 已在 commit e6bebe7 移除” | 需重写 |
+| `DashscopeLlmServiceTest` | 1 | `@Disabled`：“同 RolePrompt 移除；constructor 在 f87f435 / c433a50 演进” | 需重写 |
+| `LlmProviderRegistryTest#testGetChatClient_disabledProvider` | 1 | 方法级 `@Disabled`：“`ProviderConfig.enabled` + `PROVIDER_DISABLED` 尚未实现” | 需实现该特性 |
+| **合计** | **50** | 4 可环境复跑 + 46 需代码/配置修复 | 本轮未动代码/配置 |
+
+### 验收状态同步
+- 上节“尚未验证”第 1 条——**已由本节定点/全量各一次真实执行覆盖**（29 定点 + 499 全量，全绿，含 a9f6d30 新增两个后端测试方法）。
+- 上节其他未验证项（真实 PostgreSQL/Redis/S3/LLM/Embedding/生产库端到端 SSE、Docker-based RateLimit 实跑、Spring 缺变量真实启动堆栈、上传后来源面板实际显示、旧密码 TCP 认证、46 项 @Disabled 目标行为）**保持“未验证”不变**。
+
+### 环境诚实说明
+批次 A/B/C 记录里“forked 测试 worker 启动即 `ClassNotFoundException: GradleWorkerMain`”的环境级阻塞，在本机本轮干净检出上**未复现**（定点 + 全量各一次，日志 0 次）。这只说明该现象与特定工作副本/守护态相关，**不宣称原始主工作副本的确切成因已定性、不宣称跨环境普适解决**。
+
+### 交付边界（本轮）
+- 仅 `PROJECT_PROGRESS.md`（本节）与 `CHANGES.md`（顶部新增同日“批次 C 后端测试独立干净检出补验”条目）两份文档变更。
+- 未改代码 / 构建配置 / wrapper / docker-compose / prompts / 前端 / .env / gradle-wrapper.properties。
+- 未 force push、未删缓存、未禁用测试、未新增 tag；主仓工作树保持 clean，提交后普通 `git push` 到 `origin/master`。
