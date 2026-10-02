@@ -7,10 +7,12 @@ import interview.guide.modules.voiceinterview.dto.SessionResponseDTO;
 import interview.guide.modules.voiceinterview.model.VoiceInterviewMessageEntity;
 import interview.guide.modules.voiceinterview.model.VoiceInterviewSessionEntity;
 import interview.guide.modules.voiceinterview.model.VoiceInterviewSessionStatus;
+import interview.guide.common.ai.LlmProviderRegistry;
+import interview.guide.modules.voiceinterview.listener.VoiceEvaluateStreamProducer;
+import interview.guide.modules.voiceinterview.repository.VoiceInterviewEvaluationRepository;
 import interview.guide.modules.voiceinterview.repository.VoiceInterviewMessageRepository;
 import interview.guide.modules.voiceinterview.repository.VoiceInterviewSessionRepository;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -48,12 +50,7 @@ import static org.mockito.Mockito.*;
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
-@Disabled(
-    "Pending rewrite: createSession 现依赖 LlmProviderRegistry / 全局默认 Provider 回退逻辑，"
-        + "而本测试的 setUp 未向 VoiceInterviewService 注入 LlmProviderRegistry "
-        + "mock，导致 NPE。留作下一步独立 PR 修复，避免与 llm-provider 修复耦合。"
-)
-@DisplayName("语音面试服务测试（待重写）")
+@DisplayName("语音面试服务测试")
 class VoiceInterviewServiceTest {
 
     @Mock
@@ -67,6 +64,15 @@ class VoiceInterviewServiceTest {
 
     @Mock
     private VoiceInterviewProperties properties;
+
+    @Mock
+    private VoiceInterviewEvaluationRepository evaluationRepository;
+
+    @Mock
+    private VoiceEvaluateStreamProducer voiceEvaluateStreamProducer;
+
+    @Mock
+    private LlmProviderRegistry llmProviderRegistry;
 
     @Mock
     private RBucket<VoiceInterviewSessionEntity> bucket;
@@ -135,7 +141,7 @@ class VoiceInterviewServiceTest {
             assertNotNull(response.getWebSocketUrl());
 
             verify(sessionRepository, times(1)).save(any(VoiceInterviewSessionEntity.class));
-            verify(bucket, times(1)).set(any(), eq(1L), any());
+            verify(bucket, times(1)).set(any(), any(Duration.class));
         }
 
         @Test
@@ -286,14 +292,10 @@ class VoiceInterviewServiceTest {
                     .plannedDuration(30)
                     .build();
 
-            List<VoiceInterviewMessageEntity> history = Arrays.asList(
-                    createMessage(sessionId, 1, "用户：你好"),
-                    createMessage(sessionId, 2, "AI：你好，请自我介绍")
-            );
-
             when(sessionRepository.findById(sessionId)).thenReturn(Optional.of(pausedSession));
             when(sessionRepository.save(any(VoiceInterviewSessionEntity.class))).thenReturn(pausedSession);
-            when(messageRepository.findBySessionIdOrderBySequenceNumAsc(sessionId)).thenReturn(history);
+            when(messageRepository.countBySessionIdAndMessageTypeNot(
+                    eq(sessionId), eq(VoiceInterviewMessageEntity.MESSAGE_TYPE_SUMMARY))).thenReturn(2L);
 
             // When
             SessionResponseDTO response = voiceInterviewService.resumeSession(sessionId.toString());
@@ -304,8 +306,9 @@ class VoiceInterviewServiceTest {
             assertNotNull(response.getStartTime());
             assertEquals(30, response.getPlannedDuration());
 
-            // Verify conversation history was loaded
-            verify(messageRepository, times(1)).findBySessionIdOrderBySequenceNumAsc(sessionId);
+            // Verify conversation history count was queried
+            verify(messageRepository, times(1)).countBySessionIdAndMessageTypeNot(
+                    eq(sessionId), eq(VoiceInterviewMessageEntity.MESSAGE_TYPE_SUMMARY));
             verify(sessionRepository, times(1)).save(argThat(session ->
                     session.getStatus() == VoiceInterviewSessionStatus.IN_PROGRESS &&
                     session.getResumedAt() != null
@@ -378,7 +381,7 @@ class VoiceInterviewServiceTest {
             // Then
             assertEquals(VoiceInterviewSessionEntity.InterviewPhase.TECH, session.getCurrentPhase());
             verify(sessionRepository, times(1)).save(session);
-            verify(bucket, times(1)).set(any(), eq(1L), any());
+            verify(bucket, times(1)).set(any(), any(Duration.class));
         }
 
         @Test
@@ -487,11 +490,8 @@ class VoiceInterviewServiceTest {
                     .build();
 
             when(sessionRepository.findById(sessionId)).thenReturn(Optional.of(session));
-            when(messageRepository.findBySessionIdOrderBySequenceNumAsc(sessionId))
-                    .thenReturn(Arrays.asList(
-                            VoiceInterviewMessageEntity.builder().sequenceNum(1).build(),
-                            VoiceInterviewMessageEntity.builder().sequenceNum(2).build()
-                    ));
+            when(messageRepository.countBySessionIdAndMessageTypeNot(sessionId, VoiceInterviewMessageEntity.MESSAGE_TYPE_SUMMARY))
+                    .thenReturn(2L);
 
             // When
             voiceInterviewService.saveMessage(sessionId.toString(), userText, aiText);
@@ -539,7 +539,8 @@ class VoiceInterviewServiceTest {
 
             List<VoiceInterviewMessageEntity> messages = Arrays.asList(msg1, msg2, msg3); // 正确顺序
 
-            when(messageRepository.findBySessionIdOrderBySequenceNumAsc(sessionId))
+            when(messageRepository.findBySessionIdAndMessageTypeNotOrderBySequenceNumAsc(
+                    eq(sessionId), eq(VoiceInterviewMessageEntity.MESSAGE_TYPE_SUMMARY)))
                     .thenReturn(messages);
 
             // When

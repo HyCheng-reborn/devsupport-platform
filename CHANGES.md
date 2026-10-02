@@ -1,3 +1,12 @@
+**2026-10-03 -- I-3 切片 1：VoiceInterviewServiceTest mock 漂移修复（保留后端回归测试恢复）**
+- 补齐 3 个缺失 @Mock：VoiceInterviewEvaluationRepository、VoiceEvaluateStreamProducer、LlmProviderRegistry
+- 移除类级 @Disabled
+- 5 个失败测试的 mock/stub 按生产代码实际签名更新：bucket.set(entity, Duration)、findBySessionIdAndMessageTypeNotOrderBySequenceNumAsc、countBySessionIdAndMessageTypeNot
+- 定点：32 tests / 0 failures / 0 errors / 0 skipped
+- 全量：508 tests / 0 failures / 0 errors / 14 skipped
+- 未改测试逻辑意图、不删测试、不放宽断言、不改任何生产代码
+- 不宣称语音面试功能成为 Phase 1 用户可见能力
+
 **2026-10-03 -- I-2 RateLimitIntegrationTest Docker 验证（Testcontainers + redis:7-alpine）**
 - 定点：4/4 通过（testRateLimit, testMultiRule, testExpiredPermitsRemainWhenLaterRuleRejects, testIndependentCountPerDimension）
 - 全量：508 tests, 0 failures, 0 errors, 46 skipped（较此前 50 减少 4，RateLimitIntegrationTest 从跳过转为通过）

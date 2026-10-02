@@ -919,3 +919,29 @@ START `2026-10-02 16:44:47+08` / END `16:45:45+08`（**57s**）→ **FOCUSED_EXI
 ### 回滚
 
 本轮仅 4 份 markdown，`git revert <sha>` 即可；不影响任何 build/test/run。
+
+## I-3 切片 1：VoiceInterviewServiceTest mock 漂移修复（保留后端回归测试恢复）
+
+**状态**：`离线通过`。定点 32/32 全绿，全量 508/0/0/14。
+
+**背景**：Task #15 已补齐 3 个缺失 @Mock 并移除 @Disabled，但 32 个测试中 5 个失败——生产代码在 @Disabled 期间被重构，mock 签名不匹配。本切片按当前生产代码实际签名更新 mock/stub。
+
+**改了什么**（仅测试文件 `VoiceInterviewServiceTest.java`）：
+- 补齐 3 个 @Mock：`VoiceInterviewEvaluationRepository`、`VoiceEvaluateStreamProducer`、`LlmProviderRegistry`
+- 移除类级 `@Disabled`
+- 5 个失败测试的 mock/stub 按生产代码实际签名更新：
+  1. `testCreateSession` / `testStartPhase_IntroToTech`：`bucket.set(any(), eq(1L), any())` → `bucket.set(any(), any(Duration.class))`
+  2. `testSaveMessage`：`findBySessionIdOrderBySequenceNumAsc` → `countBySessionIdAndMessageTypeNot` 返回 2L
+  3. `testGetConversationHistory`：`findBySessionIdOrderBySequenceNumAsc` → `findBySessionIdAndMessageTypeNotOrderBySequenceNumAsc`
+  4. `testResumeSession_LoadsConversationHistory`：verify 改为 `countBySessionIdAndMessageTypeNot`
+
+**未改**：不改测试逻辑意图、不删测试、不放宽断言、不改任何生产代码。
+
+**验证**：
+- 定点：`VoiceInterviewServiceTest` 32 tests / 0 failures / 0 errors / 0 skipped
+- 全量：508 tests / 0 failures / 0 errors / 14 skipped（14 个 skipped 均为其他 @Disabled 类，非本切片范围）
+
+**未验证**：
+- 不宣称语音面试功能成为 Phase 1 用户可见能力
+- 未启动 Docker/PostgreSQL/Redis/S3
+- 未调用 LLM/Embedding
