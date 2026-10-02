@@ -1,6 +1,6 @@
-# AI Interview Platform Agent Rules
+# DevSupport Platform Agent Rules
 
-Spring Boot 4.1.0 + Java 25 + Spring AI 2.0.0 + React 面试平台。
+Spring Boot 4.1.0 + Java 25 + Spring AI 2.0.0 + React 研发团队知识与故障排查平台（知识库 + RAG 问答 + 多 Provider 管理）。项目 fork 自上游 `Snailclimb/interview-guide`（Java 包名 `interview.guide`、数据库名 `interview_guide`、S3 bucket、容器名前缀 `interview-*` 保留不变）；面试/简历/语音模块代码保留但 Phase 1 前端已隐藏入口，不对外宣称已交付。
 
 本文件是跨工具 Agent 入口，只放长期有效、代码里不容易直接推断、猜错会影响结果的规则。更细的目录规则放在 `.claude/rules/`，需要时再读取。
 

@@ -854,3 +854,64 @@ START `2026-10-02 16:44:47+08` / END `16:45:45+08`（**57s**）→ **FOCUSED_EXI
 - 仅 `PROJECT_PROGRESS.md`（本节）与 `CHANGES.md`（顶部新增同日“批次 C 后端测试独立干净检出补验”条目）两份文档变更。
 - 未改代码 / 构建配置 / wrapper / docker-compose / prompts / 前端 / .env / gradle-wrapper.properties。
 - 未 force push、未删缓存、未禁用测试、未新增 tag；主仓工作树保持 clean，提交后普通 `git push` 到 `origin/master`。
+
+---
+
+## 批次 D：文档更新（2026-10-02）
+
+> 依 `devsupport-phase1-design.md` §7 批次 D 白名单执行，只做 DevSupport 展示层文档重定位，不改代码 / 构建配置 / wrapper / docker-compose / prompts / 前端 / `.env` / `.env.example` / `SETUP_API_KEYS.md` / `docs/voice-*` / `frontend/README.md`。
+
+**基线 HEAD**: `54c2efde9ddf67f7058a508c3de6a63602b238a5`（远程 origin/master 一致，工作树 clean）。
+
+### 范围
+
+| 行为 | 文件 | 说明 |
+|---|---|---|
+| 改 | `README.md` | 完整重写，面向 DevSupport 展示层，从 577 行 → 427 行 |
+| 改 | `AGENTS.md` | 标题 + 首段重定位，其余技术规则保留（109 行） |
+| 记录 | `PROJECT_PROGRESS.md` | 本节 |
+| 记录 | `CHANGES.md` | 顶部新增同日“批次 D”条目 |
+| **不改** | `.env.example` / `SETUP_API_KEYS.md` / `docs/voice-*` / `frontend/README.md` / 业务代码 / 构建配置 / wrapper / docker-compose / prompts / 前端 / `.env` | 严格 design §7 白名单（plan Task 6 提到的 `.env.example` 与本轮未点名的 `SETUP_API_KEYS.md` 不自动并入） |
+
+### README.md 内容事实
+
+- **顶部**：标题从“智能 AI 面试官平台” → “DevSupport · 研发团队知识与故障排查平台”；badges 沿用，未新增。
+- **项目介绍**：DevSupport 定位 + fork 上游 `Snailclimb/interview-guide`，明确 Phase 1 复用基础设施 + 面试后端保留但前端不暴露，不把上游内容当 DevSupport 已交付。
+- **新增章节**：Phase 1 用户流程 / 系统架构 / 功能特性（Phase 1 已交付）/ 上游面试能力保留说明表 / 使用场景 / 常见问题 / 未验证事项 / 来源与保留说明。
+- **功能特性**：重写为 DevSupport Phase 1 已交付三大块（知识库 + service/environment 标签 / RAG 流式问答与来源快照 / 多 Provider），均注明实现与测试位置（映射到 `KnowledgeBaseUploadService` / `KnowledgeBaseController` / `KnowledgeBasePersistenceService` / `SourceReference` / `RagChatSessionService.buildSourceReferences()` / `KnowledgeBaseQueryPage.tsx` 等实际代码）。
+- **上游面试能力保留说明**：表格列出 5 个保留但 Phase 1 前端不暴露的模块（interview / interviewschedule / resume / voiceinterview / 知识库题库面试），说明当前前端导航仅暴露知识库管理 / 问答助手 / 设置。
+- **未验证事项清单**：10 项（真实 PG + Flyway / Redis Stream / S3 / LLM + Embedding / SSE 端到端 / Docker RateLimit / 46 @Disabled / `:?` 容器启动呈现 / Spring 缺变量启动 / P1-C L1）**不宣称已验证**。
+- **链接处理**：
+  - 移除 `oss.javaguide.cn/...` 面试项目截图与架构图（本轮未核验 HTTP 可访问性，不宣称可用）。
+  - 移除上游付费教程 `javaguide.cn/zhuanlan/interview-guide.html` 外链引用。
+  - 保留 `HyCheng-reborn/devsupport-platform`（本轮实际推送）。
+  - 保留上游 `Snailclimb/interview-guide` 作为**来源说明**（本轮未主动核验 HTTP 状态，不宣称可访问）。
+  - badges 沿用官方域名（openjdk/spring/react/ts/postgresql/docker/aliyun），未新增链接。
+- **命名保留**（§6 决策表）：Java 包 `interview.guide` / 数据库 `interview_guide` / S3 bucket / 容器前缀 `interview-*` / JPA 表名 / 本地配置目录 `~/.interview-guide/` / Gradle rootProject.name 与 group 保留，README 末尾完整列表。
+
+### AGENTS.md 内容事实
+
+- **标题**：`# AI Interview Platform Agent Rules` → `# DevSupport Platform Agent Rules`。
+- **首段**：从“Spring Boot 4.1.0 + Java 25 + Spring AI 2.0.0 + React 面试平台。” → DevSupport 定位 + fork 上游 + 保留名称列表（包名 / 数据库名 / bucket / 容器前缀）+ 面试/简历/语音 Phase 1 后端保留但前端不暴露的诚实表述。
+- **保留不动**：Tech Stack / Commands / Project Structure（包括 `app/src/main/java/interview/guide/*` 具体包路径）/ Architecture / Backend Rules / AI And Async Rules / Config And Data / Frontend Rules / Testing / Never Do / More Rules。
+
+### 工作区保护与验收
+
+- 本轮纯文档，**未运行任何测试/构建**（README/AGENTS 不进入编译产物，:app:test 不依赖他们）；**未启动容器** / **未调用真实 LLM/Embedding/生产库/SSE**。
+- `git diff --check`：无空白错误。
+- 工作区保护：`.env` 仍不存在；`gradle/wrapper/gradle-wrapper.properties` 与 HEAD 无差异；`git ls-files --others --exclude-standard` 无新增未跟踪混入。
+- 提交范围：严格 4 文件 `README.md` + `AGENTS.md` + `PROJECT_PROGRESS.md` + `CHANGES.md`；无其他。
+- 不 force push；普通 `git push` 到 `origin/master`（本轮同样需临时启用代理 127.0.0.1:7897，提交后撤销）。
+
+### Phase 1 交付状态
+
+- **批次 A**（服务/环境数据模型）：代码已写，离线通过；Flyway 真实 PG 未验证（依赖 I-1）。
+- **批次 B**（上传 API + 管理页筛选 + 行内编辑 + 重复上传响应）：代码已写，离线通过，包含 accessCount 回归。
+- **批次 C**（SourceReference 快照 + 前端来源面板 + 向后兼容）：代码已写，离线通过；独立干净检出定点 29 / 全量 499 全绿（详见上一节）。
+- **批次 D**（文档更新）：本轮完成，Phase 1 用户可见层与实现一致。
+
+**Phase 1 四项批次均完成代码/文档变更**；真实外部依赖 / 端到端 SSE / Docker RateLimit / 46 @Disabled / P1-C L1 保持独立待办 I-1..I-6，不属 Phase 1 交付面。
+
+### 回滚
+
+本轮仅 4 份 markdown，`git revert <sha>` 即可；不影响任何 build/test/run。

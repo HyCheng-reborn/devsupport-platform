@@ -1,3 +1,18 @@
+**2026-10-02 -- 批次 D：文档更新（README.md + AGENTS.md 面向 DevSupport 重定位，仅文档，不改代码/配置）**
+- 范围：严格按 `devsupport-phase1-design.md` §7 批次 D 白名单——`README.md` + `AGENTS.md` 面向 DevSupport 展示层重定位；`PROJECT_PROGRESS.md` / `CHANGES.md` 已随每批次同步，本条即批次 D 完成记录。**未修改** `.env.example` / `SETUP_API_KEYS.md` / `docs/voice-*` / `frontend/README.md`（stock Vite template）/ 业务代码 / 构建配置 / wrapper / docker-compose / prompts / 前端 / `.env`（本机仍不存在）。
+- `README.md` 关键变更：
+  - 顶部标题从“智能 AI 面试官平台” → “DevSupport · 研发团队知识与故障排查平台”；项目介绍重写为 DevSupport 定位 + fork 关系（源自 `Snailclimb/interview-guide`，Phase 1 复用基础设施、面试后端保留但前端不暴露）。
+  - 新增章节：Phase 1 用户流程 / 系统架构 / 功能特性（Phase 1 已交付）/ **上游面试能力保留说明表**（面试/简历/语音/面试安排/题库面试后端保留但 Phase 1 前端已隐藏入口）/ 使用场景（研发工程师 / SRE / 技术负责人）/ 常见问题 / **未验证事项清单** / **来源与保留说明**。
+  - 功能描述从“上游 6 大面试模块”重定位为 “Phase 1 已交付” 3 大块（知识库 + service/environment 标签 + RAG 流式问答与来源快照 + 多 Provider），均注明对应的实现与测试位置。
+  - 诚实清单：10 项未验证事项（真实 PostgreSQL + Flyway 迁移执行 / Redis Stream / S3 上传 / DashScope LLM + Embedding 真实调用 / SSE 端到端 / Docker-based RateLimit 4 用例 / 46 @Disabled 目标行为 / `:?` 必填语法在真实容器启动时的确切呈现 / Spring 缺变量启动堆栈 / P1-C L1）**不宣称已验证**。
+  - 链接处理：移除所有 `oss.javaguide.cn/...` 面试项目截图与架构图外链（本轮未核验可访问性，不宣称可用）；移除上游付费教程 `javaguide.cn/zhuanlan/interview-guide.html` 引用；保留 `HyCheng-reborn/devsupport-platform`（本轮已推送）；保留上游 `Snailclimb/interview-guide` 作为**来源说明**（本轮未主动核验 HTTP 状态）；沿用原 badges 官方域名，未新增。
+  - 命名保留（§6 决策表）：Java 包 `interview.guide` / 数据库 `interview_guide` / S3 bucket / 容器前缀 `interview-*` / JPA 表名 / 本地配置目录 `~/.interview-guide/` / Gradle `rootProject.name` 与 `group` 全部保留，“来源与保留说明”章节完整列出。
+- `AGENTS.md` 关键变更：
+  - 标题：`AI Interview Platform Agent Rules` → `DevSupport Platform Agent Rules`；首段补充 DevSupport 定位 + fork 上游 + 保留名称列表 + 面试/简历/语音 Phase 1 后端保留但前端不暴露的诚实表述。
+  - 其余全部技术规则保留（Tech Stack / Commands / Project Structure 含 `interview/guide/*` 包路径 / Architecture / Backend Rules / AI And Async / Config And Data / Frontend / Testing / Never Do / More Rules），符合“保留 interview.guide Java 包名与相关技术规则”的要求。
+- 验收：本轮纯文档，未运行任何测试/构建（README/AGENTS 不进入编译产物）；`git diff --check` 无空白错误；工作区保护项完好（`.env` 仍不存在、`gradle/wrapper/gradle-wrapper.properties` 与 HEAD 无差异、untracked 无混入）；未启动容器 / 未调用真实 LLM/Embedding/生产库/SSE；普通 `git push`，不 force push。
+- Phase 1 交付状态：**批次 A + B + C + D 均完成代码/文档变更**；Phase 1 用户可见范围（知识库 + service/environment 标签 + RAG 来源快照 + 多 Provider + DevSupport 展示层文档）按 design §7 交付。真实外部依赖与端到端验证 / 46 @Disabled 测试 / P1-C L1 保持独立待办（上一节 I-1..I-6）。
+
 **2026-10-02 -- 批次 C 后端测试独立干净检出补验（不改代码，仅验证记录）**
 - 对象 HEAD：`a9f6d30b043de4e754049f8e43ab0933ccea0e36`（`ls-remote` 已确认与 `origin/master` 一致；a9f6d30 直接改动含 `RagChatControllerTest` 与 `RagChatSessionServiceTest`；`SourceReferenceSnapshotTest` 由前置 `61bc503` 引入，a9f6d30 未再动，仍在三个目标类范围内）。
 - 作用：本条**补齐**上一条（批次 C 收尾修正 3/3）里“后端 `:app:test` 执行被环境阻塞、实际运行通过/失败未取到”的验收缺口；不改代码/构建配置/wrapper，不重写其他条目。
