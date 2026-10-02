@@ -1,3 +1,10 @@
+**2026-10-03 -- I-2 RateLimitIntegrationTest Docker 验证（Testcontainers + redis:7-alpine）**
+- 定点：4/4 通过（testRateLimit, testMultiRule, testExpiredPermitsRemainWhenLaterRuleRejects, testIndependentCountPerDimension）
+- 全量：508 tests, 0 failures, 0 errors, 46 skipped（较此前 50 减少 4，RateLimitIntegrationTest 从跳过转为通过）
+- 环境：Docker Desktop 29.7.2，Testcontainers 自动拉起 redis:7-alpine 容器，退出码 0
+- 注意：Testcontainers 隔离容器验证，不是生产 Redis 实例验证
+- 未修改任何业务代码、测试代码或配置文件
+
 **2026-10-02 -- I-5 POSTGRES_PASSWORD 必填校验（方案 A）**
 - 新增 `PostgresPasswordValidator`：`EnvironmentPostProcessor`，在 `prepareEnvironment` 阶段校验 `POSTGRES_PASSWORD`，仅对 `jdbc:postgresql:` URL 生效，H2 等自动跳过
 - 新增 `META-INF/spring.factories`：注册 EPP
