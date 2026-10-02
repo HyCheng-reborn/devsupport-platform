@@ -2,7 +2,7 @@
 - 新增 `PostgresPasswordValidator`：`EnvironmentPostProcessor`，在 `prepareEnvironment` 阶段校验 `POSTGRES_PASSWORD`，仅对 `jdbc:postgresql:` URL 生效，H2 等自动跳过
 - 新增 `META-INF/spring.factories`：注册 EPP
 - 新增 `PostgresPasswordValidatorTest`：9 个测试（U1-U8 + I1 集成时序）
-- 全量测试 507 通过，0 失败
+- 全量测试 508 通过，0 失败
 - H2 回归：`KnowledgeBaseRepositoryIntegrationTest` 5 个测试通过
 - 三角度审查（生命周期/测试隔离/变更范围）：全部 PASS
 - 未修改 `application.yml`、`build.gradle`、`App.java` 等任何已有文件
