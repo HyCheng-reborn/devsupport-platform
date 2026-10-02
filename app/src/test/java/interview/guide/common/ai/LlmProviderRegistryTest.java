@@ -3,6 +3,10 @@ package interview.guide.common.ai;
 import interview.guide.common.config.LlmProviderProperties;
 import interview.guide.common.config.LlmProviderProperties.ProviderConfig;
 import interview.guide.common.exception.BusinessException;
+import interview.guide.common.exception.ErrorCode;
+import interview.guide.modules.llmprovider.model.LlmProviderEntity;
+import interview.guide.modules.llmprovider.repository.LlmProviderRepository;
+import interview.guide.modules.llmprovider.service.ApiKeyEncryptionService;
 import io.micrometer.observation.ObservationRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -17,6 +21,7 @@ import org.springframework.ai.model.tool.ToolCallingManager;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -115,13 +120,14 @@ class LlmProviderRegistryTest {
     }
 
     @Test
-    @DisplayName("Throw exception for unknown provider")
+    @DisplayName("Throw BusinessException for unknown provider")
     void testGetChatClient_UnknownProvider() {
         // Given
         when(properties.getProviders()).thenReturn(new HashMap<>());
 
         // When & Then
-        assertThrows(IllegalArgumentException.class, () -> registry.getChatClient("unknown"));
+        BusinessException ex = assertThrows(BusinessException.class, () -> registry.getChatClient("unknown"));
+        assertEquals(ErrorCode.PROVIDER_NOT_FOUND.getCode(), ex.getCode());
     }
 
     @Test
@@ -238,12 +244,31 @@ class LlmProviderRegistryTest {
     }
 
     @Test
-    @org.junit.jupiter.api.Disabled(
-        "Pending: ProviderConfig.enabled flag + PROVIDER_DISABLED error code not yet implemented"
-    )
-    @DisplayName("getChatClient 对 disabled provider 应抛 PROVIDER_DISABLED（占位，待实现）")
+    @DisplayName("getChatClient 对 disabled provider 应抛 PROVIDER_DISABLED")
     void testGetChatClient_disabledProvider() {
-        // 占位测试：等 ProviderConfig 补齐 enabled 字段 + Registry 实现禁用分支后恢复断言。
-        // 不写任何 mock，避免 Mockito 严格模式把占位记为异常失败。
+        // Given: manually construct registry with a real mock repository
+        LlmProviderRepository mockRepo = mock(LlmProviderRepository.class);
+        ApiKeyEncryptionService mockEncryption = mock(ApiKeyEncryptionService.class);
+        LlmProviderRegistry dbRegistry = new LlmProviderRegistry(
+            properties, mockRepo, null, mockEncryption,
+            toolCallingManager, observationRegistry, null);
+
+        String providerId = "disabled-provider";
+        LlmProviderEntity entity = LlmProviderEntity.builder()
+            .id(providerId)
+            .baseUrl("http://localhost:1234/v1")
+            .apiKeyCiphertext("encrypted")
+            .apiKeyNonce("nonce")
+            .model("test-model")
+            .enabled(false)
+            .supportsEmbedding(false)
+            .build();
+
+        when(mockRepo.findById(providerId)).thenReturn(Optional.of(entity));
+
+        // When & Then
+        BusinessException ex = assertThrows(BusinessException.class, () -> dbRegistry.getChatClient(providerId));
+        assertEquals(ErrorCode.PROVIDER_DISABLED.getCode(), ex.getCode());
+        assertFalse(ex.getMessage().contains(providerId), "Error message should not leak provider ID");
     }
 }

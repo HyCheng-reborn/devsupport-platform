@@ -97,7 +97,7 @@ public class LlmProviderRegistry {
      *
      * @param providerId The ID of the provider (e.g., "dashscope", "lmstudio")
      * @return A ChatClient instance
-     * @throws IllegalArgumentException if the providerId is unknown
+     * @throws BusinessException if the providerId is not found or the provider is disabled
      */
     public ChatClient getChatClient(String providerId) {
         return clientCache.computeIfAbsent(providerId, id -> {
@@ -364,8 +364,12 @@ public class LlmProviderRegistry {
             return loadProviderFromPropertiesOrThrow(providerId);
         }
         LlmProviderEntity entity = providerRepository.findById(providerId)
-            .filter(LlmProviderEntity::isEnabled)
-            .orElseThrow(() -> new IllegalArgumentException("Unknown LLM provider: " + providerId));
+            .orElseThrow(() -> new BusinessException(ErrorCode.PROVIDER_NOT_FOUND,
+                "LLM provider not found"));
+        if (!entity.isEnabled()) {
+            throw new BusinessException(ErrorCode.PROVIDER_DISABLED,
+                "LLM provider is disabled");
+        }
         return new ProviderSnapshot(
             entity.getId(),
             entity.getBaseUrl(),
@@ -382,7 +386,8 @@ public class LlmProviderRegistry {
         ProviderConfig config = properties.getProviders().get(providerId);
         if (config == null) {
             log.error("[LlmProviderRegistry] Provider config not found: {}", providerId);
-            throw new IllegalArgumentException("Unknown LLM provider: " + providerId);
+            throw new BusinessException(ErrorCode.PROVIDER_NOT_FOUND,
+                "LLM provider not found in configuration");
         }
         boolean supportsEmbedding = Boolean.TRUE.equals(config.getSupportsEmbedding())
             || !isBlank(config.getEmbeddingModel());

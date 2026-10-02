@@ -945,3 +945,30 @@ START `2026-10-02 16:44:47+08` / END `16:45:45+08`（**57s**）→ **FOCUSED_EXI
 - 不宣称语音面试功能成为 Phase 1 用户可见能力
 - 未启动 Docker/PostgreSQL/Redis/S3
 - 未调用 LLM/Embedding
+
+## I-3 切片 2：Provider 禁用策略实施（PROVIDER_NOT_FOUND vs PROVIDER_DISABLED）
+
+**状态**：`离线通过`。定点 11/11 全绿，全量 508/0/0/13。
+
+**背景**：`LlmProviderRegistry.loadProviderOrThrow` 原本用 `.filter(isEnabled).orElseThrow(...)` 把“不存在”和“已禁用”合并为同一个 `IllegalArgumentException`，无法区分两种故障模式，且错误消息泄露 provider ID。
+
+**改了什么**：
+- `ErrorCode.java`：新增 `PROVIDER_DISABLED(11012, "LLM Provider 已禁用")`
+- `LlmProviderRegistry.java`：
+  - `loadProviderOrThrow` 拆为两步：先 `findById().orElseThrow(PROVIDER_NOT_FOUND)`，再 `if (!enabled) throw PROVIDER_DISABLED`
+  - `loadProviderFromPropertiesOrThrow` 改抛 `BusinessException(PROVIDER_NOT_FOUND)`
+  - 错误消息使用固定英文，不泄露 provider ID 或敏感配置
+  - Javadoc `@throws` 更新为 `BusinessException`
+- `LlmProviderRegistryTest.java`：
+  - 恢复 `testGetChatClient_disabledProvider`：mock disabled entity，断言 BusinessException + PROVIDER_DISABLED + 无敏感信息泄漏
+  - 更新 `testGetChatClient_UnknownProvider`：期望 BusinessException(PROVIDER_NOT_FOUND)
+
+**未改**：不改任何生产行为去迎合旧断言。
+
+**验证**：
+- 定点：`LlmProviderRegistryTest` 11 tests / 0 failures / 0 errors / 0 skipped
+- 全量：508 tests / 0 failures / 0 errors / 13 skipped（较此前 14 减少 1，恢复 disabled provider 测试）
+
+**未验证**：
+- 未启动 Docker/PostgreSQL/Redis/S3
+- 未调用 LLM/Embedding

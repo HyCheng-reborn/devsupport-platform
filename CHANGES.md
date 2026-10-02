@@ -1,3 +1,14 @@
+**2026-10-03 -- I-3 切片 2：Provider 禁用策略实施（PROVIDER_NOT_FOUND vs PROVIDER_DISABLED）**
+- 新增 `PROVIDER_DISABLED(11012, "LLM Provider 已禁用")` ErrorCode
+- `LlmProviderRegistry.loadProviderOrThrow` 拆为两步判断：先查 not-found，再判 disabled
+- `loadProviderFromPropertiesOrThrow` 改抛 `BusinessException(PROVIDER_NOT_FOUND)`
+- 替换 `IllegalArgumentException` 为 `BusinessException`，错误消息不泄露 provider ID
+- 恢复 `testGetChatClient_disabledProvider`：断言 BusinessException + PROVIDER_DISABLED + 无敏感信息泄漏
+- 更新 `testGetChatClient_UnknownProvider`：期望 BusinessException(PROVIDER_NOT_FOUND)
+- 定点：11 tests / 0 failures / 0 errors / 0 skipped
+- 全量：508 tests / 0 failures / 0 errors / 13 skipped（较此前 14 减少 1，恢复 disabled provider 测试）
+- 未改任何生产行为去迎合旧断言
+
 **2026-10-03 -- I-3 切片 1：VoiceInterviewServiceTest mock 漂移修复（保留后端回归测试恢复）**
 - 补齐 3 个缺失 @Mock：VoiceInterviewEvaluationRepository、VoiceEvaluateStreamProducer、LlmProviderRegistry
 - 移除类级 @Disabled
