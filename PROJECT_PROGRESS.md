@@ -992,6 +992,7 @@ START `2026-10-02 16:44:47+08` / END `16:45:45+08`（**57s**）→ **FOCUSED_EXI
 - 定点：`VoiceInterviewIntegrationTest` 10 tests / 0 failures / 0 errors / 0 skipped
 - 全量：508 tests / 0 failures / 0 errors / 3 skipped（较此前 13 减少 10，恢复 VoiceInterviewIntegrationTest 全部 10 个测试）
 
-**未验证**：
-- 未启动 Docker/PostgreSQL/Redis/S3
+**验证环境**：
+- Redis 7 容器（`docker compose -f docker-compose.dev.yml up -d redis`），`redis-cli ping` → PONG
+- 测试后 `docker compose -f docker-compose.dev.yml down` 停止 Redis
 - 未调用 LLM/Embedding
