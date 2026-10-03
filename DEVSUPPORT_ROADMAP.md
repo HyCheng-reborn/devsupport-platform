@@ -58,7 +58,7 @@ Resume、Interview、VoiceInterview、InterviewSchedule 属于原上游项目遗
 | 阶段 2：文档中心 | 未开始 | 知识库模块 17 端点可复用 | 缺 project/docType/version 元数据 |
 | 阶段 3：排查会话闭环 | 未开始 | SSE 契约 + 集成测试 3 用例 | 结构化回答骨架需新建 |
 | 阶段 4：案例库审核发布 | 未开始 | 零既有代码 | — |
-| 阶段 5：可评测检索优化 | 未开始（P1-C baseline 离线验证通过） | P1-C L1 两次真实评测（baseline Hit@5=93.75%, MRR@5=77.81%; heading-aware MRR@5=0.8542）— 付费外部验证通过（口径限定：heading-aware 非受控单变量 A/B，不可宣称因果提升）；Hybrid/RRF/Rerank/案例回归评测均未开始 | 阶段 5 主体工作未开始；P1-C baseline 已冻结可复现 |
+| 阶段 5：可评测检索优化 | 阶段 5 未开始；既有 P1-C 真实评测已完成 | P1-C L1 两次真实评测（baseline Hit@5=93.75%, MRR@5=77.81%; heading-aware MRR@5=0.8542）— 付费外部验证通过（口径限定：heading-aware 非受控单变量 A/B，不可宣称因果提升）；Hybrid/RRF/Rerank/案例回归评测均未开始 | 阶段 5 主体工作未开始；P1-C baseline 已冻结可复现 |
 | 阶段 6：可靠性与部署 | 未开始 | demo profile 模式已在 Resume 验证 | Compose 全栈未实测 |
 
 ---
@@ -219,7 +219,7 @@ Resume、Interview、VoiceInterview、InterviewSchedule 属于原上游项目遗
 
 - **解决什么问题**：文档或检索策略更新后，无法确认已审核发布的真实故障案例是否仍能被正确检索和回答。
 - **首次交付范围**：人工审核并发布故障案例后，从中选取 3–5 个脱敏的问题、预期证据和解决要点，形成版本化回归题。文档或检索策略更新时，自动检查这些真实故障题是否仍能找到正确证据、给出可追溯回答。首版交付一份更新前后对比报告。
-- **验收门槛**：至少 3 个审核过的案例转化为回归题；每次检索策略或文档变更后能自动生成对比报告；回归题包含预期证据引用，可判定通过/失败。参考 [Spring AI Evaluation](https://docs.spring.io/spring-ai/reference/evaluations/index.html)。
+- **验收门槛**：至少 3 个审核过的案例转化为回归题；每次检索策略或文档变更后能自动生成对比报告；回归题包含预期证据引用，可判定通过/失败。首版可用预期证据 ID 和解决要点做确定性检查，是否增加模型评判留到实施时决定。参考 [Spring AI Evaluation Testing](https://docs.spring.io/spring-ai/reference/testing/evaluations.html)。
 - **引入时机**：阶段 4 案例库审核发布完成后，作为可选候选启动。此能力将「排查会话 → 案例库 → 评测结果」三个主导航连成一条实际有用的闭环。
 
 ---
