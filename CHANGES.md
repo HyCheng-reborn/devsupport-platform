@@ -1,3 +1,14 @@
+**2026-10-03 -- P1-C L1 heading-aware 候选真实向量对照 + 证据固化**
+- 候选数据集 `eval/datasets/devsupport-heading-aware-v0/`：49 chunks（ig-readme-root 走与 baseline 相同的生产解析+清洗 `DocumentParseService`+`TextCleaningService`（cleanedSha256=`f47b6a97…`）后按 heading-aware-v1 重切为 33，其余 16 chunk 逐字节继承）；16 可答/4 NO_ANSWER/38 要点，金标闭环 0 缺失，4 工件冻结哈希逐项匹配
+- 真实对照（`evalRunId=26e7f099`，仅 Embedding `text-embedding-v3`，无 LLM，独立评测库，预算硬上限保持 50）：USABLE，attempts 25/50（ingestion 5 批 + query 20，0 失败），入库校验 PASS（49/49, 1024 维, 0 重复），CLEANED（写入 49 → 清理 0）
+- candidate 宏平均：MRR@5=0.8542 / APC@5=0.9125 / FC@5=0.875(14/16)；MRR@10=0.8631 / Hit@10=FC@10=APC@10=1.0；k=1 FC=0.5625(9/16)
+- 对照冻结 baseline（MRR@5=0.7781/APC@5=0.8813/FC@5=0.8125(13/16)；MRR@10=0.7885；attempts 23）：本轮冻结评测中候选汇总指标优于基线（FC@5 净 +1 题，MRR@5 +7.6pp，MRR@10 +7.5pp）；成本代价 chunks 28→49、批次 3→5、attempts 23→25
+- 口径限定：单轮 16 题对照，不宣称生产普遍提升或统计显著；baseline 逐题 JSON 已不可得，故仅汇总层对比、非逐题配对；Q14 FC@5 理论上限更正为 1.0（未重切文档的支撑 chunk 仍可能因候选池重排进入 Top-K）
+- 新增可跟踪工件：`p1c-l1-report.json`（脱敏冻结副本）、`p1c-l1-per-query.json`/`.csv`（派生自成功报告，NO_ANSWER 指标列留空）、`P1C-L1-HEADING-AWARE-REPORT.md`
+- 运行器支持：`P1cDatasetValidator`（数据集预检）、`P1cRealRetrievalEvalTest` Phase 0 路由+参数化（默认 baseline 28，可覆盖 candidate 49）、`P1cCleanedTextDump` 离线复现生产清洗、`build.gradle` evalP1cReal 支持 datasetDir/expected 覆盖（预算不擅抬）
+- 离线测试 `P1cOfflineUnitTest`：92 tests / 0 failures / 0 errors / 0 skipped；全量 `:app:test`：522 tests / 10 failures（均为预先存在的 VoiceInterviewIntegrationTest Redis 连接问题，与本次变更无关）/ 3 skipped
+- baseline `eval/datasets/devsupport-v0.1` 零改动；`.env.eval`/`.env`/原始日志/认证失败证据均不入库；未改任何生产业务代码
+
 **2026-10-03 -- I-6 P1-C L1 真实向量评测 + 基础设施修复**
 - `.gitattributes`：添加 `*.sh text eol=lf`，修复 Windows 上 shell 脚本 CRLF 行尾导致 Linux 容器 shebang 解析失败
 - `app/build.gradle`：`evalP1cReal` 任务补全 `testClassesDirs`/`classpath`（修复 NO-SOURCE），新增 `.env`/`.env.eval` 环境变量加载逻辑（文件不存在时优雅跳过）

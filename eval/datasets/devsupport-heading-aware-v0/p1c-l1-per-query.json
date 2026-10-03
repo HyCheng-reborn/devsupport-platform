@@ -1,0 +1,1861 @@
+{
+ "meta": {
+  "source": "frozen success report build/eval-runs/heading-aware-success-26e7f099/p1c-l1-report.CANDIDATE-USABLE.json",
+  "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99",
+  "datasetId": "devsupport",
+  "version": "heading-aware-v0",
+  "chunkCount": 49,
+  "answerable": 16,
+  "noAnswer": 4,
+  "totalAnswerPoints": 38,
+  "embeddingModel": "text-embedding-v3",
+  "distanceType": "COSINE_DISTANCE",
+  "indexType": "HNSW",
+  "noRecomputation": true,
+  "noAnswerMetricsNote": "NO_ANSWER 4 题不含 per-K 指标（不参与宏平均），逐题表指标列留空"
+ },
+ "macroMetricsByK": {
+  "k=1": {
+   "macroHitAtK": 0.8125,
+   "macroMrrAtK": 0.8125,
+   "macroApcAtK": 0.728125,
+   "macroFullCoverageAtK": 0.5625,
+   "coveredPointsAtK": 28,
+   "totalAnswerPoints": 38
+  },
+  "k=3": {
+   "macroHitAtK": 0.9375,
+   "macroMrrAtK": 0.8541666666666666,
+   "macroApcAtK": 0.9125,
+   "macroFullCoverageAtK": 0.875,
+   "coveredPointsAtK": 35,
+   "totalAnswerPoints": 38
+  },
+  "k=5": {
+   "macroHitAtK": 0.9375,
+   "macroMrrAtK": 0.8541666666666666,
+   "macroApcAtK": 0.9125,
+   "macroFullCoverageAtK": 0.875,
+   "coveredPointsAtK": 35,
+   "totalAnswerPoints": 38
+  },
+  "k=10": {
+   "macroHitAtK": 1.0,
+   "macroMrrAtK": 0.8630952380952381,
+   "macroApcAtK": 1.0,
+   "macroFullCoverageAtK": 1.0,
+   "coveredPointsAtK": 38,
+   "totalAnswerPoints": 38
+  }
+ },
+ "queries": [
+  {
+   "queryId": "devsupport-v01-q01",
+   "answerability": "ANSWERABLE",
+   "includedInMacroAverage": true,
+   "retrievalStatus": "OK_WITH_HITS",
+   "fallbackAttempted": false,
+   "retrievedCount": 10,
+   "mainError": null,
+   "fallbackError": null,
+   "metricsNote": null,
+   "metricsByK": {
+    "k=1": {
+     "hitAtK": 0.0,
+     "mrrAtK": 0.0,
+     "apcAtK": 0.0,
+     "fullCoverageAtK": false,
+     "coveredPoints": 0,
+     "totalPoints": 2
+    },
+    "k=3": {
+     "hitAtK": 1.0,
+     "mrrAtK": 0.3333333333333333,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    },
+    "k=5": {
+     "hitAtK": 1.0,
+     "mrrAtK": 0.3333333333333333,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    },
+    "k=10": {
+     "hitAtK": 1.0,
+     "mrrAtK": 0.3333333333333333,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    }
+   },
+   "topKRetrieved": [
+    {
+     "rank": 1,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0017__eb40aef64a75",
+     "score": 0.5891064703464508
+    },
+    {
+     "rank": 2,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0021__b0fdb96d3bdf",
+     "score": 0.5853832364082336
+    },
+    {
+     "rank": 3,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0018__d838729e569c",
+     "score": 0.5747612416744232
+    },
+    {
+     "rank": 4,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0027__ceed2fe7549f",
+     "score": 0.5682820975780487
+    },
+    {
+     "rank": 5,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0001__bd93ec77c46c",
+     "score": 0.5548722445964813
+    },
+    {
+     "rank": 6,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0008__7e0a97a99c3e",
+     "score": 0.5543588399887085
+    },
+    {
+     "rank": 7,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0015__eb2b75b5310e",
+     "score": 0.5499190390110016
+    },
+    {
+     "rank": 8,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0011__e32721bc9c57",
+     "score": 0.5486683249473572
+    },
+    {
+     "rank": 9,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0005__d65d06e6e302",
+     "score": 0.5400984585285187
+    },
+    {
+     "rank": 10,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0003__e8f6ff6b72eb",
+     "score": 0.5336615741252899
+    }
+   ]
+  },
+  {
+   "queryId": "devsupport-v01-q02",
+   "answerability": "ANSWERABLE",
+   "includedInMacroAverage": true,
+   "retrievalStatus": "OK_WITH_HITS",
+   "fallbackAttempted": false,
+   "retrievedCount": 10,
+   "mainError": null,
+   "fallbackError": null,
+   "metricsNote": null,
+   "metricsByK": {
+    "k=1": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 1,
+     "totalPoints": 1
+    },
+    "k=3": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 1,
+     "totalPoints": 1
+    },
+    "k=5": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 1,
+     "totalPoints": 1
+    },
+    "k=10": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 1,
+     "totalPoints": 1
+    }
+   },
+   "topKRetrieved": [
+    {
+     "rank": 1,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0017__eb40aef64a75",
+     "score": 0.6885392963886261
+    },
+    {
+     "rank": 2,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0018__d838729e569c",
+     "score": 0.6682803928852081
+    },
+    {
+     "rank": 3,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0015__eb2b75b5310e",
+     "score": 0.637628585100174
+    },
+    {
+     "rank": 4,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0031__2075aad9b17e",
+     "score": 0.6223406195640564
+    },
+    {
+     "rank": 5,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0027__ceed2fe7549f",
+     "score": 0.6009785532951355
+    },
+    {
+     "rank": 6,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0003__e8f6ff6b72eb",
+     "score": 0.59797602891922
+    },
+    {
+     "rank": 7,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0016__f78325903673",
+     "score": 0.5874368846416473
+    },
+    {
+     "rank": 8,
+     "evalChunkId": "ig-db-migration-readme__tts-default-cl100k-800-0__0000__338a39b904c5",
+     "score": 0.5828126966953278
+    },
+    {
+     "rank": 9,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0020__645ab4a07f65",
+     "score": 0.579464465379715
+    },
+    {
+     "rank": 10,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0026__444f93895443",
+     "score": 0.5568074285984039
+    }
+   ]
+  },
+  {
+   "queryId": "devsupport-v01-q03",
+   "answerability": "ANSWERABLE",
+   "includedInMacroAverage": true,
+   "retrievalStatus": "OK_WITH_HITS",
+   "fallbackAttempted": false,
+   "retrievedCount": 10,
+   "mainError": null,
+   "fallbackError": null,
+   "metricsNote": null,
+   "metricsByK": {
+    "k=1": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    },
+    "k=3": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    },
+    "k=5": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    },
+    "k=10": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    }
+   },
+   "topKRetrieved": [
+    {
+     "rank": 1,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0024__419a75de734c",
+     "score": 0.6217127442359924
+    },
+    {
+     "rank": 2,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0026__444f93895443",
+     "score": 0.5702287554740906
+    },
+    {
+     "rank": 3,
+     "evalChunkId": "ig-db-migration-readme__tts-default-cl100k-800-0__0000__338a39b904c5",
+     "score": 0.5582837462425232
+    },
+    {
+     "rank": 4,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0016__f78325903673",
+     "score": 0.5561464130878448
+    },
+    {
+     "rank": 5,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0011__e32721bc9c57",
+     "score": 0.5542360246181488
+    },
+    {
+     "rank": 6,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0017__eb40aef64a75",
+     "score": 0.5352640151977539
+    },
+    {
+     "rank": 7,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0028__143a4e085616",
+     "score": 0.5290594398975372
+    },
+    {
+     "rank": 8,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0019__0fbdc5619bc8",
+     "score": 0.5266545414924622
+    },
+    {
+     "rank": 9,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0020__645ab4a07f65",
+     "score": 0.5262783765792847
+    },
+    {
+     "rank": 10,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0015__eb2b75b5310e",
+     "score": 0.5257447957992554
+    }
+   ]
+  },
+  {
+   "queryId": "devsupport-v01-q04",
+   "answerability": "ANSWERABLE",
+   "includedInMacroAverage": true,
+   "retrievalStatus": "OK_WITH_HITS",
+   "fallbackAttempted": false,
+   "retrievedCount": 10,
+   "mainError": null,
+   "fallbackError": null,
+   "metricsNote": null,
+   "metricsByK": {
+    "k=1": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    },
+    "k=3": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    },
+    "k=5": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    },
+    "k=10": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    }
+   },
+   "topKRetrieved": [
+    {
+     "rank": 1,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0025__54fc7b317ed3",
+     "score": 0.6843203008174896
+    },
+    {
+     "rank": 2,
+     "evalChunkId": "ig-db-migration-readme__tts-default-cl100k-800-0__0000__338a39b904c5",
+     "score": 0.6224127113819122
+    },
+    {
+     "rank": 3,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0003__e8f6ff6b72eb",
+     "score": 0.5887008309364319
+    },
+    {
+     "rank": 4,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0005__d65d06e6e302",
+     "score": 0.5871905088424683
+    },
+    {
+     "rank": 5,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0015__eb2b75b5310e",
+     "score": 0.5829241275787354
+    },
+    {
+     "rank": 6,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0011__e32721bc9c57",
+     "score": 0.58291295170784
+    },
+    {
+     "rank": 7,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0028__143a4e085616",
+     "score": 0.5803185403347015
+    },
+    {
+     "rank": 8,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0020__645ab4a07f65",
+     "score": 0.5653978884220123
+    },
+    {
+     "rank": 9,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0002__31e9427251af",
+     "score": 0.5651117861270905
+    },
+    {
+     "rank": 10,
+     "evalChunkId": "ig-setup-api-keys__tts-default-cl100k-800-0__0001__57138af14711",
+     "score": 0.5613360404968262
+    }
+   ]
+  },
+  {
+   "queryId": "devsupport-v01-q05",
+   "answerability": "ANSWERABLE",
+   "includedInMacroAverage": true,
+   "retrievalStatus": "OK_WITH_HITS",
+   "fallbackAttempted": false,
+   "retrievedCount": 10,
+   "mainError": null,
+   "fallbackError": null,
+   "metricsNote": null,
+   "metricsByK": {
+    "k=1": {
+     "hitAtK": 0.0,
+     "mrrAtK": 0.0,
+     "apcAtK": 0.0,
+     "fullCoverageAtK": false,
+     "coveredPoints": 0,
+     "totalPoints": 1
+    },
+    "k=3": {
+     "hitAtK": 1.0,
+     "mrrAtK": 0.3333333333333333,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 1,
+     "totalPoints": 1
+    },
+    "k=5": {
+     "hitAtK": 1.0,
+     "mrrAtK": 0.3333333333333333,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 1,
+     "totalPoints": 1
+    },
+    "k=10": {
+     "hitAtK": 1.0,
+     "mrrAtK": 0.3333333333333333,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 1,
+     "totalPoints": 1
+    }
+   },
+   "topKRetrieved": [
+    {
+     "rank": 1,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0000__ed91cddc6ed2",
+     "score": 0.6805507838726044
+    },
+    {
+     "rank": 2,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0008__7e0a97a99c3e",
+     "score": 0.6256185472011566
+    },
+    {
+     "rank": 3,
+     "evalChunkId": "ig-setup-api-keys__tts-default-cl100k-800-0__0000__412b1fb66fc9",
+     "score": 0.5963973104953766
+    },
+    {
+     "rank": 4,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0029__25e19ccc2489",
+     "score": 0.5882434248924255
+    },
+    {
+     "rank": 5,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0005__d65d06e6e302",
+     "score": 0.573514848947525
+    },
+    {
+     "rank": 6,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0002__7d9fe0ceb64a",
+     "score": 0.5727541744709015
+    },
+    {
+     "rank": 7,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0004__0192ebda8394",
+     "score": 0.550825446844101
+    },
+    {
+     "rank": 8,
+     "evalChunkId": "ig-setup-api-keys__tts-default-cl100k-800-0__0001__57138af14711",
+     "score": 0.5472864210605621
+    },
+    {
+     "rank": 9,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0012__756fbddd2820",
+     "score": 0.5461346805095673
+    },
+    {
+     "rank": 10,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0011__e32721bc9c57",
+     "score": 0.5378186106681824
+    }
+   ]
+  },
+  {
+   "queryId": "devsupport-v01-q06",
+   "answerability": "ANSWERABLE",
+   "includedInMacroAverage": true,
+   "retrievalStatus": "OK_WITH_HITS",
+   "fallbackAttempted": false,
+   "retrievedCount": 10,
+   "mainError": null,
+   "fallbackError": null,
+   "metricsNote": null,
+   "metricsByK": {
+    "k=1": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 1,
+     "totalPoints": 1
+    },
+    "k=3": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 1,
+     "totalPoints": 1
+    },
+    "k=5": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 1,
+     "totalPoints": 1
+    },
+    "k=10": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 1,
+     "totalPoints": 1
+    }
+   },
+   "topKRetrieved": [
+    {
+     "rank": 1,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0017__eb40aef64a75",
+     "score": 0.5745826959609985
+    },
+    {
+     "rank": 2,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0020__645ab4a07f65",
+     "score": 0.5565085113048553
+    },
+    {
+     "rank": 3,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0019__0fbdc5619bc8",
+     "score": 0.5537725985050201
+    },
+    {
+     "rank": 4,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0021__b0fdb96d3bdf",
+     "score": 0.5431206524372101
+    },
+    {
+     "rank": 5,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0015__eb2b75b5310e",
+     "score": 0.5299224853515625
+    },
+    {
+     "rank": 6,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0024__419a75de734c",
+     "score": 0.5213931798934937
+    },
+    {
+     "rank": 7,
+     "evalChunkId": "ig-db-migration-readme__tts-default-cl100k-800-0__0000__338a39b904c5",
+     "score": 0.5200130045413971
+    },
+    {
+     "rank": 8,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0026__444f93895443",
+     "score": 0.5092393159866333
+    },
+    {
+     "rank": 9,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0003__e8f6ff6b72eb",
+     "score": 0.5087313652038574
+    },
+    {
+     "rank": 10,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0025__54fc7b317ed3",
+     "score": 0.5076420605182648
+    }
+   ]
+  },
+  {
+   "queryId": "devsupport-v01-q07",
+   "answerability": "ANSWERABLE",
+   "includedInMacroAverage": true,
+   "retrievalStatus": "OK_WITH_HITS",
+   "fallbackAttempted": false,
+   "retrievedCount": 10,
+   "mainError": null,
+   "fallbackError": null,
+   "metricsNote": null,
+   "metricsByK": {
+    "k=1": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    },
+    "k=3": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    },
+    "k=5": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    },
+    "k=10": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    }
+   },
+   "topKRetrieved": [
+    {
+     "rank": 1,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0021__b0fdb96d3bdf",
+     "score": 0.6070737540721893
+    },
+    {
+     "rank": 2,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0027__ceed2fe7549f",
+     "score": 0.5809289813041687
+    },
+    {
+     "rank": 3,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0004__799552926016",
+     "score": 0.5623479187488556
+    },
+    {
+     "rank": 4,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0031__2075aad9b17e",
+     "score": 0.5522900521755219
+    },
+    {
+     "rank": 5,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0018__d838729e569c",
+     "score": 0.542158842086792
+    },
+    {
+     "rank": 6,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0015__eb2b75b5310e",
+     "score": 0.5411449670791626
+    },
+    {
+     "rank": 7,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0017__eb40aef64a75",
+     "score": 0.5337793827056885
+    },
+    {
+     "rank": 8,
+     "evalChunkId": "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0002__b310b24a503b",
+     "score": 0.5248816609382629
+    },
+    {
+     "rank": 9,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0026__444f93895443",
+     "score": 0.5244367718696594
+    },
+    {
+     "rank": 10,
+     "evalChunkId": "ig-db-migration-readme__tts-default-cl100k-800-0__0000__338a39b904c5",
+     "score": 0.5239958465099335
+    }
+   ]
+  },
+  {
+   "queryId": "devsupport-v01-q08",
+   "answerability": "ANSWERABLE",
+   "includedInMacroAverage": true,
+   "retrievalStatus": "OK_WITH_HITS",
+   "fallbackAttempted": false,
+   "retrievedCount": 10,
+   "mainError": null,
+   "fallbackError": null,
+   "metricsNote": null,
+   "metricsByK": {
+    "k=1": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    },
+    "k=3": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    },
+    "k=5": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    },
+    "k=10": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    }
+   },
+   "topKRetrieved": [
+    {
+     "rank": 1,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0003__e8f6ff6b72eb",
+     "score": 0.6082806587219238
+    },
+    {
+     "rank": 2,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0014__65c86fd0e8b3",
+     "score": 0.5470822155475616
+    },
+    {
+     "rank": 3,
+     "evalChunkId": "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0000__6dc9b1d25ebc",
+     "score": 0.5441201031208038
+    },
+    {
+     "rank": 4,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0026__444f93895443",
+     "score": 0.5408051311969757
+    },
+    {
+     "rank": 5,
+     "evalChunkId": "ig-githooks-readme__tts-default-cl100k-800-0__0000__002cabe3796b",
+     "score": 0.5389344096183777
+    },
+    {
+     "rank": 6,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0015__eb2b75b5310e",
+     "score": 0.5343964993953705
+    },
+    {
+     "rank": 7,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0019__0fbdc5619bc8",
+     "score": 0.5289500653743744
+    },
+    {
+     "rank": 8,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0027__ceed2fe7549f",
+     "score": 0.528199166059494
+    },
+    {
+     "rank": 9,
+     "evalChunkId": "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0001__3b574264b222",
+     "score": 0.5250414311885834
+    },
+    {
+     "rank": 10,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0017__eb40aef64a75",
+     "score": 0.5241946876049042
+    }
+   ]
+  },
+  {
+   "queryId": "devsupport-v01-q09",
+   "answerability": "ANSWERABLE",
+   "includedInMacroAverage": true,
+   "retrievalStatus": "OK_WITH_HITS",
+   "fallbackAttempted": false,
+   "retrievedCount": 10,
+   "mainError": null,
+   "fallbackError": null,
+   "metricsNote": null,
+   "metricsByK": {
+    "k=1": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    },
+    "k=3": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    },
+    "k=5": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    },
+    "k=10": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    }
+   },
+   "topKRetrieved": [
+    {
+     "rank": 1,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0026__444f93895443",
+     "score": 0.7412569224834442
+    },
+    {
+     "rank": 2,
+     "evalChunkId": "ig-db-migration-readme__tts-default-cl100k-800-0__0000__338a39b904c5",
+     "score": 0.6807608902454376
+    },
+    {
+     "rank": 3,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0024__419a75de734c",
+     "score": 0.6006855368614197
+    },
+    {
+     "rank": 4,
+     "evalChunkId": "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0002__b310b24a503b",
+     "score": 0.5236296057701111
+    },
+    {
+     "rank": 5,
+     "evalChunkId": "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0001__3b574264b222",
+     "score": 0.5144769549369812
+    },
+    {
+     "rank": 6,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0015__eb2b75b5310e",
+     "score": 0.4977092742919922
+    },
+    {
+     "rank": 7,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0028__143a4e085616",
+     "score": 0.49734920263290405
+    },
+    {
+     "rank": 8,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0025__54fc7b317ed3",
+     "score": 0.48975324630737305
+    },
+    {
+     "rank": 9,
+     "evalChunkId": "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0000__6dc9b1d25ebc",
+     "score": 0.4880473017692566
+    },
+    {
+     "rank": 10,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0016__f78325903673",
+     "score": 0.4855543375015259
+    }
+   ]
+  },
+  {
+   "queryId": "devsupport-v01-q10",
+   "answerability": "ANSWERABLE",
+   "includedInMacroAverage": true,
+   "retrievalStatus": "OK_WITH_HITS",
+   "fallbackAttempted": false,
+   "retrievedCount": 10,
+   "mainError": null,
+   "fallbackError": null,
+   "metricsNote": null,
+   "metricsByK": {
+    "k=1": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 1,
+     "totalPoints": 1
+    },
+    "k=3": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 1,
+     "totalPoints": 1
+    },
+    "k=5": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 1,
+     "totalPoints": 1
+    },
+    "k=10": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 1,
+     "totalPoints": 1
+    }
+   },
+   "topKRetrieved": [
+    {
+     "rank": 1,
+     "evalChunkId": "ig-githooks-readme__tts-default-cl100k-800-0__0000__002cabe3796b",
+     "score": 0.6405676901340485
+    },
+    {
+     "rank": 2,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0016__f78325903673",
+     "score": 0.5856346189975739
+    },
+    {
+     "rank": 3,
+     "evalChunkId": "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0001__3b574264b222",
+     "score": 0.582598090171814
+    },
+    {
+     "rank": 4,
+     "evalChunkId": "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0000__6dc9b1d25ebc",
+     "score": 0.569957047700882
+    },
+    {
+     "rank": 5,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0015__eb2b75b5310e",
+     "score": 0.5561528205871582
+    },
+    {
+     "rank": 6,
+     "evalChunkId": "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0002__b310b24a503b",
+     "score": 0.5486528277397156
+    },
+    {
+     "rank": 7,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0026__444f93895443",
+     "score": 0.545799732208252
+    },
+    {
+     "rank": 8,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0028__143a4e085616",
+     "score": 0.5425826013088226
+    },
+    {
+     "rank": 9,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0020__645ab4a07f65",
+     "score": 0.5383515655994415
+    },
+    {
+     "rank": 10,
+     "evalChunkId": "ig-db-migration-readme__tts-default-cl100k-800-0__0000__338a39b904c5",
+     "score": 0.5318244993686676
+    }
+   ]
+  },
+  {
+   "queryId": "devsupport-v01-q11",
+   "answerability": "ANSWERABLE",
+   "includedInMacroAverage": true,
+   "retrievalStatus": "OK_WITH_HITS",
+   "fallbackAttempted": false,
+   "retrievedCount": 10,
+   "mainError": null,
+   "fallbackError": null,
+   "metricsNote": null,
+   "metricsByK": {
+    "k=1": {
+     "hitAtK": 0.0,
+     "mrrAtK": 0.0,
+     "apcAtK": 0.0,
+     "fullCoverageAtK": false,
+     "coveredPoints": 0,
+     "totalPoints": 1
+    },
+    "k=3": {
+     "hitAtK": 0.0,
+     "mrrAtK": 0.0,
+     "apcAtK": 0.0,
+     "fullCoverageAtK": false,
+     "coveredPoints": 0,
+     "totalPoints": 1
+    },
+    "k=5": {
+     "hitAtK": 0.0,
+     "mrrAtK": 0.0,
+     "apcAtK": 0.0,
+     "fullCoverageAtK": false,
+     "coveredPoints": 0,
+     "totalPoints": 1
+    },
+    "k=10": {
+     "hitAtK": 1.0,
+     "mrrAtK": 0.14285714285714285,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 1,
+     "totalPoints": 1
+    }
+   },
+   "topKRetrieved": [
+    {
+     "rank": 1,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0029__25e19ccc2489",
+     "score": 0.729610949754715
+    },
+    {
+     "rank": 2,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0000__ed91cddc6ed2",
+     "score": 0.6851446628570557
+    },
+    {
+     "rank": 3,
+     "evalChunkId": "ig-setup-api-keys__tts-default-cl100k-800-0__0000__412b1fb66fc9",
+     "score": 0.6649706661701202
+    },
+    {
+     "rank": 4,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0001__bd93ec77c46c",
+     "score": 0.6641032695770264
+    },
+    {
+     "rank": 5,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0003__19b907e79435",
+     "score": 0.6517246663570404
+    },
+    {
+     "rank": 6,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0008__7e0a97a99c3e",
+     "score": 0.6445572674274445
+    },
+    {
+     "rank": 7,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0005__d65d06e6e302",
+     "score": 0.643305778503418
+    },
+    {
+     "rank": 8,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0002__7d9fe0ceb64a",
+     "score": 0.6387924551963806
+    },
+    {
+     "rank": 9,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0006__22ac170937cd",
+     "score": 0.6013249158859253
+    },
+    {
+     "rank": 10,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0004__0192ebda8394",
+     "score": 0.5857925117015839
+    }
+   ]
+  },
+  {
+   "queryId": "devsupport-v01-q12",
+   "answerability": "ANSWERABLE",
+   "includedInMacroAverage": true,
+   "retrievalStatus": "OK_WITH_HITS",
+   "fallbackAttempted": false,
+   "retrievedCount": 10,
+   "mainError": null,
+   "fallbackError": null,
+   "metricsNote": null,
+   "metricsByK": {
+    "k=1": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 3,
+     "totalPoints": 3
+    },
+    "k=3": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 3,
+     "totalPoints": 3
+    },
+    "k=5": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 3,
+     "totalPoints": 3
+    },
+    "k=10": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 3,
+     "totalPoints": 3
+    }
+   },
+   "topKRetrieved": [
+    {
+     "rank": 1,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0030__cbaf4b884d02",
+     "score": 0.7344413995742798
+    },
+    {
+     "rank": 2,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0028__143a4e085616",
+     "score": 0.6997780501842499
+    },
+    {
+     "rank": 3,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0023__e3e3baa6a500",
+     "score": 0.6376091539859772
+    },
+    {
+     "rank": 4,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0005__96ffb7afd52c",
+     "score": 0.6212829947471619
+    },
+    {
+     "rank": 5,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0013__cff29f0b8b22",
+     "score": 0.6129180788993835
+    },
+    {
+     "rank": 6,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0000__dfcf4a7f164f",
+     "score": 0.5909527242183685
+    },
+    {
+     "rank": 7,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0007__97c59e867ddf",
+     "score": 0.5903190076351166
+    },
+    {
+     "rank": 8,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0025__54fc7b317ed3",
+     "score": 0.5858296155929565
+    },
+    {
+     "rank": 9,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0012__756fbddd2820",
+     "score": 0.5830091834068298
+    },
+    {
+     "rank": 10,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0027__ceed2fe7549f",
+     "score": 0.5754222571849823
+    }
+   ]
+  },
+  {
+   "queryId": "devsupport-v01-q13",
+   "answerability": "ANSWERABLE",
+   "includedInMacroAverage": true,
+   "retrievalStatus": "OK_WITH_HITS",
+   "fallbackAttempted": false,
+   "retrievedCount": 10,
+   "mainError": null,
+   "fallbackError": null,
+   "metricsNote": null,
+   "metricsByK": {
+    "k=1": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 0.75,
+     "fullCoverageAtK": false,
+     "coveredPoints": 3,
+     "totalPoints": 4
+    },
+    "k=3": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 4,
+     "totalPoints": 4
+    },
+    "k=5": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 4,
+     "totalPoints": 4
+    },
+    "k=10": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 4,
+     "totalPoints": 4
+    }
+   },
+   "topKRetrieved": [
+    {
+     "rank": 1,
+     "evalChunkId": "ig-db-migration-readme__tts-default-cl100k-800-0__0000__338a39b904c5",
+     "score": 0.6418544948101044
+    },
+    {
+     "rank": 2,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0024__419a75de734c",
+     "score": 0.633183628320694
+    },
+    {
+     "rank": 3,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0026__444f93895443",
+     "score": 0.6049975454807281
+    },
+    {
+     "rank": 4,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0025__54fc7b317ed3",
+     "score": 0.5516236424446106
+    },
+    {
+     "rank": 5,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0015__eb2b75b5310e",
+     "score": 0.5027543604373932
+    },
+    {
+     "rank": 6,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0028__143a4e085616",
+     "score": 0.502055823802948
+    },
+    {
+     "rank": 7,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0016__f78325903673",
+     "score": 0.4915328621864319
+    },
+    {
+     "rank": 8,
+     "evalChunkId": "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0001__3b574264b222",
+     "score": 0.4804185628890991
+    },
+    {
+     "rank": 9,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0019__0fbdc5619bc8",
+     "score": 0.47662681341171265
+    },
+    {
+     "rank": 10,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0011__e32721bc9c57",
+     "score": 0.47533613443374634
+    }
+   ]
+  },
+  {
+   "queryId": "devsupport-v01-q14",
+   "answerability": "ANSWERABLE",
+   "includedInMacroAverage": true,
+   "retrievalStatus": "OK_WITH_HITS",
+   "fallbackAttempted": false,
+   "retrievedCount": 10,
+   "mainError": null,
+   "fallbackError": null,
+   "metricsNote": null,
+   "metricsByK": {
+    "k=1": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 0.6,
+     "fullCoverageAtK": false,
+     "coveredPoints": 3,
+     "totalPoints": 5
+    },
+    "k=3": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 0.6,
+     "fullCoverageAtK": false,
+     "coveredPoints": 3,
+     "totalPoints": 5
+    },
+    "k=5": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 0.6,
+     "fullCoverageAtK": false,
+     "coveredPoints": 3,
+     "totalPoints": 5
+    },
+    "k=10": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 5,
+     "totalPoints": 5
+    }
+   },
+   "topKRetrieved": [
+    {
+     "rank": 1,
+     "evalChunkId": "ig-setup-api-keys__tts-default-cl100k-800-0__0000__412b1fb66fc9",
+     "score": 0.7094335854053497
+    },
+    {
+     "rank": 2,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0000__ed91cddc6ed2",
+     "score": 0.6921275854110718
+    },
+    {
+     "rank": 3,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0029__25e19ccc2489",
+     "score": 0.6881663501262665
+    },
+    {
+     "rank": 4,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0008__7e0a97a99c3e",
+     "score": 0.6618812382221222
+    },
+    {
+     "rank": 5,
+     "evalChunkId": "ig-setup-api-keys__tts-default-cl100k-800-0__0001__57138af14711",
+     "score": 0.6588069796562195
+    },
+    {
+     "rank": 6,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0005__d65d06e6e302",
+     "score": 0.6411033868789673
+    },
+    {
+     "rank": 7,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0006__22ac170937cd",
+     "score": 0.6258289813995361
+    },
+    {
+     "rank": 8,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0002__7d9fe0ceb64a",
+     "score": 0.5998715162277222
+    },
+    {
+     "rank": 9,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0003__19b907e79435",
+     "score": 0.5942635834217072
+    },
+    {
+     "rank": 10,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0012__756fbddd2820",
+     "score": 0.5908804833889008
+    }
+   ]
+  },
+  {
+   "queryId": "devsupport-v01-q15",
+   "answerability": "ANSWERABLE",
+   "includedInMacroAverage": true,
+   "retrievalStatus": "OK_WITH_HITS",
+   "fallbackAttempted": false,
+   "retrievedCount": 10,
+   "mainError": null,
+   "fallbackError": null,
+   "metricsNote": null,
+   "metricsByK": {
+    "k=1": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 0.5,
+     "fullCoverageAtK": false,
+     "coveredPoints": 2,
+     "totalPoints": 4
+    },
+    "k=3": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 4,
+     "totalPoints": 4
+    },
+    "k=5": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 4,
+     "totalPoints": 4
+    },
+    "k=10": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 4,
+     "totalPoints": 4
+    }
+   },
+   "topKRetrieved": [
+    {
+     "rank": 1,
+     "evalChunkId": "ig-kb-interview-capacity-tdd__tts-default-cl100k-800-0__0000__7d679c5ce80d",
+     "score": 0.790343776345253
+    },
+    {
+     "rank": 2,
+     "evalChunkId": "ig-kb-interview-capacity-tdd__tts-default-cl100k-800-0__0001__451ec81fde4f",
+     "score": 0.775587797164917
+    },
+    {
+     "rank": 3,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0010__b31a74323eb4",
+     "score": 0.6786684095859528
+    },
+    {
+     "rank": 4,
+     "evalChunkId": "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0000__6dc9b1d25ebc",
+     "score": 0.63130784034729
+    },
+    {
+     "rank": 5,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0012__756fbddd2820",
+     "score": 0.6061935424804688
+    },
+    {
+     "rank": 6,
+     "evalChunkId": "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0001__3b574264b222",
+     "score": 0.6042682826519012
+    },
+    {
+     "rank": 7,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0008__7e0a97a99c3e",
+     "score": 0.5957815051078796
+    },
+    {
+     "rank": 8,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0006__47eb57419e28",
+     "score": 0.5892989039421082
+    },
+    {
+     "rank": 9,
+     "evalChunkId": "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0002__b310b24a503b",
+     "score": 0.5816645920276642
+    },
+    {
+     "rank": 10,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0001__6c4508d6744d",
+     "score": 0.5612832903862
+    }
+   ]
+  },
+  {
+   "queryId": "devsupport-v01-q16",
+   "answerability": "ANSWERABLE",
+   "includedInMacroAverage": true,
+   "retrievalStatus": "OK_WITH_HITS",
+   "fallbackAttempted": false,
+   "retrievedCount": 10,
+   "mainError": null,
+   "fallbackError": null,
+   "metricsNote": null,
+   "metricsByK": {
+    "k=1": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 0.8,
+     "fullCoverageAtK": false,
+     "coveredPoints": 4,
+     "totalPoints": 5
+    },
+    "k=3": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 5,
+     "totalPoints": 5
+    },
+    "k=5": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 5,
+     "totalPoints": 5
+    },
+    "k=10": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 5,
+     "totalPoints": 5
+    }
+   },
+   "topKRetrieved": [
+    {
+     "rank": 1,
+     "evalChunkId": "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0000__6dc9b1d25ebc",
+     "score": 0.7267403900623322
+    },
+    {
+     "rank": 2,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0010__b31a74323eb4",
+     "score": 0.6348343193531036
+    },
+    {
+     "rank": 3,
+     "evalChunkId": "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0001__3b574264b222",
+     "score": 0.5980945527553558
+    },
+    {
+     "rank": 4,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0009__8ea569f5986c",
+     "score": 0.5925379395484924
+    },
+    {
+     "rank": 5,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0012__756fbddd2820",
+     "score": 0.5726131796836853
+    },
+    {
+     "rank": 6,
+     "evalChunkId": "ig-kb-interview-capacity-tdd__tts-default-cl100k-800-0__0001__451ec81fde4f",
+     "score": 0.5564513802528381
+    },
+    {
+     "rank": 7,
+     "evalChunkId": "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0002__b310b24a503b",
+     "score": 0.5542589128017426
+    },
+    {
+     "rank": 8,
+     "evalChunkId": "ig-kb-interview-capacity-tdd__tts-default-cl100k-800-0__0000__7d679c5ce80d",
+     "score": 0.5482952892780304
+    },
+    {
+     "rank": 9,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0024__419a75de734c",
+     "score": 0.5336417257785797
+    },
+    {
+     "rank": 10,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0017__eb40aef64a75",
+     "score": 0.53109011054039
+    }
+   ]
+  },
+  {
+   "queryId": "devsupport-v01-q17",
+   "answerability": "NO_ANSWER",
+   "includedInMacroAverage": false,
+   "retrievalStatus": "OK_WITH_HITS",
+   "fallbackAttempted": false,
+   "retrievedCount": 10,
+   "mainError": null,
+   "fallbackError": null,
+   "metricsNote": "NO_ANSWER: report carries no per-K metrics (excluded from macro); cells left empty",
+   "metricsByK": {},
+   "topKRetrieved": [
+    {
+     "rank": 1,
+     "evalChunkId": "ig-kb-interview-capacity-tdd__tts-default-cl100k-800-0__0000__7d679c5ce80d",
+     "score": 0.6084789633750916
+    },
+    {
+     "rank": 2,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0005__d65d06e6e302",
+     "score": 0.6081045866012573
+    },
+    {
+     "rank": 3,
+     "evalChunkId": "ig-kb-interview-capacity-tdd__tts-default-cl100k-800-0__0001__451ec81fde4f",
+     "score": 0.6046252548694611
+    },
+    {
+     "rank": 4,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0011__e32721bc9c57",
+     "score": 0.5878470242023468
+    },
+    {
+     "rank": 5,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0008__7e0a97a99c3e",
+     "score": 0.5871126353740692
+    },
+    {
+     "rank": 6,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0006__22ac170937cd",
+     "score": 0.5868484973907471
+    },
+    {
+     "rank": 7,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0003__e8f6ff6b72eb",
+     "score": 0.5798267722129822
+    },
+    {
+     "rank": 8,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0012__756fbddd2820",
+     "score": 0.576835960149765
+    },
+    {
+     "rank": 9,
+     "evalChunkId": "ig-setup-api-keys__tts-default-cl100k-800-0__0000__412b1fb66fc9",
+     "score": 0.5748299658298492
+    },
+    {
+     "rank": 10,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0014__65c86fd0e8b3",
+     "score": 0.5697411298751831
+    }
+   ]
+  },
+  {
+   "queryId": "devsupport-v01-q18",
+   "answerability": "NO_ANSWER",
+   "includedInMacroAverage": false,
+   "retrievalStatus": "OK_WITH_HITS",
+   "fallbackAttempted": false,
+   "retrievedCount": 10,
+   "mainError": null,
+   "fallbackError": null,
+   "metricsNote": "NO_ANSWER: report carries no per-K metrics (excluded from macro); cells left empty",
+   "metricsByK": {},
+   "topKRetrieved": [
+    {
+     "rank": 1,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0025__54fc7b317ed3",
+     "score": 0.6439831554889679
+    },
+    {
+     "rank": 2,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0010__b31a74323eb4",
+     "score": 0.630592942237854
+    },
+    {
+     "rank": 3,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0009__8ea569f5986c",
+     "score": 0.6266578733921051
+    },
+    {
+     "rank": 4,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0032__8ffcbe0327c1",
+     "score": 0.6230870485305786
+    },
+    {
+     "rank": 5,
+     "evalChunkId": "ig-kb-interview-capacity-tdd__tts-default-cl100k-800-0__0001__451ec81fde4f",
+     "score": 0.6103575527667999
+    },
+    {
+     "rank": 6,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0012__756fbddd2820",
+     "score": 0.6080226004123688
+    },
+    {
+     "rank": 7,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0019__0fbdc5619bc8",
+     "score": 0.6022166311740875
+    },
+    {
+     "rank": 8,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0004__799552926016",
+     "score": 0.5967029631137848
+    },
+    {
+     "rank": 9,
+     "evalChunkId": "ig-githooks-readme__tts-default-cl100k-800-0__0000__002cabe3796b",
+     "score": 0.5941402614116669
+    },
+    {
+     "rank": 10,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0007__97c59e867ddf",
+     "score": 0.5938214063644409
+    }
+   ]
+  },
+  {
+   "queryId": "devsupport-v01-q19",
+   "answerability": "NO_ANSWER",
+   "includedInMacroAverage": false,
+   "retrievalStatus": "OK_WITH_HITS",
+   "fallbackAttempted": false,
+   "retrievedCount": 10,
+   "mainError": null,
+   "fallbackError": null,
+   "metricsNote": "NO_ANSWER: report carries no per-K metrics (excluded from macro); cells left empty",
+   "metricsByK": {},
+   "topKRetrieved": [
+    {
+     "rank": 1,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0019__0fbdc5619bc8",
+     "score": 0.618633359670639
+    },
+    {
+     "rank": 2,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0017__eb40aef64a75",
+     "score": 0.611342191696167
+    },
+    {
+     "rank": 3,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0020__645ab4a07f65",
+     "score": 0.587073415517807
+    },
+    {
+     "rank": 4,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0022__ff7631e74d56",
+     "score": 0.5668077170848846
+    },
+    {
+     "rank": 5,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0024__419a75de734c",
+     "score": 0.5334006547927856
+    },
+    {
+     "rank": 6,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0021__b0fdb96d3bdf",
+     "score": 0.529548317193985
+    },
+    {
+     "rank": 7,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0015__eb2b75b5310e",
+     "score": 0.5294269919395447
+    },
+    {
+     "rank": 8,
+     "evalChunkId": "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0002__b310b24a503b",
+     "score": 0.5065355896949768
+    },
+    {
+     "rank": 9,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0025__54fc7b317ed3",
+     "score": 0.505315512418747
+    },
+    {
+     "rank": 10,
+     "evalChunkId": "ig-githooks-readme__tts-default-cl100k-800-0__0000__002cabe3796b",
+     "score": 0.5052564442157745
+    }
+   ]
+  },
+  {
+   "queryId": "devsupport-v01-q20",
+   "answerability": "NO_ANSWER",
+   "includedInMacroAverage": false,
+   "retrievalStatus": "OK_WITH_HITS",
+   "fallbackAttempted": false,
+   "retrievedCount": 10,
+   "mainError": null,
+   "fallbackError": null,
+   "metricsNote": "NO_ANSWER: report carries no per-K metrics (excluded from macro); cells left empty",
+   "metricsByK": {},
+   "topKRetrieved": [
+    {
+     "rank": 1,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0008__7e0a97a99c3e",
+     "score": 0.6521182358264923
+    },
+    {
+     "rank": 2,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0001__bd93ec77c46c",
+     "score": 0.6278080940246582
+    },
+    {
+     "rank": 3,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0029__25e19ccc2489",
+     "score": 0.6213873624801636
+    },
+    {
+     "rank": 4,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0012__756fbddd2820",
+     "score": 0.618597000837326
+    },
+    {
+     "rank": 5,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0002__7d9fe0ceb64a",
+     "score": 0.616899311542511
+    },
+    {
+     "rank": 6,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0014__65c86fd0e8b3",
+     "score": 0.6166738271713257
+    },
+    {
+     "rank": 7,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0003__19b907e79435",
+     "score": 0.609605461359024
+    },
+    {
+     "rank": 8,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0000__ed91cddc6ed2",
+     "score": 0.5981987714767456
+    },
+    {
+     "rank": 9,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0005__d65d06e6e302",
+     "score": 0.5934353470802307
+    },
+    {
+     "rank": 10,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0013__cff29f0b8b22",
+     "score": 0.593239814043045
+    }
+   ]
+  }
+ ]
+}

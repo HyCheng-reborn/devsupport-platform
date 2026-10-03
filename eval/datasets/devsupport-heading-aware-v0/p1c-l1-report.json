@@ -1,0 +1,2426 @@
+{
+ "reportVersion": "p1c-l1-v1.4",
+ "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99",
+ "startTime": "2026-10-03T10:14:31.277987100Z",
+ "endTime": "2026-10-03T10:14:40.374753700Z",
+ "executionMode": "real-embedding",
+ "scope": "p1c-l1-vector-retrieval",
+ "disclaimer": "L1 向量检索组件基线，非完整系统基线：不含查询改写、动态 topK/阈值；回退是评测自有的单次受预算约束回退，不声称与生产 fallback 等价。",
+ "connectionIdentity": {
+  "configuredUrl": "jdbc:postgresql://127.0.0.1:5433/interview_guide_eval",
+  "database": "interview_guide_eval",
+  "internalPort": 5432,
+  "user": "eval_runner",
+  "superuser": false,
+  "markerType": "p1c-eval-isolated",
+  "markerUuid": "f47ac10b-58cc-4372-a567-0e0283c5d9e7",
+  "markerVerified": true,
+  "source": "runtime-current_user + eval_instance_identity + pg_settings + pg_roles",
+  "note": "configuredUrl 来自系统属性，其余来自数据库查询；固定 UUID 是仓库常量，不能单独证明物理容器身份，运行前仍须人工比对 URL 与 Compose 目标。"
+ },
+ "embedding": {
+  "providerId": "dashscope",
+  "modelName": "text-embedding-v3",
+  "configuredDimensions": 1024,
+  "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  "source": "系统属性（密钥只从环境变量/系统属性读取，绝不写入报告）"
+ },
+ "vectorStore": {
+  "distanceType": "COSINE_DISTANCE",
+  "indexType": "HNSW",
+  "vectorDimension": 1024,
+  "initializeSchema": false,
+  "schemaCreatedBy": "docker/postgres/eval-init.sql; indexDef=CREATE UNIQUE INDEX vector_store_pkey ON public.vector_store USING btree (id) | CREATE INDEX spring_ai_vector_index ON public.vector_store USING hnsw (embedding vector_cosine_ops)"
+ },
+ "callGuard": {
+  "outerOperations": {
+   "ingestionAttempts": 5,
+   "queryAttempts": 20,
+   "totalAttempts": 25,
+   "totalSuccesses": 25,
+   "totalFailures": 0,
+   "hardLimit": 50
+  },
+  "httpObservation": {
+   "observedHttpRequests": 25,
+   "source": "OkHttp interceptor (SpringAiOpenAiHttpClient.Builder.interceptor)",
+   "note": "外层操作数=25，HTTP 观测数=25；两者可能不等（发送前失败为 0 HTTP、SDK 内部可能拆分请求）"
+  },
+  "budgetGatePosition": "before-send",
+  "status": "WITHIN_LIMIT",
+  "note": "预算门控的是外层 Embedding 操作次数，不是 HTTP 请求硬上限"
+ },
+ "queryCounts": {
+  "totalQueries": 20,
+  "retrievedQueries": 20,
+  "answerableMetricQueries": 16,
+  "noAnswerDiagnosticQueries": 4,
+  "metricsExcludedNoAnswerQueries": 4,
+  "metricsDenominator": 16,
+  "failedRetrievalQueries": 0,
+  "zeroResultQueries": 0,
+  "queriesWithFallbackAttempted": 0,
+  "fallbackRawCandidatesObserved": 0
+ },
+ "dataHashes": {
+  "chunksJsonlSha256": "80deabfc8b419fcd4a6fb4a2993ab43fd8ca12875032b0092bd97a57544f118a",
+  "candidateGoldSha256": "cbaadbe1d18320beb4ecdf6eeb31cb578d0fbf4e0b7cbb4261d16936b05818ea",
+  "corpusManifestSha256": "a7c1a0b1137d7c96cfa50e385e5f3cb7c8db0c9ac816ff9980664277ebad60d7",
+  "chunkManifestSha256": "59afe46b750fb5bd60b9fec189238ff39c36119e6de5f8dd08a9ebbe2f3c019c",
+  "contentHashAlgorithm": "SHA-256",
+  "contentHashByteContract": "换行归一化(CRLF/CR→LF) → UTF-8 字节 → SHA-256 小写 hex；写入侧取自 chunks.jsonl 解码文本，核对侧取自 vector_store.content 列，同一函数",
+  "source": "整文件原始字节 SHA-256（随 checkout 行尾策略而变，仅作参考记录；批准值比对见 artifactFreeze，那里用行尾归一化哈希）"
+ },
+ "artifactFreeze": {
+  "freezeListFile": "p1c-frozen-artifacts.json",
+  "hashCaliber": "字节级 CRLF/CR→LF 归一化 → UTF-8 字节 → SHA-256 小写 hex（与 P1cExpectedChunk 同口径）",
+  "comparedField": "expectedSha256NormalizedLf",
+  "requiredFileNames": [
+   "candidate-gold.json",
+   "chunk-manifest.json",
+   "chunks.jsonl",
+   "corpus-manifest.json"
+  ],
+  "checks": [
+   {
+    "fileName": "chunks.jsonl",
+    "expectedSha256NormalizedLf": "80deabfc8b419fcd4a6fb4a2993ab43fd8ca12875032b0092bd97a57544f118a",
+    "actualSha256NormalizedLf": "80deabfc8b419fcd4a6fb4a2993ab43fd8ca12875032b0092bd97a57544f118a",
+    "actualSha256RawBytes": "80deabfc8b419fcd4a6fb4a2993ab43fd8ca12875032b0092bd97a57544f118a",
+    "sha256RawBytesAtRecord": "80deabfc8b419fcd4a6fb4a2993ab43fd8ca12875032b0092bd97a57544f118a",
+    "normalizedLfMatched": true
+   },
+   {
+    "fileName": "candidate-gold.json",
+    "expectedSha256NormalizedLf": "cbaadbe1d18320beb4ecdf6eeb31cb578d0fbf4e0b7cbb4261d16936b05818ea",
+    "actualSha256NormalizedLf": "cbaadbe1d18320beb4ecdf6eeb31cb578d0fbf4e0b7cbb4261d16936b05818ea",
+    "actualSha256RawBytes": "cbaadbe1d18320beb4ecdf6eeb31cb578d0fbf4e0b7cbb4261d16936b05818ea",
+    "sha256RawBytesAtRecord": "cbaadbe1d18320beb4ecdf6eeb31cb578d0fbf4e0b7cbb4261d16936b05818ea",
+    "normalizedLfMatched": true
+   },
+   {
+    "fileName": "corpus-manifest.json",
+    "expectedSha256NormalizedLf": "a7c1a0b1137d7c96cfa50e385e5f3cb7c8db0c9ac816ff9980664277ebad60d7",
+    "actualSha256NormalizedLf": "a7c1a0b1137d7c96cfa50e385e5f3cb7c8db0c9ac816ff9980664277ebad60d7",
+    "actualSha256RawBytes": "a7c1a0b1137d7c96cfa50e385e5f3cb7c8db0c9ac816ff9980664277ebad60d7",
+    "sha256RawBytesAtRecord": "a7c1a0b1137d7c96cfa50e385e5f3cb7c8db0c9ac816ff9980664277ebad60d7",
+    "normalizedLfMatched": true
+   },
+   {
+    "fileName": "chunk-manifest.json",
+    "expectedSha256NormalizedLf": "59afe46b750fb5bd60b9fec189238ff39c36119e6de5f8dd08a9ebbe2f3c019c",
+    "actualSha256NormalizedLf": "59afe46b750fb5bd60b9fec189238ff39c36119e6de5f8dd08a9ebbe2f3c019c",
+    "actualSha256RawBytes": "59afe46b750fb5bd60b9fec189238ff39c36119e6de5f8dd08a9ebbe2f3c019c",
+    "sha256RawBytesAtRecord": "59afe46b750fb5bd60b9fec189238ff39c36119e6de5f8dd08a9ebbe2f3c019c",
+    "normalizedLfMatched": true
+   }
+  ],
+  "violations": [],
+  "status": "PASS"
+ },
+ "ingestionVerification": {
+  "expectedChunks": 49,
+  "totalTableRows": 49,
+  "actualRunIdRows": 49,
+  "uniqueEvalChunkIds": 49,
+  "duplicateEvalChunkIds": 0,
+  "firstEmbeddingDimension": 1024,
+  "violations": [],
+  "status": "PASS"
+ },
+ "evalConfig": {
+  "topK": 10,
+  "minScore": 0.0,
+  "queryRewrite": false,
+  "evalKbId": "900001",
+  "reportingKValues": [
+   1,
+   3,
+   5,
+   10
+  ],
+  "fallbackTopK": 30,
+  "fallbackNote": "主检索异常时每题至多 1 次回退：无过滤 topK=30 → 对原始候选逐条归属判定。只有本次 runId 且 chunkId 落在冻结 28 集合、kb_id 值与存储类型都合规的候选才计入；其余候选（其他 runId、缺失 runId、本次 runId 但 ID/kb_id 越界、null 候选）一律中止整轮，不做静默过滤。回退候选集为空仍判 RETRIEVAL_FAILED"
+ },
+ "roundAvailability": {
+  "expectedQueries": 20,
+  "queriesCompleted": 20,
+  "failedRetrievalQueries": 0,
+  "zeroResultQueries": 0,
+  "queriesWithFallbackAttempted": 0,
+  "status": "USABLE",
+  "reasons": [],
+  "note": "判定只影响本轮是否可作为正式基线；失败题的原始记录、错误串与按零计入的多 K 指标仍完整保存在报告里。OK_ZERO_RESULT(0 题) 属正常数据点，不参与本判定"
+ },
+ "macroMetricsByK": {
+  "k=1": {
+   "k": 1,
+   "participatingQueries": 16,
+   "macroHitAtK": 0.8125,
+   "macroMrrAtK": 0.8125,
+   "macroApcAtK": 0.728125,
+   "macroFullCoverageAtK": 0.5625,
+   "coveredPointsAtK": 28,
+   "totalAnswerPoints": 38,
+   "microCoverageAtK": 0.7368421052631579,
+   "microDenominatorNote": "macro*=宏平均（分母=16 道可答题）；micro=coveredPointsAtK/38（全部可答题答案要点总数，跨题累加）"
+  },
+  "k=3": {
+   "k": 3,
+   "participatingQueries": 16,
+   "macroHitAtK": 0.9375,
+   "macroMrrAtK": 0.8541666666666666,
+   "macroApcAtK": 0.9125,
+   "macroFullCoverageAtK": 0.875,
+   "coveredPointsAtK": 35,
+   "totalAnswerPoints": 38,
+   "microCoverageAtK": 0.9210526315789473,
+   "microDenominatorNote": "macro*=宏平均（分母=16 道可答题）；micro=coveredPointsAtK/38（全部可答题答案要点总数，跨题累加）"
+  },
+  "k=5": {
+   "k": 5,
+   "participatingQueries": 16,
+   "macroHitAtK": 0.9375,
+   "macroMrrAtK": 0.8541666666666666,
+   "macroApcAtK": 0.9125,
+   "macroFullCoverageAtK": 0.875,
+   "coveredPointsAtK": 35,
+   "totalAnswerPoints": 38,
+   "microCoverageAtK": 0.9210526315789473,
+   "microDenominatorNote": "macro*=宏平均（分母=16 道可答题）；micro=coveredPointsAtK/38（全部可答题答案要点总数，跨题累加）"
+  },
+  "k=10": {
+   "k": 10,
+   "participatingQueries": 16,
+   "macroHitAtK": 1.0,
+   "macroMrrAtK": 0.863095238095238,
+   "macroApcAtK": 1.0,
+   "macroFullCoverageAtK": 1.0,
+   "coveredPointsAtK": 38,
+   "totalAnswerPoints": 38,
+   "microCoverageAtK": 1.0,
+   "microDenominatorNote": "macro*=宏平均（分母=16 道可答题）；micro=coveredPointsAtK/38（全部可答题答案要点总数，跨题累加）"
+  }
+ },
+ "answerableResults": [
+  {
+   "queryId": "devsupport-v01-q01",
+   "question": "后端服务启动后默认监听哪个端口？",
+   "answerability": "ANSWERABLE",
+   "includedInMacroAverage": true,
+   "retrievalStatus": "OK_WITH_HITS",
+   "fallbackAttempted": false,
+   "mainError": null,
+   "fallbackError": null,
+   "retrievedCount": 10,
+   "retrievedDocs": [
+    {
+     "rank": 1,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0017__eb40aef64a75",
+     "score": 0.5891064703464508,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 2,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0021__b0fdb96d3bdf",
+     "score": 0.5853832364082336,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 3,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0018__d838729e569c",
+     "score": 0.5747612416744232,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 4,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0027__ceed2fe7549f",
+     "score": 0.5682820975780487,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 5,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0001__bd93ec77c46c",
+     "score": 0.5548722445964813,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 6,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0008__7e0a97a99c3e",
+     "score": 0.5543588399887085,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 7,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0015__eb2b75b5310e",
+     "score": 0.5499190390110016,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 8,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0011__e32721bc9c57",
+     "score": 0.5486683249473572,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 9,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0005__d65d06e6e302",
+     "score": 0.5400984585285187,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 10,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0003__e8f6ff6b72eb",
+     "score": 0.5336615741252899,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    }
+   ],
+   "metricsByK": {
+    "k=1": {
+     "hitAtK": 0.0,
+     "mrrAtK": 0.0,
+     "apcAtK": 0.0,
+     "fullCoverageAtK": false,
+     "coveredPoints": 0,
+     "totalPoints": 2
+    },
+    "k=3": {
+     "hitAtK": 1.0,
+     "mrrAtK": 0.3333333333333333,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    },
+    "k=5": {
+     "hitAtK": 1.0,
+     "mrrAtK": 0.3333333333333333,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    },
+    "k=10": {
+     "hitAtK": 1.0,
+     "mrrAtK": 0.3333333333333333,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    }
+   }
+  },
+  {
+   "queryId": "devsupport-v01-q02",
+   "question": "只想本地开发调试、用 ./gradlew :app:bootRun 启动后端时，一键启动 PostgreSQL/Redis/RustFS 三个依赖的命令是什么？",
+   "answerability": "ANSWERABLE",
+   "includedInMacroAverage": true,
+   "retrievalStatus": "OK_WITH_HITS",
+   "fallbackAttempted": false,
+   "mainError": null,
+   "fallbackError": null,
+   "retrievedCount": 10,
+   "retrievedDocs": [
+    {
+     "rank": 1,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0017__eb40aef64a75",
+     "score": 0.6885392963886261,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 2,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0018__d838729e569c",
+     "score": 0.6682803928852081,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 3,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0015__eb2b75b5310e",
+     "score": 0.637628585100174,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 4,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0031__2075aad9b17e",
+     "score": 0.6223406195640564,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 5,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0027__ceed2fe7549f",
+     "score": 0.6009785532951355,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 6,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0003__e8f6ff6b72eb",
+     "score": 0.59797602891922,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 7,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0016__f78325903673",
+     "score": 0.5874368846416473,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 8,
+     "evalChunkId": "ig-db-migration-readme__tts-default-cl100k-800-0__0000__338a39b904c5",
+     "score": 0.5828126966953278,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 9,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0020__645ab4a07f65",
+     "score": 0.579464465379715,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 10,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0026__444f93895443",
+     "score": 0.5568074285984039,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    }
+   ],
+   "metricsByK": {
+    "k=1": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 1,
+     "totalPoints": 1
+    },
+    "k=3": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 1,
+     "totalPoints": 1
+    },
+    "k=5": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 1,
+     "totalPoints": 1
+    },
+    "k=10": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 1,
+     "totalPoints": 1
+    }
+   }
+  },
+  {
+   "queryId": "devsupport-v01-q03",
+   "question": "JPA 的 hibernate.ddl-auto 当前项目推荐/默认配置值是什么？",
+   "answerability": "ANSWERABLE",
+   "includedInMacroAverage": true,
+   "retrievalStatus": "OK_WITH_HITS",
+   "fallbackAttempted": false,
+   "mainError": null,
+   "fallbackError": null,
+   "retrievedCount": 10,
+   "retrievedDocs": [
+    {
+     "rank": 1,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0024__419a75de734c",
+     "score": 0.6217127442359924,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 2,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0026__444f93895443",
+     "score": 0.5702287554740906,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 3,
+     "evalChunkId": "ig-db-migration-readme__tts-default-cl100k-800-0__0000__338a39b904c5",
+     "score": 0.5582837462425232,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 4,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0016__f78325903673",
+     "score": 0.5561464130878448,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 5,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0011__e32721bc9c57",
+     "score": 0.5542360246181488,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 6,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0017__eb40aef64a75",
+     "score": 0.5352640151977539,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 7,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0028__143a4e085616",
+     "score": 0.5290594398975372,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 8,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0019__0fbdc5619bc8",
+     "score": 0.5266545414924622,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 9,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0020__645ab4a07f65",
+     "score": 0.5262783765792847,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 10,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0015__eb2b75b5310e",
+     "score": 0.5257447957992554,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    }
+   ],
+   "metricsByK": {
+    "k=1": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    },
+    "k=3": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    },
+    "k=5": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    },
+    "k=10": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    }
+   }
+  },
+  {
+   "queryId": "devsupport-v01-q04",
+   "question": "Spring AI pgvector 的 initialize-schema 应配置为什么值？",
+   "answerability": "ANSWERABLE",
+   "includedInMacroAverage": true,
+   "retrievalStatus": "OK_WITH_HITS",
+   "fallbackAttempted": false,
+   "mainError": null,
+   "fallbackError": null,
+   "retrievedCount": 10,
+   "retrievedDocs": [
+    {
+     "rank": 1,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0025__54fc7b317ed3",
+     "score": 0.6843203008174896,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 2,
+     "evalChunkId": "ig-db-migration-readme__tts-default-cl100k-800-0__0000__338a39b904c5",
+     "score": 0.6224127113819122,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 3,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0003__e8f6ff6b72eb",
+     "score": 0.5887008309364319,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 4,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0005__d65d06e6e302",
+     "score": 0.5871905088424683,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 5,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0015__eb2b75b5310e",
+     "score": 0.5829241275787354,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 6,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0011__e32721bc9c57",
+     "score": 0.58291295170784,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 7,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0028__143a4e085616",
+     "score": 0.5803185403347015,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 8,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0020__645ab4a07f65",
+     "score": 0.5653978884220123,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 9,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0002__31e9427251af",
+     "score": 0.5651117861270905,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 10,
+     "evalChunkId": "ig-setup-api-keys__tts-default-cl100k-800-0__0001__57138af14711",
+     "score": 0.5613360404968262,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    }
+   ],
+   "metricsByK": {
+    "k=1": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    },
+    "k=3": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    },
+    "k=5": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    },
+    "k=10": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    }
+   }
+  },
+  {
+   "queryId": "devsupport-v01-q05",
+   "question": "语音识别（ASR）使用的 Qwen3 模型名称是什么？",
+   "answerability": "ANSWERABLE",
+   "includedInMacroAverage": true,
+   "retrievalStatus": "OK_WITH_HITS",
+   "fallbackAttempted": false,
+   "mainError": null,
+   "fallbackError": null,
+   "retrievedCount": 10,
+   "retrievedDocs": [
+    {
+     "rank": 1,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0000__ed91cddc6ed2",
+     "score": 0.6805507838726044,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 2,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0008__7e0a97a99c3e",
+     "score": 0.6256185472011566,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 3,
+     "evalChunkId": "ig-setup-api-keys__tts-default-cl100k-800-0__0000__412b1fb66fc9",
+     "score": 0.5963973104953766,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 4,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0029__25e19ccc2489",
+     "score": 0.5882434248924255,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 5,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0005__d65d06e6e302",
+     "score": 0.573514848947525,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 6,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0002__7d9fe0ceb64a",
+     "score": 0.5727541744709015,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 7,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0004__0192ebda8394",
+     "score": 0.550825446844101,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 8,
+     "evalChunkId": "ig-setup-api-keys__tts-default-cl100k-800-0__0001__57138af14711",
+     "score": 0.5472864210605621,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 9,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0012__756fbddd2820",
+     "score": 0.5461346805095673,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 10,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0011__e32721bc9c57",
+     "score": 0.5378186106681824,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    }
+   ],
+   "metricsByK": {
+    "k=1": {
+     "hitAtK": 0.0,
+     "mrrAtK": 0.0,
+     "apcAtK": 0.0,
+     "fullCoverageAtK": false,
+     "coveredPoints": 0,
+     "totalPoints": 1
+    },
+    "k=3": {
+     "hitAtK": 1.0,
+     "mrrAtK": 0.3333333333333333,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 1,
+     "totalPoints": 1
+    },
+    "k=5": {
+     "hitAtK": 1.0,
+     "mrrAtK": 0.3333333333333333,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 1,
+     "totalPoints": 1
+    },
+    "k=10": {
+     "hitAtK": 1.0,
+     "mrrAtK": 0.3333333333333333,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 1,
+     "totalPoints": 1
+    }
+   }
+  },
+  {
+   "queryId": "devsupport-v01-q06",
+   "question": "应用启动时会自动检查并创建的默认对象存储 Bucket 名称是什么？",
+   "answerability": "ANSWERABLE",
+   "includedInMacroAverage": true,
+   "retrievalStatus": "OK_WITH_HITS",
+   "fallbackAttempted": false,
+   "mainError": null,
+   "fallbackError": null,
+   "retrievedCount": 10,
+   "retrievedDocs": [
+    {
+     "rank": 1,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0017__eb40aef64a75",
+     "score": 0.5745826959609985,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 2,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0020__645ab4a07f65",
+     "score": 0.5565085113048553,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 3,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0019__0fbdc5619bc8",
+     "score": 0.5537725985050201,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 4,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0021__b0fdb96d3bdf",
+     "score": 0.5431206524372101,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 5,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0015__eb2b75b5310e",
+     "score": 0.5299224853515625,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 6,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0024__419a75de734c",
+     "score": 0.5213931798934937,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 7,
+     "evalChunkId": "ig-db-migration-readme__tts-default-cl100k-800-0__0000__338a39b904c5",
+     "score": 0.5200130045413971,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 8,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0026__444f93895443",
+     "score": 0.5092393159866333,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 9,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0003__e8f6ff6b72eb",
+     "score": 0.5087313652038574,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 10,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0025__54fc7b317ed3",
+     "score": 0.5076420605182648,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    }
+   ],
+   "metricsByK": {
+    "k=1": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 1,
+     "totalPoints": 1
+    },
+    "k=3": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 1,
+     "totalPoints": 1
+    },
+    "k=5": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 1,
+     "totalPoints": 1
+    },
+    "k=10": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 1,
+     "totalPoints": 1
+    }
+   }
+  },
+  {
+   "queryId": "devsupport-v01-q07",
+   "question": "我在本机跑起后端后，浏览器打开哪个网址能看到 Swagger 接口文档？",
+   "answerability": "ANSWERABLE",
+   "includedInMacroAverage": true,
+   "retrievalStatus": "OK_WITH_HITS",
+   "fallbackAttempted": false,
+   "mainError": null,
+   "fallbackError": null,
+   "retrievedCount": 10,
+   "retrievedDocs": [
+    {
+     "rank": 1,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0021__b0fdb96d3bdf",
+     "score": 0.6070737540721893,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 2,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0027__ceed2fe7549f",
+     "score": 0.5809289813041687,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 3,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0004__799552926016",
+     "score": 0.5623479187488556,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 4,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0031__2075aad9b17e",
+     "score": 0.5522900521755219,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 5,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0018__d838729e569c",
+     "score": 0.542158842086792,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 6,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0015__eb2b75b5310e",
+     "score": 0.5411449670791626,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 7,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0017__eb40aef64a75",
+     "score": 0.5337793827056885,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 8,
+     "evalChunkId": "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0002__b310b24a503b",
+     "score": 0.5248816609382629,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 9,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0026__444f93895443",
+     "score": 0.5244367718696594,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 10,
+     "evalChunkId": "ig-db-migration-readme__tts-default-cl100k-800-0__0000__338a39b904c5",
+     "score": 0.5239958465099335,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    }
+   ],
+   "metricsByK": {
+    "k=1": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    },
+    "k=3": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    },
+    "k=5": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    },
+    "k=10": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    }
+   }
+  },
+  {
+   "queryId": "devsupport-v01-q08",
+   "question": "这个项目为啥用 Redis 搞异步消息，而不是上 Kafka 这种专业消息队列？",
+   "answerability": "ANSWERABLE",
+   "includedInMacroAverage": true,
+   "retrievalStatus": "OK_WITH_HITS",
+   "fallbackAttempted": false,
+   "mainError": null,
+   "fallbackError": null,
+   "retrievedCount": 10,
+   "retrievedDocs": [
+    {
+     "rank": 1,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0003__e8f6ff6b72eb",
+     "score": 0.6082806587219238,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 2,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0014__65c86fd0e8b3",
+     "score": 0.5470822155475616,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 3,
+     "evalChunkId": "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0000__6dc9b1d25ebc",
+     "score": 0.5441201031208038,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 4,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0026__444f93895443",
+     "score": 0.5408051311969757,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 5,
+     "evalChunkId": "ig-githooks-readme__tts-default-cl100k-800-0__0000__002cabe3796b",
+     "score": 0.5389344096183777,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 6,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0015__eb2b75b5310e",
+     "score": 0.5343964993953705,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 7,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0019__0fbdc5619bc8",
+     "score": 0.5289500653743744,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 8,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0027__ceed2fe7549f",
+     "score": 0.528199166059494,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 9,
+     "evalChunkId": "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0001__3b574264b222",
+     "score": 0.5250414311885834,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 10,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0017__eb40aef64a75",
+     "score": 0.5241946876049042,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    }
+   ],
+   "metricsByK": {
+    "k=1": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    },
+    "k=3": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    },
+    "k=5": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    },
+    "k=10": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    }
+   }
+  },
+  {
+   "queryId": "devsupport-v01-q09",
+   "question": "改了数据库表结构以后，我是不是得自己手动去执行 SQL 迁移脚本？",
+   "answerability": "ANSWERABLE",
+   "includedInMacroAverage": true,
+   "retrievalStatus": "OK_WITH_HITS",
+   "fallbackAttempted": false,
+   "mainError": null,
+   "fallbackError": null,
+   "retrievedCount": 10,
+   "retrievedDocs": [
+    {
+     "rank": 1,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0026__444f93895443",
+     "score": 0.7412569224834442,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 2,
+     "evalChunkId": "ig-db-migration-readme__tts-default-cl100k-800-0__0000__338a39b904c5",
+     "score": 0.6807608902454376,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 3,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0024__419a75de734c",
+     "score": 0.6006855368614197,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 4,
+     "evalChunkId": "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0002__b310b24a503b",
+     "score": 0.5236296057701111,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 5,
+     "evalChunkId": "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0001__3b574264b222",
+     "score": 0.5144769549369812,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 6,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0015__eb2b75b5310e",
+     "score": 0.4977092742919922,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 7,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0028__143a4e085616",
+     "score": 0.49734920263290405,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 8,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0025__54fc7b317ed3",
+     "score": 0.48975324630737305,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 9,
+     "evalChunkId": "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0000__6dc9b1d25ebc",
+     "score": 0.4880473017692566,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 10,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0016__f78325903673",
+     "score": 0.4855543375015259,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    }
+   ],
+   "metricsByK": {
+    "k=1": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    },
+    "k=3": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    },
+    "k=5": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    },
+    "k=10": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 2,
+     "totalPoints": 2
+    }
+   }
+  },
+  {
+   "queryId": "devsupport-v01-q10",
+   "question": "刚把仓库 clone 下来，怎么设置才能让本地 git 提交强制校验 commit message 规范？",
+   "answerability": "ANSWERABLE",
+   "includedInMacroAverage": true,
+   "retrievalStatus": "OK_WITH_HITS",
+   "fallbackAttempted": false,
+   "mainError": null,
+   "fallbackError": null,
+   "retrievedCount": 10,
+   "retrievedDocs": [
+    {
+     "rank": 1,
+     "evalChunkId": "ig-githooks-readme__tts-default-cl100k-800-0__0000__002cabe3796b",
+     "score": 0.6405676901340485,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 2,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0016__f78325903673",
+     "score": 0.5856346189975739,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 3,
+     "evalChunkId": "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0001__3b574264b222",
+     "score": 0.582598090171814,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 4,
+     "evalChunkId": "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0000__6dc9b1d25ebc",
+     "score": 0.569957047700882,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 5,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0015__eb2b75b5310e",
+     "score": 0.5561528205871582,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 6,
+     "evalChunkId": "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0002__b310b24a503b",
+     "score": 0.5486528277397156,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 7,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0026__444f93895443",
+     "score": 0.545799732208252,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 8,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0028__143a4e085616",
+     "score": 0.5425826013088226,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 9,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0020__645ab4a07f65",
+     "score": 0.5383515655994415,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 10,
+     "evalChunkId": "ig-db-migration-readme__tts-default-cl100k-800-0__0000__338a39b904c5",
+     "score": 0.5318244993686676,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    }
+   ],
+   "metricsByK": {
+    "k=1": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 1,
+     "totalPoints": 1
+    },
+    "k=3": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 1,
+     "totalPoints": 1
+    },
+    "k=5": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 1,
+     "totalPoints": 1
+    },
+    "k=10": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 1,
+     "totalPoints": 1
+    }
+   }
+  },
+  {
+   "queryId": "devsupport-v01-q11",
+   "question": "语音面试里 AI 回答默认用的是什么音色（声音）？",
+   "answerability": "ANSWERABLE",
+   "includedInMacroAverage": true,
+   "retrievalStatus": "OK_WITH_HITS",
+   "fallbackAttempted": false,
+   "mainError": null,
+   "fallbackError": null,
+   "retrievedCount": 10,
+   "retrievedDocs": [
+    {
+     "rank": 1,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0029__25e19ccc2489",
+     "score": 0.729610949754715,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 2,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0000__ed91cddc6ed2",
+     "score": 0.6851446628570557,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 3,
+     "evalChunkId": "ig-setup-api-keys__tts-default-cl100k-800-0__0000__412b1fb66fc9",
+     "score": 0.6649706661701202,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 4,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0001__bd93ec77c46c",
+     "score": 0.6641032695770264,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 5,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0003__19b907e79435",
+     "score": 0.6517246663570404,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 6,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0008__7e0a97a99c3e",
+     "score": 0.6445572674274445,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 7,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0005__d65d06e6e302",
+     "score": 0.643305778503418,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 8,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0002__7d9fe0ceb64a",
+     "score": 0.6387924551963806,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 9,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0006__22ac170937cd",
+     "score": 0.6013249158859253,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 10,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0004__0192ebda8394",
+     "score": 0.5857925117015839,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    }
+   ],
+   "metricsByK": {
+    "k=1": {
+     "hitAtK": 0.0,
+     "mrrAtK": 0.0,
+     "apcAtK": 0.0,
+     "fullCoverageAtK": false,
+     "coveredPoints": 0,
+     "totalPoints": 1
+    },
+    "k=3": {
+     "hitAtK": 0.0,
+     "mrrAtK": 0.0,
+     "apcAtK": 0.0,
+     "fullCoverageAtK": false,
+     "coveredPoints": 0,
+     "totalPoints": 1
+    },
+    "k=5": {
+     "hitAtK": 0.0,
+     "mrrAtK": 0.0,
+     "apcAtK": 0.0,
+     "fullCoverageAtK": false,
+     "coveredPoints": 0,
+     "totalPoints": 1
+    },
+    "k=10": {
+     "hitAtK": 1.0,
+     "mrrAtK": 0.14285714285714285,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 1,
+     "totalPoints": 1
+    }
+   }
+  },
+  {
+   "queryId": "devsupport-v01-q12",
+   "question": "简历上传后分析状态一直卡在“分析中”不动，我该往哪个方向排查？",
+   "answerability": "ANSWERABLE",
+   "includedInMacroAverage": true,
+   "retrievalStatus": "OK_WITH_HITS",
+   "fallbackAttempted": false,
+   "mainError": null,
+   "fallbackError": null,
+   "retrievedCount": 10,
+   "retrievedDocs": [
+    {
+     "rank": 1,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0030__cbaf4b884d02",
+     "score": 0.7344413995742798,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 2,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0028__143a4e085616",
+     "score": 0.6997780501842499,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 3,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0023__e3e3baa6a500",
+     "score": 0.6376091539859772,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 4,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0005__96ffb7afd52c",
+     "score": 0.6212829947471619,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 5,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0013__cff29f0b8b22",
+     "score": 0.6129180788993835,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 6,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0000__dfcf4a7f164f",
+     "score": 0.5909527242183685,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 7,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0007__97c59e867ddf",
+     "score": 0.5903190076351166,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 8,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0025__54fc7b317ed3",
+     "score": 0.5858296155929565,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 9,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0012__756fbddd2820",
+     "score": 0.5830091834068298,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 10,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0027__ceed2fe7549f",
+     "score": 0.5754222571849823,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    }
+   ],
+   "metricsByK": {
+    "k=1": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 3,
+     "totalPoints": 3
+    },
+    "k=3": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 3,
+     "totalPoints": 3
+    },
+    "k=5": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 3,
+     "totalPoints": 3
+    },
+    "k=10": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 3,
+     "totalPoints": 3
+    }
+   }
+  },
+  {
+   "queryId": "devsupport-v01-q13",
+   "question": "项目如何保证数据库 schema 与向量表结构一致、且重启不丢数据？请结合迁移策略与 JPA 配置说明。",
+   "answerability": "ANSWERABLE",
+   "includedInMacroAverage": true,
+   "retrievalStatus": "OK_WITH_HITS",
+   "fallbackAttempted": false,
+   "mainError": null,
+   "fallbackError": null,
+   "retrievedCount": 10,
+   "retrievedDocs": [
+    {
+     "rank": 1,
+     "evalChunkId": "ig-db-migration-readme__tts-default-cl100k-800-0__0000__338a39b904c5",
+     "score": 0.6418544948101044,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 2,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0024__419a75de734c",
+     "score": 0.633183628320694,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 3,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0026__444f93895443",
+     "score": 0.6049975454807281,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 4,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0025__54fc7b317ed3",
+     "score": 0.5516236424446106,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 5,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0015__eb2b75b5310e",
+     "score": 0.5027543604373932,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 6,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0028__143a4e085616",
+     "score": 0.502055823802948,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 7,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0016__f78325903673",
+     "score": 0.4915328621864319,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 8,
+     "evalChunkId": "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0001__3b574264b222",
+     "score": 0.4804185628890991,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 9,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0019__0fbdc5619bc8",
+     "score": 0.47662681341171265,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 10,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0011__e32721bc9c57",
+     "score": 0.47533613443374634,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    }
+   ],
+   "metricsByK": {
+    "k=1": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 0.75,
+     "fullCoverageAtK": false,
+     "coveredPoints": 3,
+     "totalPoints": 4
+    },
+    "k=3": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 4,
+     "totalPoints": 4
+    },
+    "k=5": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 4,
+     "totalPoints": 4
+    },
+    "k=10": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 4,
+     "totalPoints": 4
+    }
+   }
+  },
+  {
+   "queryId": "devsupport-v01-q14",
+   "question": "语音面试依赖哪个外部服务、需要哪些密钥？ASR、TTS、LLM 分别用什么模型，是否共用同一个 Key？",
+   "answerability": "ANSWERABLE",
+   "includedInMacroAverage": true,
+   "retrievalStatus": "OK_WITH_HITS",
+   "fallbackAttempted": false,
+   "mainError": null,
+   "fallbackError": null,
+   "retrievedCount": 10,
+   "retrievedDocs": [
+    {
+     "rank": 1,
+     "evalChunkId": "ig-setup-api-keys__tts-default-cl100k-800-0__0000__412b1fb66fc9",
+     "score": 0.7094335854053497,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 2,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0000__ed91cddc6ed2",
+     "score": 0.6921275854110718,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 3,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0029__25e19ccc2489",
+     "score": 0.6881663501262665,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 4,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0008__7e0a97a99c3e",
+     "score": 0.6618812382221222,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 5,
+     "evalChunkId": "ig-setup-api-keys__tts-default-cl100k-800-0__0001__57138af14711",
+     "score": 0.6588069796562195,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 6,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0005__d65d06e6e302",
+     "score": 0.6411033868789673,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 7,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0006__22ac170937cd",
+     "score": 0.6258289813995361,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 8,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0002__7d9fe0ceb64a",
+     "score": 0.5998715162277222,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 9,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0003__19b907e79435",
+     "score": 0.5942635834217072,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 10,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0012__756fbddd2820",
+     "score": 0.5908804833889008,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    }
+   ],
+   "metricsByK": {
+    "k=1": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 0.6,
+     "fullCoverageAtK": false,
+     "coveredPoints": 3,
+     "totalPoints": 5
+    },
+    "k=3": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 0.6,
+     "fullCoverageAtK": false,
+     "coveredPoints": 3,
+     "totalPoints": 5
+    },
+    "k=5": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 0.6,
+     "fullCoverageAtK": false,
+     "coveredPoints": 3,
+     "totalPoints": 5
+    },
+    "k=10": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 5,
+     "totalPoints": 5
+    }
+   }
+  },
+  {
+   "queryId": "devsupport-v01-q15",
+   "question": "知识库题库面试的“严格追问容量校验”是什么规则？当某方向/难度下追问数量不足时，后端返回哪个错误码？",
+   "answerability": "ANSWERABLE",
+   "includedInMacroAverage": true,
+   "retrievalStatus": "OK_WITH_HITS",
+   "fallbackAttempted": false,
+   "mainError": null,
+   "fallbackError": null,
+   "retrievedCount": 10,
+   "retrievedDocs": [
+    {
+     "rank": 1,
+     "evalChunkId": "ig-kb-interview-capacity-tdd__tts-default-cl100k-800-0__0000__7d679c5ce80d",
+     "score": 0.790343776345253,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 2,
+     "evalChunkId": "ig-kb-interview-capacity-tdd__tts-default-cl100k-800-0__0001__451ec81fde4f",
+     "score": 0.775587797164917,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 3,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0010__b31a74323eb4",
+     "score": 0.6786684095859528,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 4,
+     "evalChunkId": "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0000__6dc9b1d25ebc",
+     "score": 0.63130784034729,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 5,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0012__756fbddd2820",
+     "score": 0.6061935424804688,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 6,
+     "evalChunkId": "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0001__3b574264b222",
+     "score": 0.6042682826519012,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 7,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0008__7e0a97a99c3e",
+     "score": 0.5957815051078796,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 8,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0006__47eb57419e28",
+     "score": 0.5892989039421082,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 9,
+     "evalChunkId": "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0002__b310b24a503b",
+     "score": 0.5816645920276642,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 10,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0001__6c4508d6744d",
+     "score": 0.5612832903862,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    }
+   ],
+   "metricsByK": {
+    "k=1": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 0.5,
+     "fullCoverageAtK": false,
+     "coveredPoints": 2,
+     "totalPoints": 4
+    },
+    "k=3": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 4,
+     "totalPoints": 4
+    },
+    "k=5": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 4,
+     "totalPoints": 4
+    },
+    "k=10": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 4,
+     "totalPoints": 4
+    }
+   }
+  },
+  {
+   "queryId": "devsupport-v01-q16",
+   "question": "知识库题目异步生成如何保证同一知识库不会并发执行多个任务，且失败或 Worker 异常退出后能恢复？",
+   "answerability": "ANSWERABLE",
+   "includedInMacroAverage": true,
+   "retrievalStatus": "OK_WITH_HITS",
+   "fallbackAttempted": false,
+   "mainError": null,
+   "fallbackError": null,
+   "retrievedCount": 10,
+   "retrievedDocs": [
+    {
+     "rank": 1,
+     "evalChunkId": "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0000__6dc9b1d25ebc",
+     "score": 0.7267403900623322,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 2,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0010__b31a74323eb4",
+     "score": 0.6348343193531036,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 3,
+     "evalChunkId": "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0001__3b574264b222",
+     "score": 0.5980945527553558,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 4,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0009__8ea569f5986c",
+     "score": 0.5925379395484924,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 5,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0012__756fbddd2820",
+     "score": 0.5726131796836853,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 6,
+     "evalChunkId": "ig-kb-interview-capacity-tdd__tts-default-cl100k-800-0__0001__451ec81fde4f",
+     "score": 0.5564513802528381,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 7,
+     "evalChunkId": "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0002__b310b24a503b",
+     "score": 0.5542589128017426,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 8,
+     "evalChunkId": "ig-kb-interview-capacity-tdd__tts-default-cl100k-800-0__0000__7d679c5ce80d",
+     "score": 0.5482952892780304,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 9,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0024__419a75de734c",
+     "score": 0.5336417257785797,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 10,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0017__eb40aef64a75",
+     "score": 0.53109011054039,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    }
+   ],
+   "metricsByK": {
+    "k=1": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 0.8,
+     "fullCoverageAtK": false,
+     "coveredPoints": 4,
+     "totalPoints": 5
+    },
+    "k=3": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 5,
+     "totalPoints": 5
+    },
+    "k=5": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 5,
+     "totalPoints": 5
+    },
+    "k=10": {
+     "hitAtK": 1.0,
+     "mrrAtK": 1.0,
+     "apcAtK": 1.0,
+     "fullCoverageAtK": true,
+     "coveredPoints": 5,
+     "totalPoints": 5
+    }
+   }
+  }
+ ],
+ "noAnswerDiagnostics": [
+  {
+   "queryId": "devsupport-v01-q17",
+   "question": "RAG 问答助手检索时的相似度阈值（similarity threshold）默认值是多少？对应的配置项名称是什么？",
+   "answerability": "NO_ANSWER",
+   "includedInMacroAverage": false,
+   "retrievalStatus": "OK_WITH_HITS",
+   "fallbackAttempted": false,
+   "mainError": null,
+   "fallbackError": null,
+   "retrievedCount": 10,
+   "retrievedDocs": [
+    {
+     "rank": 1,
+     "evalChunkId": "ig-kb-interview-capacity-tdd__tts-default-cl100k-800-0__0000__7d679c5ce80d",
+     "score": 0.6084789633750916,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 2,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0005__d65d06e6e302",
+     "score": 0.6081045866012573,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 3,
+     "evalChunkId": "ig-kb-interview-capacity-tdd__tts-default-cl100k-800-0__0001__451ec81fde4f",
+     "score": 0.6046252548694611,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 4,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0011__e32721bc9c57",
+     "score": 0.5878470242023468,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 5,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0008__7e0a97a99c3e",
+     "score": 0.5871126353740692,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 6,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0006__22ac170937cd",
+     "score": 0.5868484973907471,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 7,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0003__e8f6ff6b72eb",
+     "score": 0.5798267722129822,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 8,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0012__756fbddd2820",
+     "score": 0.576835960149765,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 9,
+     "evalChunkId": "ig-setup-api-keys__tts-default-cl100k-800-0__0000__412b1fb66fc9",
+     "score": 0.5748299658298492,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 10,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0014__65c86fd0e8b3",
+     "score": 0.5697411298751831,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    }
+   ],
+   "metricsByK": {}
+  },
+  {
+   "queryId": "devsupport-v01-q18",
+   "question": "知识库文档向量化时的分块（chunk）大小是多少 token？chunk 之间是否有重叠（overlap），重叠多少？",
+   "answerability": "NO_ANSWER",
+   "includedInMacroAverage": false,
+   "retrievalStatus": "OK_WITH_HITS",
+   "fallbackAttempted": false,
+   "mainError": null,
+   "fallbackError": null,
+   "retrievedCount": 10,
+   "retrievedDocs": [
+    {
+     "rank": 1,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0025__54fc7b317ed3",
+     "score": 0.6439831554889679,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 2,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0010__b31a74323eb4",
+     "score": 0.630592942237854,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 3,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0009__8ea569f5986c",
+     "score": 0.6266578733921051,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 4,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0032__8ffcbe0327c1",
+     "score": 0.6230870485305786,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 5,
+     "evalChunkId": "ig-kb-interview-capacity-tdd__tts-default-cl100k-800-0__0001__451ec81fde4f",
+     "score": 0.6103575527667999,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 6,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0012__756fbddd2820",
+     "score": 0.6080226004123688,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 7,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0019__0fbdc5619bc8",
+     "score": 0.6022166311740875,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 8,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0004__799552926016",
+     "score": 0.5967029631137848,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 9,
+     "evalChunkId": "ig-githooks-readme__tts-default-cl100k-800-0__0000__002cabe3796b",
+     "score": 0.5941402614116669,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 10,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0007__97c59e867ddf",
+     "score": 0.5938214063644409,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    }
+   ],
+   "metricsByK": {}
+  },
+  {
+   "queryId": "devsupport-v01-q19",
+   "question": "完整 docker-compose.yml 部署里，MinIO 的 createbuckets 初始化服务具体执行了哪些命令、把 bucket 设为什么访问策略？",
+   "answerability": "NO_ANSWER",
+   "includedInMacroAverage": false,
+   "retrievalStatus": "OK_WITH_HITS",
+   "fallbackAttempted": false,
+   "mainError": null,
+   "fallbackError": null,
+   "retrievedCount": 10,
+   "retrievedDocs": [
+    {
+     "rank": 1,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0019__0fbdc5619bc8",
+     "score": 0.618633359670639,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 2,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0017__eb40aef64a75",
+     "score": 0.611342191696167,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 3,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0020__645ab4a07f65",
+     "score": 0.587073415517807,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 4,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0022__ff7631e74d56",
+     "score": 0.5668077170848846,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 5,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0024__419a75de734c",
+     "score": 0.5334006547927856,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 6,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0021__b0fdb96d3bdf",
+     "score": 0.529548317193985,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 7,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0015__eb2b75b5310e",
+     "score": 0.5294269919395447,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 8,
+     "evalChunkId": "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0002__b310b24a503b",
+     "score": 0.5065355896949768,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 9,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0025__54fc7b317ed3",
+     "score": 0.505315512418747,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 10,
+     "evalChunkId": "ig-githooks-readme__tts-default-cl100k-800-0__0000__002cabe3796b",
+     "score": 0.5052564442157745,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    }
+   ],
+   "metricsByK": {}
+  },
+  {
+   "queryId": "devsupport-v01-q20",
+   "question": "语音面试 WebSocket 自定义 JSON 消息协议中，AUDIO / SUBTITLE / CONTROL 各消息类型的完整字段（payload 结构）分别是什么？",
+   "answerability": "NO_ANSWER",
+   "includedInMacroAverage": false,
+   "retrievalStatus": "OK_WITH_HITS",
+   "fallbackAttempted": false,
+   "mainError": null,
+   "fallbackError": null,
+   "retrievedCount": 10,
+   "retrievedDocs": [
+    {
+     "rank": 1,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0008__7e0a97a99c3e",
+     "score": 0.6521182358264923,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 2,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0001__bd93ec77c46c",
+     "score": 0.6278080940246582,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 3,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0029__25e19ccc2489",
+     "score": 0.6213873624801636,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 4,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0012__756fbddd2820",
+     "score": 0.618597000837326,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 5,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0002__7d9fe0ceb64a",
+     "score": 0.616899311542511,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 6,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0014__65c86fd0e8b3",
+     "score": 0.6166738271713257,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 7,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0003__19b907e79435",
+     "score": 0.609605461359024,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 8,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0000__ed91cddc6ed2",
+     "score": 0.5981987714767456,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 9,
+     "evalChunkId": "ig-voice-arch__tts-default-cl100k-800-0__0005__d65d06e6e302",
+     "score": 0.5934353470802307,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    },
+    {
+     "rank": 10,
+     "evalChunkId": "ig-readme-root__heading-aware-v1__0013__cff29f0b8b22",
+     "score": 0.593239814043045,
+     "kbId": "900001",
+     "evalRunId": "26e7f099-22d2-42cd-a4e3-8627f4894d99"
+    }
+   ],
+   "metricsByK": {}
+  }
+ ],
+ "cleanupStatus": {
+  "status": "CLEANED",
+  "attempted": true,
+  "deletedRows": 49,
+  "remainingRows": 0,
+  "error": null,
+  "note": "清理先于报告写入执行；CLEAN_FAILED / CLEAN_PARTIAL 不可能被记为 CLEANED"
+ },
+ "failureInfo": null
+}
