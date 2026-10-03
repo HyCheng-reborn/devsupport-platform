@@ -53,7 +53,7 @@ Resume、Interview、VoiceInterview、InterviewSchedule 属于原上游项目遗
 
 | 阶段 | 状态 | 仓库证据 | 限制 |
 |------|------|---------|------|
-| 阶段 0：主线护栏 | 实现中 | 本文件落地即完成 | 需先保存分类未提交改动 |
+| 阶段 0：主线护栏 | 已完成 | 本文件落地 + 4 个 Resume demo 遗留文件已提交（`ea8fc22`）；路线图状态与工作区事实核对一致 | — |
 | 阶段 1：主界面与上下文 | 未开始 | — | 需解决与 Phase 1 设计 §3.4 的冲突 |
 | 阶段 2：文档中心 | 未开始 | 知识库模块 17 端点可复用 | 缺 project/docType/version 元数据 |
 | 阶段 3：排查会话闭环 | 未开始 | SSE 契约 + 集成测试 3 用例 | 结构化回答骨架需新建 |
@@ -65,7 +65,7 @@ Resume、Interview、VoiceInterview、InterviewSchedule 属于原上游项目遗
 
 ## 4. 开发阶段详情
 
-### 阶段 0：恢复工作区事实与主线护栏
+### 阶段 0：恢复工作区事实与主线护栏 ✅ 已完成
 
 - **要解决的用户问题**：接手的 Agent 无法快速知道仓库状态和 DevSupport 主线。
 - **工作范围**：核对本文件与 `README`、`PROJECT_PROGRESS.md`、`CHANGES.md`、Compose 配置及当前代码；清点 Resume/Voice 相关未提交改动并分类（保留复用 / 暂缓 / 冲突），不擅自丢弃；把路线图放到仓库显眼位置并从 README 链接；建立阶段状态表。
@@ -75,6 +75,10 @@ Resume、Interview、VoiceInterview、InterviewSchedule 属于原上游项目遗
   - 先保存、分类并处理导航冲突（`Layout.tsx` 新增的「简历管理」与四导航方案冲突）。
   - 提交范围由实际审查决定，不作为阶段 1 的硬性前置条件。
   - Resume/Voice 改动作为独立提交保护，标注"遗留模块维护"。
+- **完成记录（2026-10-04）**：
+  - 4 个未跟踪的 Resume demo 文件已作为遗留维护提交（`ea8fc22`）：`DevSupport_项目开发总方案_v1.0.md`、`DemoResumeGradingService.java`、`application-demo.yml`、`app/src/test/java/interview/guide/modules/resume/`（6 个测试文件）。
+  - 路线图状态表已核对，与工作区当前事实一致。
+  - 阶段 0 交付物全部落地：路线图在仓库根目录可见、阶段状态表已建立、未提交改动已分类保留。
 
 ### 阶段 1：主界面与项目/环境/版本上下文
 
@@ -148,13 +152,13 @@ Resume、Interview、VoiceInterview、InterviewSchedule 属于原上游项目遗
 
 ## 6. 当前唯一的下一步
 
-**阶段 0：路线图落地 + 保存分类工作区改动。**
+**阶段 0 已完成（2026-10-04）。** 下一阶段为 **阶段 1：主界面与项目/环境/版本上下文**。
 
 理由：
 
-- 工作区有 Resume 切片和 Voice 测试修复相关改动，需保存分类、处理导航冲突。
-- 前端 `Layout.tsx` 新增的「简历管理」导航与新方案的四导航冲突，需解决。
-- Resume/Voice 改动作为独立提交保护（标注"遗留模块维护"），提交范围由审查决定，不强制阻塞阶段 1 启动。
+- 工作区 4 个 Resume 遗留 demo 文件已作为独立提交保护（`ea8fc22`，标注"遗留模块维护"）。
+- 路线图、阶段状态表、未提交改动分类均已落地，新 Agent 可快速了解产品方向与边界。
+- 前端 `Layout.tsx` 新增的「简历管理」导航与新方案的四导航冲突，需在阶段 1 解决。
 - 根目录 13 张 `e2e-step*.png` 与 `test-resume-sample.txt` 已移入 `docs/evidence/`（gitignored），不再污染工作区。
 
 ---

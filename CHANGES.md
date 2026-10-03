@@ -1,3 +1,9 @@
+**2026-10-04 -- DevSupport 路线图阶段 0 完成：遗留 Resume 文件分类保留 + 路线图状态更新**
+- 4 个未跟踪的 Resume demo 遗留文件已作为独立提交保留（`ea8fc22`，标注"遗留模块维护"）：`DevSupport_项目开发总方案_v1.0.md`、`DemoResumeGradingService.java`、`application-demo.yml`、`app/src/test/java/interview/guide/modules/resume/`（6 个测试文件）
+- `DEVSUPPORT_ROADMAP.md` 阶段 0 状态从"实现中"更新为"已完成"，阶段状态表与工作区事实核对一致
+- `PROJECT_PROGRESS.md` 同步记录阶段 0 完成证据
+- 未修改任何代码文件或配置
+
 **2026-10-03 -- P1-C L1 heading-aware 候选真实向量对照 + 证据固化**
 - 候选数据集 `eval/datasets/devsupport-heading-aware-v0/`：49 chunks（ig-readme-root 走与 baseline 相同的生产解析+清洗 `DocumentParseService`+`TextCleaningService`（cleanedSha256=`f47b6a97…`）后按 heading-aware-v1 重切为 33，其余 16 chunk 逐字节继承）；16 可答/4 NO_ANSWER/38 要点，金标闭环 0 缺失，4 工件冻结哈希逐项匹配
 - 真实对照（`evalRunId=26e7f099`，仅 Embedding `text-embedding-v3`，无 LLM，独立评测库，预算硬上限保持 50）：USABLE，attempts 25/50（ingestion 5 批 + query 20，0 失败），入库校验 PASS（49/49, 1024 维, 0 重复），CLEANED（写入 49 → 清理 0）

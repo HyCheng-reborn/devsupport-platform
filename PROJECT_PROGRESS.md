@@ -31,6 +31,11 @@
 
 ## 2. 已完成且有证据
 
+- **DevSupport 路线图阶段 0 完成（2026-10-04，提交 `ea8fc22`）** — 状态 `已完成`。
+  - 4 个未跟踪的 Resume demo 遗留文件已作为独立提交保留（标注"遗留模块维护"）：`DevSupport_项目开发总方案_v1.0.md`、`DemoResumeGradingService.java`、`application-demo.yml`、`app/src/test/java/interview/guide/modules/resume/`（6 个测试文件）。
+  - `DEVSUPPORT_ROADMAP.md` 阶段状态表已核对，与工作区当前事实一致；阶段 0 从"实现中"更新为"已完成"。
+  - `PROJECT_PROGRESS.md`、`CHANGES.md` 同步记录阶段 0 完成。
+
 - **P1-A 指标核心** — 状态 `离线通过`。提交 `d2fd5e6`；文件 `app/src/test/java/interview/guide/eval/RetrievalMetrics.java` 及同目录 `EvalQuery.java` / `RetrievalHit.java` / `QueryJudgement.java` / `RetrievalMetricsTest` / `EvaluationReportJsonTest`。验证：`GRADLE_USER_HOME=/c/temp/gradle-tmp ./gradlew :app:test --tests 'interview.guide.eval.*' --no-daemon --rerun` → exit 0（2026-09-30 17:41 强制重跑：eval 包 114 通过 / 0 失败 / 0 错误 / 0 跳过，其中 P1-C 81 条、P1-A 指标与报告契约 33 条）。
 - **P1-B 数据集与校验** — 状态 `离线通过`（按其自身报告记录）。提交 `2903ec2`；工件 `eval/datasets/devsupport-v0.1/{chunks.jsonl,candidate-gold.json,corpus-manifest.json,chunk-manifest.json,evidence-chunk-map.json}` + `validate_p1b.py`。验证：`P1B-REPORT.md` 记录 v3.1 七项检查全 PASS（含重复运行四工件一致、Tika 退出码据实记 1）。**本轮未重跑** `validate_p1b.py`，因为它会实际重跑切分管线并改写冻结工件，与「本轮只写文档」冲突。
 - **P1-C 评测装配 + 离线护栏 + 评测容器定义** — 状态 `离线通过`（装配代码可编译、离线护栏用例全绿；容器与付费路径 `代码已写`）。提交 `e32be2e`、`58b9b32`；文件 `P1cRealRetrievalEvalTest.java`、`P1cEvalCallBudget.java`、`P1cEvalHttpCallCounter.java`、`docker-compose-eval.yml`、`docker/postgres/eval-init.sql`、`app/build.gradle`（`excludeTags 'real-eval'` + `evalP1cReal` 任务）。
