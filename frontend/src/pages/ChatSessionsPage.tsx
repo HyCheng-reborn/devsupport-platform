@@ -142,10 +142,7 @@ export default function ChatSessionsPage() {
         onScopeChange={(kbIds, service, environment) => {
           setContextService(service || '');
           setContextEnvironment(environment || '');
-          // 如果有上下文解析出的 KB，自动选中
-          if (kbIds.length > 0) {
-            setSelectedKbIds(new Set(kbIds));
-          }
+          setSelectedKbIds(new Set(kbIds));
         }}
       />
 

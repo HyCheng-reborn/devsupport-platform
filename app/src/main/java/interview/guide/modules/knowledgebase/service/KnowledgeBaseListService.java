@@ -62,10 +62,7 @@ public class KnowledgeBaseListService {
         } else if (hasService) {
             entities = knowledgeBaseRepository.findByServiceOrderByUploadedAtDesc(service.trim());
         } else if (hasEnvironment) {
-            // 仅 environment 筛选：需要自定义查询，因为 Repository 没有 findByEnvironment 方法
-            entities = knowledgeBaseRepository.findAllByOrderByUploadedAtDesc().stream()
-                .filter(e -> environment.trim().equals(e.getEnvironment()))
-                .toList();
+            entities = knowledgeBaseRepository.findByEnvironmentOrderByUploadedAtDesc(environment.trim());
         } else {
             entities = knowledgeBaseRepository.findAllByOrderByUploadedAtDesc();
         }
@@ -305,9 +302,7 @@ public class KnowledgeBaseListService {
         } else if (hasService) {
             entities = knowledgeBaseRepository.findByServiceOrderByUploadedAtDesc(service.trim());
         } else if (hasEnvironment) {
-            entities = knowledgeBaseRepository.findAllByOrderByUploadedAtDesc().stream()
-                .filter(e -> environment.trim().equals(e.getEnvironment()))
-                .toList();
+            entities = knowledgeBaseRepository.findByEnvironmentOrderByUploadedAtDesc(environment.trim());
         } else {
             entities = knowledgeBaseRepository.findAllByOrderByUploadedAtDesc();
         }

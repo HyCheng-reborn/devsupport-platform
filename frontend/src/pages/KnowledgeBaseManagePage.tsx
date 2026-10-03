@@ -466,7 +466,7 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat, showContextS
       {/* 上下文范围选择器 */}
       {showContextSelector && (
         <ContextSelector
-          onScopeChange={(kbIds, service, environment) => {
+          onScopeChange={(_kbIds, service, environment) => {
             setContextService(service || '');
             setContextEnvironment(environment || '');
           }}

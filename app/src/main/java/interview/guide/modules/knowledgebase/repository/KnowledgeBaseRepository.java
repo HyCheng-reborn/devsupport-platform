@@ -130,6 +130,11 @@ public interface KnowledgeBaseRepository extends JpaRepository<KnowledgeBaseEnti
     List<KnowledgeBaseEntity> findByServiceOrderByUploadedAtDesc(String service);
 
     /**
+     * 根据环境标签查找知识库（按上传时间倒序）
+     */
+    List<KnowledgeBaseEntity> findByEnvironmentOrderByUploadedAtDesc(String environment);
+
+    /**
      * 根据服务标签和环境标签查找知识库（按上传时间倒序）
      */
     List<KnowledgeBaseEntity> findByServiceAndEnvironmentOrderByUploadedAtDesc(String service, String environment);
