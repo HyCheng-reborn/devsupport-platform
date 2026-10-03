@@ -35,6 +35,13 @@ export interface KnowledgeBaseStats {
   processingCount: number;
 }
 
+export interface ContextKbItem {
+  id: number;
+  name: string;
+  service: string | null;
+  environment: string | null;
+}
+
 export type SortOption = 'time' | 'size' | 'access' | 'question';
 
 export interface UploadKnowledgeBaseResponse {
@@ -448,5 +455,18 @@ export const knowledgeBaseApi = {
       parseMode: 'line',
       trimDataPrefixSpace: true,
     });
+  },
+
+  // ========== 上下文解析 ==========
+
+  /**
+   * 解析上下文：根据 service/environment 返回匹配的知识库条目
+   */
+  async resolveContext(service?: string, environment?: string): Promise<ContextKbItem[]> {
+    const params = new URLSearchParams();
+    if (service) params.append('service', service);
+    if (environment) params.append('environment', environment);
+    const queryString = params.toString();
+    return request.get<ContextKbItem[]>(`/api/knowledgebase/resolve-context${queryString ? `?${queryString}` : ''}`);
   },
 };

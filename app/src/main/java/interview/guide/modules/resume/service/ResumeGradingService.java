@@ -12,6 +12,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.ai.converter.BeanOutputConverter;
+import org.springframework.context.annotation.Profile;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.stereotype.Service;
 
@@ -26,6 +27,7 @@ import java.util.Map;
  * 使用Spring AI调用LLM对简历进行评分和建议
  */
 @Service
+@Profile("!demo")
 public class ResumeGradingService {
     
     private static final Logger log = LoggerFactory.getLogger(ResumeGradingService.class);

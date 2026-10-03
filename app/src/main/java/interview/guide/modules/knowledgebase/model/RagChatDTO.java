@@ -17,10 +17,13 @@ public class RagChatDTO {
      * 创建会话请求
      */
     public record CreateSessionRequest(
-        @NotEmpty(message = "至少选择一个知识库")
-        List<Long> knowledgeBaseIds,
+        List<Long> knowledgeBaseIds,  // 可选，显式指定的知识库 ID 列表
 
-        String title  // 可选，为空则自动生成
+        String title,  // 可选，为空则自动生成
+
+        String service,  // 可选，服务标签上下文
+
+        String environment  // 可选，环境标签上下文
     ) {}
 
     /**

@@ -4,6 +4,7 @@ import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
 import interview.guide.infrastructure.file.FileStorageService;
 import interview.guide.infrastructure.mapper.KnowledgeBaseMapper;
+import interview.guide.modules.knowledgebase.model.ContextKbItem;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseEntity;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseListItemDTO;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseStatsDTO;
@@ -278,6 +279,42 @@ public class KnowledgeBaseListService {
 
         log.info("下载知识库文件: id={}, filename={}", id, entity.getOriginalFilename());
         return fileStorageService.downloadFile(storageKey);
+    }
+
+    /**
+     * 根据 service/environment 上下文解析匹配的知识库列表。
+     * <ul>
+     *   <li>两者均为空 -> 返回所有知识库</li>
+     *   <li>仅 service -> 按 service 过滤</li>
+     *   <li>仅 environment -> 按 environment 过滤</li>
+     *   <li>两者均有 -> AND 过滤</li>
+     * </ul>
+     *
+     * @param service 服务标签，可为 null 或空
+     * @param environment 环境标签，可为 null 或空
+     * @return 匹配的知识库摘要列表
+     */
+    public List<ContextKbItem> resolveContext(String service, String environment) {
+        boolean hasService = service != null && !service.isBlank();
+        boolean hasEnvironment = environment != null && !environment.isBlank();
+
+        List<KnowledgeBaseEntity> entities;
+        if (hasService && hasEnvironment) {
+            entities = knowledgeBaseRepository.findByServiceAndEnvironmentOrderByUploadedAtDesc(
+                service.trim(), environment.trim());
+        } else if (hasService) {
+            entities = knowledgeBaseRepository.findByServiceOrderByUploadedAtDesc(service.trim());
+        } else if (hasEnvironment) {
+            entities = knowledgeBaseRepository.findAllByOrderByUploadedAtDesc().stream()
+                .filter(e -> environment.trim().equals(e.getEnvironment()))
+                .toList();
+        } else {
+            entities = knowledgeBaseRepository.findAllByOrderByUploadedAtDesc();
+        }
+
+        return entities.stream()
+            .map(e -> new ContextKbItem(e.getId(), e.getName(), e.getService(), e.getEnvironment()))
+            .toList();
     }
 
     /**

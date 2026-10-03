@@ -2,6 +2,7 @@ package interview.guide.modules.knowledgebase;
 
 import interview.guide.common.annotation.RateLimit;
 import interview.guide.common.result.Result;
+import interview.guide.modules.knowledgebase.model.ContextKbItem;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseListItemDTO;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseStatsDTO;
 import interview.guide.modules.knowledgebase.model.QueryRequest;
@@ -54,6 +55,16 @@ public class KnowledgeBaseController {
     private final KnowledgeBaseQueryService queryService;
     private final KnowledgeBaseListService listService;
     private final KnowledgeBaseDeleteService deleteService;
+
+    /**
+     * 根据 service/environment 上下文解析匹配的知识库
+     */
+    @GetMapping("/api/knowledgebase/resolve-context")
+    public Result<List<ContextKbItem>> resolveContext(
+            @RequestParam(value = "service", required = false) String service,
+            @RequestParam(value = "environment", required = false) String environment) {
+        return Result.success(listService.resolveContext(service, environment));
+    }
 
     /**
      * 获取所有知识库列表

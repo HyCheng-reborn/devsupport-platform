@@ -4,6 +4,7 @@ import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
 import interview.guide.infrastructure.mapper.KnowledgeBaseMapper;
 import interview.guide.infrastructure.mapper.RagChatMapper;
+import interview.guide.modules.knowledgebase.model.ContextKbItem;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseEntity;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseListItemDTO;
 import interview.guide.modules.knowledgebase.model.MessageStatus;
@@ -48,6 +49,7 @@ public class RagChatSessionService {
     private final RagChatMessageRepository messageRepository;
     private final KnowledgeBaseRepository knowledgeBaseRepository;
     private final KnowledgeBaseQueryService queryService;
+    private final KnowledgeBaseListService listService;
     private final RagChatMapper ragChatMapper;
     private final KnowledgeBaseMapper knowledgeBaseMapper;
     private final KnowledgeBaseQueryProperties queryProperties;
@@ -57,11 +59,41 @@ public class RagChatSessionService {
      */
     @Transactional
     public SessionDTO createSession(CreateSessionRequest request) {
+        // 解析上下文匹配的 KB IDs
+        Set<Long> resolvedKbIds = new HashSet<>();
+
+        // 1. 显式指定的 knowledgeBaseIds
+        List<Long> explicitIds = request.knowledgeBaseIds();
+        if (explicitIds != null && !explicitIds.isEmpty()) {
+            resolvedKbIds.addAll(explicitIds);
+        }
+
+        // 2. 通过 service/environment 上下文解析
+        String service = request.service();
+        String environment = request.environment();
+        boolean hasService = service != null && !service.isBlank();
+        boolean hasEnvironment = environment != null && !environment.isBlank();
+
+        if (hasService || hasEnvironment) {
+            List<ContextKbItem> contextItems = listService.resolveContext(
+                hasService ? service : null,
+                hasEnvironment ? environment : null);
+            for (ContextKbItem item : contextItems) {
+                resolvedKbIds.add(item.id());
+            }
+        }
+
+        // 3. 校验：至少需要有一个知识库
+        if (resolvedKbIds.isEmpty()) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST,
+                "至少需要一个知识库：请指定 knowledgeBaseIds 或提供 service/environment 上下文");
+        }
+
         // 验证知识库存在
         List<KnowledgeBaseEntity> knowledgeBases = knowledgeBaseRepository
-            .findAllById(request.knowledgeBaseIds());
+            .findAllById(resolvedKbIds);
 
-        if (knowledgeBases.size() != request.knowledgeBaseIds().size()) {
+        if (knowledgeBases.size() != resolvedKbIds.size()) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "部分知识库不存在");
         }
 
@@ -74,7 +106,8 @@ public class RagChatSessionService {
 
         session = sessionRepository.save(session);
 
-        log.info("创建 RAG 聊天会话: id={}, title={}", session.getId(), session.getTitle());
+        log.info("创建 RAG 聊天会话: id={}, title={}, resolvedKbIds={}",
+            session.getId(), session.getTitle(), resolvedKbIds);
 
         return ragChatMapper.toSessionDTO(session);
     }

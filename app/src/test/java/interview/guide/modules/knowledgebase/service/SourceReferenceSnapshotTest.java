@@ -41,6 +41,8 @@ class SourceReferenceSnapshotTest {
   @Mock
   private KnowledgeBaseQueryService queryService;
   @Mock
+  private KnowledgeBaseListService listService;
+  @Mock
   private RagChatMapper ragChatMapper;
   @Mock
   private KnowledgeBaseMapper knowledgeBaseMapper;
@@ -53,6 +55,7 @@ class SourceReferenceSnapshotTest {
         messageRepository,
         knowledgeBaseRepository,
         queryService,
+        listService,
         ragChatMapper,
         knowledgeBaseMapper,
         queryProperties

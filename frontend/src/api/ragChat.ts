@@ -67,10 +67,17 @@ export const ragChatApi = {
   /**
    * 创建新会话
    */
-  async createSession(knowledgeBaseIds: number[], title?: string): Promise<RagChatSession> {
+  async createSession(
+    knowledgeBaseIds: number[],
+    title?: string,
+    service?: string,
+    environment?: string
+  ): Promise<RagChatSession> {
     return request.post<RagChatSession>('/api/rag-chat/sessions', {
       knowledgeBaseIds,
       title,
+      service,
+      environment,
     });
   },
 

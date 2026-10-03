@@ -22,11 +22,14 @@ import {
 } from 'lucide-react';
 import {knowledgeBaseApi, KnowledgeBaseItem, KnowledgeBaseStats, SortOption, VectorStatus,} from '../api/knowledgebase';
 import DeleteConfirmDialog from '../components/DeleteConfirmDialog';
+import ContextSelector from '../components/ContextSelector';
 import { applyFilters, type FilterState } from '../utils/kbFilter';
 
 interface KnowledgeBaseManagePageProps {
   onUpload: () => void;
   onChat: () => void;
+  /** 是否在列表上方显示上下文范围选择器（DocsCenterPage 使用） */
+  showContextSelector?: boolean;
 }
 
 // 格式化文件大小
@@ -113,7 +116,7 @@ function StatCard({
   );
 }
 
-export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeBaseManagePageProps) {
+export default function KnowledgeBaseManagePage({ onUpload, onChat, showContextSelector }: KnowledgeBaseManagePageProps) {
   const [stats, setStats] = useState<KnowledgeBaseStats | null>(null);
   // 原始列表（从后端获取，未经搜索/分类/服务/环境筛选）
   const [allKnowledgeBases, setAllKnowledgeBases] = useState<KnowledgeBaseItem[]>([]);
@@ -137,6 +140,10 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
   const [services, setServices] = useState<string[]>([]);
   const [environments, setEnvironments] = useState<string[]>([]);
 
+  // 上下文范围选择器状态
+  const [contextService, setContextService] = useState<string>('');
+  const [contextEnvironment, setContextEnvironment] = useState<string>('');
+
   // 服务/环境编辑状态
   const [editingLabelsId, setEditingLabelsId] = useState<number | null>(null);
   const [editingService, setEditingService] = useState('');
@@ -147,9 +154,17 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
   // 重新向量化状态
   const [revectorizing, setRevectorizing] = useState<number | null>(null);
 
-  // 客户端组合筛选：搜索 + 分类 + service + environment 同时生效
+  // 上下文范围 + 客户端组合筛选：搜索 + 分类 + service + environment 同时生效
   const filteredKnowledgeBases = useMemo(() => {
     let items = allKnowledgeBases;
+
+    // 上下文范围筛选（优先级最高，来自 ContextSelector）
+    if (contextService) {
+      items = items.filter(kb => kb.service === contextService);
+    }
+    if (contextEnvironment) {
+      items = items.filter(kb => kb.environment === contextEnvironment);
+    }
 
     // 搜索关键词筛选
     if (searchKeyword.trim()) {
@@ -165,9 +180,9 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
       items = items.filter(kb => kb.category === selectedCategory);
     }
 
-    // service + environment 筛选（委托给已测试的纯函数）
+    // service + environment 手动筛选（来自页面内下拉框）
     return applyFilters(items, serviceFilter, environmentFilter);
-  }, [allKnowledgeBases, searchKeyword, selectedCategory, serviceFilter, environmentFilter]);
+  }, [allKnowledgeBases, searchKeyword, selectedCategory, serviceFilter, environmentFilter, contextService, contextEnvironment]);
 
   // 排序（在筛选之后）
   const knowledgeBases = useMemo(() => {
@@ -446,6 +461,16 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
             color="bg-emerald-500"
           />
         </div>
+      )}
+
+      {/* 上下文范围选择器 */}
+      {showContextSelector && (
+        <ContextSelector
+          onScopeChange={(kbIds, service, environment) => {
+            setContextService(service || '');
+            setContextEnvironment(environment || '');
+          }}
+        />
       )}
 
       {/* 搜索和筛选栏 */}

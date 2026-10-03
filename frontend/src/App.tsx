@@ -1,14 +1,17 @@
-import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import { Suspense, lazy } from 'react';
 import type { UploadKnowledgeBaseResponse } from './api/knowledgebase';
 import { ROUTE_PATTERNS, ROUTES } from './constants/routes';
 
 // Lazy load components
-const KnowledgeBaseQueryPage = lazy(() => import('./pages/KnowledgeBaseQueryPage'));
-const KnowledgeBaseUploadPage = lazy(() => import('./pages/KnowledgeBaseUploadPage'));
-const KnowledgeBaseManagePage = lazy(() => import('./pages/KnowledgeBaseManagePage'));
+const DocsCenterPage = lazy(() => import('./pages/DocsCenterPage'));
+const ChatSessionsPage = lazy(() => import('./pages/ChatSessionsPage'));
+const ChatSessionDetailPage = lazy(() => import('./pages/ChatSessionDetailPage'));
+const CasesPage = lazy(() => import('./pages/CasesPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const EvalResultsPage = lazy(() => import('./pages/EvalResultsPage'));
+const KnowledgeBaseUploadPage = lazy(() => import('./pages/KnowledgeBaseUploadPage'));
 
 // Loading component
 const Loading = () => (
@@ -23,91 +26,68 @@ function App() {
       <Suspense fallback={<Loading />}>
         <Routes>
           <Route path="/" element={<Layout />}>
-            {/* 默认重定向到知识库管理页面 */}
-            <Route index element={<Navigate to="/knowledgebase" replace />} />
+            {/* 默认重定向到文档中心 */}
+            <Route index element={<Navigate to={ROUTES.docsCenter} replace />} />
 
-            {/* 面试相关旧路由重定向到知识库 */}
-            <Route path="history" element={<Navigate to="/knowledgebase" replace />} />
-            <Route path="history/:resumeId" element={<Navigate to="/knowledgebase" replace />} />
-            <Route path="upload" element={<Navigate to="/knowledgebase" replace />} />
-            <Route path="interview-hub" element={<Navigate to="/knowledgebase" replace />} />
-            <Route path="interviews" element={<Navigate to="/knowledgebase" replace />} />
-            <Route path="interviews/:sessionId" element={<Navigate to="/knowledgebase" replace />} />
-            <Route path={ROUTES.interview.slice(1)} element={<Navigate to="/knowledgebase" replace />} />
-            <Route path={ROUTE_PATTERNS.interviewCreate} element={<Navigate to="/knowledgebase" replace />} />
-            <Route path={ROUTE_PATTERNS.interviewSession} element={<Navigate to="/knowledgebase" replace />} />
-            <Route path="interview/*" element={<Navigate to="/knowledgebase" replace />} />
-            <Route path="voice-interview" element={<Navigate to="/knowledgebase" replace />} />
-            <Route path="voice-interview/:sessionId/evaluation" element={<Navigate to="/knowledgebase" replace />} />
-            <Route path="interview-schedule" element={<Navigate to="/knowledgebase" replace />} />
-            <Route path="knowledgebase-interview" element={<Navigate to="/knowledgebase" replace />} />
-            <Route path="knowledgebase-interview/*" element={<Navigate to="/knowledgebase" replace />} />
+            {/* 文档中心 */}
+            <Route path="docs" element={<DocsCenterPage />} />
 
-            {/* 知识库管理 */}
-            <Route path="knowledgebase" element={<KnowledgeBaseManagePageWrapper />} />
+            {/* 文档上传 */}
+            <Route path="docs/upload" element={<DocsUploadPageWrapper />} />
 
-            {/* 知识库上传 */}
-            <Route path="knowledgebase/upload" element={<KnowledgeBaseUploadPageWrapper />} />
+            {/* 排查会话 */}
+            <Route path="chat" element={<ChatSessionsPage />} />
+            <Route path={ROUTE_PATTERNS.chatSessionDetail} element={<ChatSessionDetailPage />} />
+
+            {/* 案例库 */}
+            <Route path="cases" element={<CasesPage />} />
+
+            {/* 评测结果 */}
+            <Route path="eval-results" element={<EvalResultsPage />} />
 
             {/* 设置 */}
             <Route path="settings" element={<SettingsPage />} />
 
-            {/* 问答助手（知识库聊天） */}
-            <Route path="knowledgebase/chat" element={<KnowledgeBaseQueryPageWrapper />} />
-          </Route>
+            {/* ===== 旧路由重定向 ===== */}
 
+            {/* 知识库旧路由 -> 文档中心 */}
+            <Route path="knowledgebase" element={<Navigate to={ROUTES.docsCenter} replace />} />
+            <Route path="knowledgebase/upload" element={<Navigate to={ROUTES.docsUpload} replace />} />
+            <Route path="knowledgebase/chat" element={<Navigate to={ROUTES.chatSessions} replace />} />
+
+            {/* 面试相关旧路由重定向到文档中心 */}
+            <Route path="history" element={<Navigate to={ROUTES.docsCenter} replace />} />
+            <Route path="history/:resumeId" element={<Navigate to={ROUTES.docsCenter} replace />} />
+            <Route path="upload" element={<Navigate to={ROUTES.docsCenter} replace />} />
+            <Route path="interview-hub" element={<Navigate to={ROUTES.docsCenter} replace />} />
+            <Route path="interviews" element={<Navigate to={ROUTES.docsCenter} replace />} />
+            <Route path="interviews/:sessionId" element={<Navigate to={ROUTES.docsCenter} replace />} />
+            <Route path={ROUTES.interview.slice(1)} element={<Navigate to={ROUTES.docsCenter} replace />} />
+            <Route path={ROUTE_PATTERNS.interviewCreate} element={<Navigate to={ROUTES.docsCenter} replace />} />
+            <Route path={ROUTE_PATTERNS.interviewSession} element={<Navigate to={ROUTES.docsCenter} replace />} />
+            <Route path="interview/*" element={<Navigate to={ROUTES.docsCenter} replace />} />
+            <Route path="voice-interview" element={<Navigate to={ROUTES.docsCenter} replace />} />
+            <Route path="voice-interview/:sessionId/evaluation" element={<Navigate to={ROUTES.docsCenter} replace />} />
+            <Route path="interview-schedule" element={<Navigate to={ROUTES.docsCenter} replace />} />
+            <Route path="knowledgebase-interview" element={<Navigate to={ROUTES.docsCenter} replace />} />
+            <Route path="knowledgebase-interview/*" element={<Navigate to={ROUTES.docsCenter} replace />} />
+          </Route>
         </Routes>
       </Suspense>
     </BrowserRouter>
   );
 }
 
-function KnowledgeBaseManagePageWrapper() {
-  const navigate = useNavigate();
-
-  const handleUpload = () => {
-    navigate(ROUTES.knowledgebaseUpload);
-  };
-
-  const handleChat = () => {
-    navigate('/knowledgebase/chat');
-  };
-
-  return <KnowledgeBaseManagePage onUpload={handleUpload} onChat={handleChat} />;
-}
-
-// 知识库问答页面包装器
-function KnowledgeBaseQueryPageWrapper() {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const isChatMode = location.pathname === '/knowledgebase/chat';
-
-  const handleBack = () => {
-    if (isChatMode) {
-      navigate('/knowledgebase');
-    } else {
-      navigate('/history');
-    }
-  };
-
-  const handleUpload = () => {
-    navigate(ROUTES.knowledgebaseUpload);
-  };
-
-  return <KnowledgeBaseQueryPage onBack={handleBack} onUpload={handleUpload} />;
-}
-
-// 知识库上传页面包装器
-function KnowledgeBaseUploadPageWrapper() {
+// 文档上传页面包装器（复用 KnowledgeBaseUploadPage）
+function DocsUploadPageWrapper() {
   const navigate = useNavigate();
 
   const handleUploadComplete = (_result: UploadKnowledgeBaseResponse) => {
-    // 上传完成后返回管理页面
-    navigate('/knowledgebase');
+    navigate(ROUTES.docsCenter);
   };
 
   const handleBack = () => {
-    navigate('/knowledgebase');
+    navigate(ROUTES.docsCenter);
   };
 
   return <KnowledgeBaseUploadPage onUploadComplete={handleUploadComplete} onBack={handleBack} />;
