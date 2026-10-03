@@ -1,0 +1,41 @@
+{
+  "kind": "p1c-frozen-artifact-freeze-list",
+  "datasetId": "devsupport",
+  "version": "heading-aware-v0.1",
+  "purpose": "P1-C 候选 heading-aware 金标修订版（仅 q11-AP0 依据逐字 quote 'voice: Cherry' 补入 setup-api-keys__0000）",
+  "recordedAt": "2026-10-03",
+  "recordedFromCommit": "ed2916a",
+  "goldRevisionOf": "heading-aware-v0",
+  "changeScope": "gold-only: q11 answerPoint#0; chunks/corpus/split 与 heading-aware-v0 逐字节一致",
+  "metricsSource": "OFFLINE recompute from saved heading-aware-v0 Top-10 (evalRunId=26e7f099); NOT a new retrieval/Embedding run",
+  "parsePath": "DocumentParseService.parseContent(Tika)+TextCleaningService.cleanText",
+  "productionCleanedSha256": "f47b6a972fb49ee0c26eee9aec314fa620a43d83aceed00022b7e631d05aa6d1",
+  "hashCaliber": "字节级 CRLF/CR→LF 归一化 → UTF-8 字节 → SHA-256 小写 hex",
+  "comparedField": "expectedSha256NormalizedLf",
+  "artifacts": [
+    {
+      "fileName": "chunks.jsonl",
+      "expectedSha256NormalizedLf": "80deabfc8b419fcd4a6fb4a2993ab43fd8ca12875032b0092bd97a57544f118a",
+      "sha256RawBytesAtRecord": "80deabfc8b419fcd4a6fb4a2993ab43fd8ca12875032b0092bd97a57544f118a",
+      "sizeBytesAtRecord": 68580
+    },
+    {
+      "fileName": "candidate-gold.json",
+      "expectedSha256NormalizedLf": "1c6ac08970da8640c26ce15de45c91fe25f4dee8465228d08a4bba82ded6f7ff",
+      "sha256RawBytesAtRecord": "1c6ac08970da8640c26ce15de45c91fe25f4dee8465228d08a4bba82ded6f7ff",
+      "sizeBytesAtRecord": 63665
+    },
+    {
+      "fileName": "corpus-manifest.json",
+      "expectedSha256NormalizedLf": "a7c1a0b1137d7c96cfa50e385e5f3cb7c8db0c9ac816ff9980664277ebad60d7",
+      "sha256RawBytesAtRecord": "a7c1a0b1137d7c96cfa50e385e5f3cb7c8db0c9ac816ff9980664277ebad60d7",
+      "sizeBytesAtRecord": 8336
+    },
+    {
+      "fileName": "chunk-manifest.json",
+      "expectedSha256NormalizedLf": "59afe46b750fb5bd60b9fec189238ff39c36119e6de5f8dd08a9ebbe2f3c019c",
+      "sha256RawBytesAtRecord": "59afe46b750fb5bd60b9fec189238ff39c36119e6de5f8dd08a9ebbe2f3c019c",
+      "sizeBytesAtRecord": 1554
+    }
+  ]
+}

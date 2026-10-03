@@ -1,0 +1,1541 @@
+{
+  "goldPolicy": {
+    "answerableRule": "每个 answerPoint 独立列出 supportingChunkIds；多要点题需组合命中，不可并集后\"任意一个命中即答对\"",
+    "noAnswerRule": "NO_ANSWER 题不给正例 gold；仅记录 nearMiss 的 chunk 引用供参考",
+    "validationRule": "ANSWERABLE 题的每个 answerPoint 必须有非空 supportingChunkIds，否则校验失败",
+    "multiChunkDefinition": "真正需要多 chunk 组合 = 不存在一个 chunk 同时属于所有答案要点的支持集合（即各要点 supportingChunkIds 的交集为空）",
+    "chunkIdSource": "candidate heading-aware（生产清洗文本）重映射：ig-readme-root 证据逐字 quote 归一化包含映射到 heading-aware-v1 稳定 ID；其余文档沿用基线 ID"
+  },
+  "statistics": {
+    "totalQueries": 20,
+    "answerableQueries": 16,
+    "noAnswerQueries": 4,
+    "multipleAnswerPointQueries": 11,
+    "multipleChunkCombinationQueries": 4,
+    "validationErrors": 0,
+    "totalCandidateChunkReferences": 21
+  },
+  "validationErrors": [],
+  "entries": [
+    {
+      "queryId": "devsupport-v01-q01",
+      "question": "后端服务启动后默认监听哪个端口？",
+      "questionType": "exact_lookup",
+      "answerability": "ANSWERABLE",
+      "candidateGold": {
+        "answerPoints": [
+          {
+            "answerPointIndex": 1,
+            "answerPointText": "默认端口 8080",
+            "supportingChunkIds": [
+              "ig-readme-root__heading-aware-v1__0018__d838729e569c"
+            ],
+            "supportingDocIds": [
+              "ig-readme-root"
+            ],
+            "supportingEvidenceCount": 1,
+            "evidenceDetails": [
+              {
+                "evidenceIndex": 0,
+                "docId": "ig-readme-root",
+                "quote": "后端服务启动于 `http://localhost:8080`",
+                "chunkIds": [
+                  "ig-readme-root__heading-aware-v1__0018__d838729e569c"
+                ],
+                "crossChunk": false,
+                "matchType": "exact",
+                "configId": "heading-aware-v1"
+              }
+            ]
+          },
+          {
+            "answerPointIndex": 2,
+            "answerPointText": "后端地址 http://localhost:8080",
+            "supportingChunkIds": [
+              "ig-readme-root__heading-aware-v1__0018__d838729e569c"
+            ],
+            "supportingDocIds": [
+              "ig-readme-root"
+            ],
+            "supportingEvidenceCount": 1,
+            "evidenceDetails": [
+              {
+                "evidenceIndex": 0,
+                "docId": "ig-readme-root",
+                "quote": "后端服务启动于 `http://localhost:8080`",
+                "chunkIds": [
+                  "ig-readme-root__heading-aware-v1__0018__d838729e569c"
+                ],
+                "crossChunk": false,
+                "matchType": "exact",
+                "configId": "heading-aware-v1"
+              }
+            ]
+          }
+        ],
+        "multipleAnswerPoints": true,
+        "multipleChunkCombinationRequired": false,
+        "combinationReason": "",
+        "allCandidateChunkIds": [
+          "ig-readme-root__tts-default-cl100k-800-0__0007__c6d462233363"
+        ]
+      }
+    },
+    {
+      "queryId": "devsupport-v01-q02",
+      "question": "只想本地开发调试、用 ./gradlew :app:bootRun 启动后端时，一键启动 PostgreSQL/Redis/RustFS 三个依赖的命令是什么？",
+      "questionType": "exact_lookup",
+      "answerability": "ANSWERABLE",
+      "candidateGold": {
+        "answerPoints": [
+          {
+            "answerPointIndex": 1,
+            "answerPointText": "docker compose -f docker-compose.dev.yml up -d",
+            "supportingChunkIds": [
+              "ig-readme-root__heading-aware-v1__0017__eb40aef64a75",
+              "ig-readme-root__heading-aware-v1__0027__ceed2fe7549f"
+            ],
+            "supportingDocIds": [
+              "ig-readme-root"
+            ],
+            "supportingEvidenceCount": 1,
+            "evidenceDetails": [
+              {
+                "evidenceIndex": 0,
+                "docId": "ig-readme-root",
+                "quote": "docker compose -f docker-compose.dev.yml up -d",
+                "chunkIds": [
+                  "ig-readme-root__heading-aware-v1__0017__eb40aef64a75",
+                  "ig-readme-root__heading-aware-v1__0027__ceed2fe7549f"
+                ],
+                "crossChunk": true,
+                "matchType": "exact",
+                "configId": "heading-aware-v1"
+              }
+            ]
+          }
+        ],
+        "multipleAnswerPoints": false,
+        "multipleChunkCombinationRequired": false,
+        "combinationReason": "",
+        "allCandidateChunkIds": [
+          "ig-readme-root__tts-default-cl100k-800-0__0006__ba619fe9be23",
+          "ig-readme-root__tts-default-cl100k-800-0__0007__c6d462233363",
+          "ig-readme-root__tts-default-cl100k-800-0__0010__76472780832c"
+        ]
+      }
+    },
+    {
+      "queryId": "devsupport-v01-q03",
+      "question": "JPA 的 hibernate.ddl-auto 当前项目推荐/默认配置值是什么？",
+      "questionType": "exact_lookup",
+      "answerability": "ANSWERABLE",
+      "candidateGold": {
+        "answerPoints": [
+          {
+            "answerPointIndex": 1,
+            "answerPointText": "validate",
+            "supportingChunkIds": [
+              "ig-readme-root__heading-aware-v1__0024__419a75de734c",
+              "ig-db-migration-readme__tts-default-cl100k-800-0__0000__338a39b904c5"
+            ],
+            "supportingDocIds": [
+              "ig-db-migration-readme",
+              "ig-readme-root"
+            ],
+            "supportingEvidenceCount": 2,
+            "evidenceDetails": [
+              {
+                "evidenceIndex": 0,
+                "docId": "ig-readme-root",
+                "quote": "ddl-auto: validate  # 只校验 schema，建表和变更交给 Flyway",
+                "chunkIds": [
+                  "ig-readme-root__heading-aware-v1__0024__419a75de734c"
+                ],
+                "crossChunk": false,
+                "matchType": "exact",
+                "configId": "heading-aware-v1"
+              },
+              {
+                "evidenceIndex": 1,
+                "docId": "ig-db-migration-readme",
+                "quote": "Hibernate `ddl-auto` 使用 `validate`，只校验 schema，不负责建表或改表。",
+                "chunkIds": [
+                  "ig-db-migration-readme__tts-default-cl100k-800-0__0000__338a39b904c5"
+                ],
+                "crossChunk": false,
+                "matchType": "exact"
+              }
+            ]
+          },
+          {
+            "answerPointIndex": 2,
+            "answerPointText": "只校验 schema，不建表/改表，建表与变更交给 Flyway",
+            "supportingChunkIds": [
+              "ig-readme-root__heading-aware-v1__0024__419a75de734c",
+              "ig-db-migration-readme__tts-default-cl100k-800-0__0000__338a39b904c5"
+            ],
+            "supportingDocIds": [
+              "ig-db-migration-readme",
+              "ig-readme-root"
+            ],
+            "supportingEvidenceCount": 2,
+            "evidenceDetails": [
+              {
+                "evidenceIndex": 0,
+                "docId": "ig-readme-root",
+                "quote": "ddl-auto: validate  # 只校验 schema，建表和变更交给 Flyway",
+                "chunkIds": [
+                  "ig-readme-root__heading-aware-v1__0024__419a75de734c"
+                ],
+                "crossChunk": false,
+                "matchType": "exact",
+                "configId": "heading-aware-v1"
+              },
+              {
+                "evidenceIndex": 1,
+                "docId": "ig-db-migration-readme",
+                "quote": "Hibernate `ddl-auto` 使用 `validate`，只校验 schema，不负责建表或改表。",
+                "chunkIds": [
+                  "ig-db-migration-readme__tts-default-cl100k-800-0__0000__338a39b904c5"
+                ],
+                "crossChunk": false,
+                "matchType": "exact"
+              }
+            ]
+          }
+        ],
+        "multipleAnswerPoints": true,
+        "multipleChunkCombinationRequired": false,
+        "combinationReason": "",
+        "allCandidateChunkIds": [
+          "ig-db-migration-readme__tts-default-cl100k-800-0__0000__338a39b904c5",
+          "ig-readme-root__tts-default-cl100k-800-0__0009__fa9f25f9e53c"
+        ]
+      }
+    },
+    {
+      "queryId": "devsupport-v01-q04",
+      "question": "Spring AI pgvector 的 initialize-schema 应配置为什么值？",
+      "questionType": "exact_lookup",
+      "answerability": "ANSWERABLE",
+      "candidateGold": {
+        "answerPoints": [
+          {
+            "answerPointIndex": 1,
+            "answerPointText": "false",
+            "supportingChunkIds": [
+              "ig-db-migration-readme__tts-default-cl100k-800-0__0000__338a39b904c5",
+              "ig-readme-root__heading-aware-v1__0025__54fc7b317ed3"
+            ],
+            "supportingDocIds": [
+              "ig-db-migration-readme",
+              "ig-readme-root"
+            ],
+            "supportingEvidenceCount": 2,
+            "evidenceDetails": [
+              {
+                "evidenceIndex": 0,
+                "docId": "ig-db-migration-readme",
+                "quote": "Spring AI pgvector 表结构也由 Flyway 创建，`initialize-schema` 应保持 `false`。",
+                "chunkIds": [
+                  "ig-db-migration-readme__tts-default-cl100k-800-0__0000__338a39b904c5"
+                ],
+                "crossChunk": false,
+                "matchType": "exact"
+              },
+              {
+                "evidenceIndex": 1,
+                "docId": "ig-readme-root",
+                "quote": "initialize-schema: false",
+                "chunkIds": [
+                  "ig-readme-root__heading-aware-v1__0025__54fc7b317ed3"
+                ],
+                "crossChunk": false,
+                "matchType": "exact",
+                "configId": "heading-aware-v1"
+              }
+            ]
+          },
+          {
+            "answerPointIndex": 2,
+            "answerPointText": "避免应用启动时绕过 Flyway 修改数据库 schema",
+            "supportingChunkIds": [
+              "ig-readme-root__heading-aware-v1__0025__54fc7b317ed3"
+            ],
+            "supportingDocIds": [
+              "ig-readme-root"
+            ],
+            "supportingEvidenceCount": 1,
+            "evidenceDetails": [
+              {
+                "evidenceIndex": 2,
+                "docId": "ig-readme-root",
+                "quote": "建议保持为 false，避免应用启动时绕过 Flyway 修改数据库 schema。",
+                "chunkIds": [
+                  "ig-readme-root__heading-aware-v1__0025__54fc7b317ed3"
+                ],
+                "crossChunk": false,
+                "matchType": "exact",
+                "configId": "heading-aware-v1"
+              }
+            ]
+          }
+        ],
+        "multipleAnswerPoints": true,
+        "multipleChunkCombinationRequired": false,
+        "combinationReason": "",
+        "allCandidateChunkIds": [
+          "ig-db-migration-readme__tts-default-cl100k-800-0__0000__338a39b904c5",
+          "ig-readme-root__tts-default-cl100k-800-0__0009__fa9f25f9e53c"
+        ]
+      }
+    },
+    {
+      "queryId": "devsupport-v01-q05",
+      "question": "语音识别（ASR）使用的 Qwen3 模型名称是什么？",
+      "questionType": "exact_lookup",
+      "answerability": "ANSWERABLE",
+      "candidateGold": {
+        "answerPoints": [
+          {
+            "answerPointIndex": 1,
+            "answerPointText": "qwen3-asr-flash-realtime",
+            "supportingChunkIds": [
+              "ig-setup-api-keys__tts-default-cl100k-800-0__0000__412b1fb66fc9",
+              "ig-voice-arch__tts-default-cl100k-800-0__0002__7d9fe0ceb64a"
+            ],
+            "supportingDocIds": [
+              "ig-setup-api-keys",
+              "ig-voice-arch"
+            ],
+            "supportingEvidenceCount": 2,
+            "evidenceDetails": [
+              {
+                "evidenceIndex": 0,
+                "docId": "ig-setup-api-keys",
+                "quote": "**ASR 语音识别**: 将用户语音实时转换为文本（qwen3-asr-flash-realtime）",
+                "chunkIds": [
+                  "ig-setup-api-keys__tts-default-cl100k-800-0__0000__412b1fb66fc9"
+                ],
+                "crossChunk": false,
+                "matchType": "exact"
+              },
+              {
+                "evidenceIndex": 1,
+                "docId": "ig-voice-arch",
+                "quote": "**模型**: qwen3-asr-flash-realtime",
+                "chunkIds": [
+                  "ig-voice-arch__tts-default-cl100k-800-0__0002__7d9fe0ceb64a"
+                ],
+                "crossChunk": false,
+                "matchType": "exact"
+              }
+            ]
+          }
+        ],
+        "multipleAnswerPoints": false,
+        "multipleChunkCombinationRequired": false,
+        "combinationReason": "",
+        "allCandidateChunkIds": [
+          "ig-setup-api-keys__tts-default-cl100k-800-0__0000__412b1fb66fc9",
+          "ig-voice-arch__tts-default-cl100k-800-0__0002__7d9fe0ceb64a"
+        ]
+      }
+    },
+    {
+      "queryId": "devsupport-v01-q06",
+      "question": "应用启动时会自动检查并创建的默认对象存储 Bucket 名称是什么？",
+      "questionType": "exact_lookup",
+      "answerability": "ANSWERABLE",
+      "candidateGold": {
+        "answerPoints": [
+          {
+            "answerPointIndex": 1,
+            "answerPointText": "interview-guide",
+            "supportingChunkIds": [
+              "ig-readme-root__heading-aware-v1__0017__eb40aef64a75"
+            ],
+            "supportingDocIds": [
+              "ig-readme-root"
+            ],
+            "supportingEvidenceCount": 1,
+            "evidenceDetails": [
+              {
+                "evidenceIndex": 0,
+                "docId": "ig-readme-root",
+                "quote": "应用启动时会自动检查并创建 `interview-guide` Bucket",
+                "chunkIds": [
+                  "ig-readme-root__heading-aware-v1__0017__eb40aef64a75"
+                ],
+                "crossChunk": false,
+                "matchType": "exact",
+                "configId": "heading-aware-v1"
+              }
+            ]
+          }
+        ],
+        "multipleAnswerPoints": false,
+        "multipleChunkCombinationRequired": false,
+        "combinationReason": "",
+        "allCandidateChunkIds": [
+          "ig-readme-root__tts-default-cl100k-800-0__0007__c6d462233363"
+        ]
+      }
+    },
+    {
+      "queryId": "devsupport-v01-q07",
+      "question": "我在本机跑起后端后，浏览器打开哪个网址能看到 Swagger 接口文档？",
+      "questionType": "paraphrase",
+      "answerability": "ANSWERABLE",
+      "candidateGold": {
+        "answerPoints": [
+          {
+            "answerPointIndex": 1,
+            "answerPointText": "http://localhost:8080/swagger-ui.html",
+            "supportingChunkIds": [
+              "ig-readme-root__heading-aware-v1__0021__b0fdb96d3bdf"
+            ],
+            "supportingDocIds": [
+              "ig-readme-root"
+            ],
+            "supportingEvidenceCount": 1,
+            "evidenceDetails": [
+              {
+                "evidenceIndex": 0,
+                "docId": "ig-readme-root",
+                "quote": "[http://localhost:8080/swagger-ui.html](http://localhost:8080/swagger-ui.html)",
+                "chunkIds": [
+                  "ig-readme-root__heading-aware-v1__0021__b0fdb96d3bdf"
+                ],
+                "crossChunk": false,
+                "matchType": "exact",
+                "configId": "heading-aware-v1"
+              }
+            ]
+          },
+          {
+            "answerPointIndex": 2,
+            "answerPointText": "由 SpringDoc/Swagger UI 提供",
+            "supportingChunkIds": [
+              "ig-readme-root__heading-aware-v1__0021__b0fdb96d3bdf"
+            ],
+            "supportingDocIds": [
+              "ig-readme-root"
+            ],
+            "supportingEvidenceCount": 1,
+            "evidenceDetails": [
+              {
+                "evidenceIndex": 1,
+                "docId": "ig-readme-root",
+                "quote": "| **接口文档**     | [http://localhost:8080/swagger-ui.html](http://localhost:8080/swagger-ui.html) | - | - | SpringDoc/Swagger UI |",
+                "chunkIds": [
+                  "ig-readme-root__heading-aware-v1__0021__b0fdb96d3bdf"
+                ],
+                "crossChunk": false,
+                "matchType": "exact",
+                "configId": "heading-aware-v1"
+              }
+            ]
+          }
+        ],
+        "multipleAnswerPoints": true,
+        "multipleChunkCombinationRequired": false,
+        "combinationReason": "",
+        "allCandidateChunkIds": [
+          "ig-readme-root__tts-default-cl100k-800-0__0008__2c8da7b9b594"
+        ]
+      }
+    },
+    {
+      "queryId": "devsupport-v01-q08",
+      "question": "这个项目为啥用 Redis 搞异步消息，而不是上 Kafka 这种专业消息队列？",
+      "questionType": "paraphrase",
+      "answerability": "ANSWERABLE",
+      "candidateGold": {
+        "answerPoints": [
+          {
+            "answerPointIndex": 1,
+            "answerPointText": "用 Redis Stream 实现异步并解耦",
+            "supportingChunkIds": [
+              "ig-readme-root__heading-aware-v1__0003__e8f6ff6b72eb"
+            ],
+            "supportingDocIds": [
+              "ig-readme-root"
+            ],
+            "supportingEvidenceCount": 1,
+            "evidenceDetails": [
+              {
+                "evidenceIndex": 0,
+                "docId": "ig-readme-root",
+                "quote": "基于 Redis Stream 实现简历分析、知识库向量化等场景的异步（还能解耦，分析和向量化可以使用其他编程语言来做）。不使用 [Kafka](https://javaguide.cn/high-performance/message-queue/kafka-questions-01.html) 这类成熟的消息队列，也是不想引入太多组件。",
+                "chunkIds": [
+                  "ig-readme-root__heading-aware-v1__0003__e8f6ff6b72eb"
+                ],
+                "crossChunk": false,
+                "matchType": "exact",
+                "configId": "heading-aware-v1"
+              }
+            ]
+          },
+          {
+            "answerPointIndex": 2,
+            "answerPointText": "不想引入太多组件，精简架构",
+            "supportingChunkIds": [
+              "ig-readme-root__heading-aware-v1__0003__e8f6ff6b72eb"
+            ],
+            "supportingDocIds": [
+              "ig-readme-root"
+            ],
+            "supportingEvidenceCount": 1,
+            "evidenceDetails": [
+              {
+                "evidenceIndex": 0,
+                "docId": "ig-readme-root",
+                "quote": "基于 Redis Stream 实现简历分析、知识库向量化等场景的异步（还能解耦，分析和向量化可以使用其他编程语言来做）。不使用 [Kafka](https://javaguide.cn/high-performance/message-queue/kafka-questions-01.html) 这类成熟的消息队列，也是不想引入太多组件。",
+                "chunkIds": [
+                  "ig-readme-root__heading-aware-v1__0003__e8f6ff6b72eb"
+                ],
+                "crossChunk": false,
+                "matchType": "exact",
+                "configId": "heading-aware-v1"
+              }
+            ]
+          }
+        ],
+        "multipleAnswerPoints": true,
+        "multipleChunkCombinationRequired": false,
+        "combinationReason": "",
+        "allCandidateChunkIds": [
+          "ig-readme-root__tts-default-cl100k-800-0__0001__e689e97ff6f2"
+        ]
+      }
+    },
+    {
+      "queryId": "devsupport-v01-q09",
+      "question": "改了数据库表结构以后，我是不是得自己手动去执行 SQL 迁移脚本？",
+      "questionType": "paraphrase",
+      "answerability": "ANSWERABLE",
+      "candidateGold": {
+        "answerPoints": [
+          {
+            "answerPointIndex": 1,
+            "answerPointText": "不需要手动执行",
+            "supportingChunkIds": [
+              "ig-readme-root__heading-aware-v1__0026__444f93895443"
+            ],
+            "supportingDocIds": [
+              "ig-readme-root"
+            ],
+            "supportingEvidenceCount": 1,
+            "evidenceDetails": [
+              {
+                "evidenceIndex": 0,
+                "docId": "ig-readme-root",
+                "quote": "不需要。数据库 schema 已接入 Flyway，后端应用启动时会自动执行 `app/src/main/resources/db/migration/` 下的迁移，并记录到 `flyway_schema_history`。",
+                "chunkIds": [
+                  "ig-readme-root__heading-aware-v1__0026__444f93895443"
+                ],
+                "crossChunk": false,
+                "matchType": "exact",
+                "configId": "heading-aware-v1"
+              }
+            ]
+          },
+          {
+            "answerPointIndex": 2,
+            "answerPointText": "Flyway 在应用启动时按版本号自动执行迁移并记录到 flyway_schema_history",
+            "supportingChunkIds": [
+              "ig-readme-root__heading-aware-v1__0026__444f93895443",
+              "ig-db-migration-readme__tts-default-cl100k-800-0__0000__338a39b904c5"
+            ],
+            "supportingDocIds": [
+              "ig-db-migration-readme",
+              "ig-readme-root"
+            ],
+            "supportingEvidenceCount": 2,
+            "evidenceDetails": [
+              {
+                "evidenceIndex": 0,
+                "docId": "ig-readme-root",
+                "quote": "不需要。数据库 schema 已接入 Flyway，后端应用启动时会自动执行 `app/src/main/resources/db/migration/` 下的迁移，并记录到 `flyway_schema_history`。",
+                "chunkIds": [
+                  "ig-readme-root__heading-aware-v1__0026__444f93895443"
+                ],
+                "crossChunk": false,
+                "matchType": "exact",
+                "configId": "heading-aware-v1"
+              },
+              {
+                "evidenceIndex": 1,
+                "docId": "ig-db-migration-readme",
+                "quote": "应用启动时会按版本号执行 `V*.sql` 文件，并通过 `flyway_schema_history` 记录执行历史。",
+                "chunkIds": [
+                  "ig-db-migration-readme__tts-default-cl100k-800-0__0000__338a39b904c5"
+                ],
+                "crossChunk": false,
+                "matchType": "exact"
+              }
+            ]
+          }
+        ],
+        "multipleAnswerPoints": true,
+        "multipleChunkCombinationRequired": false,
+        "combinationReason": "",
+        "allCandidateChunkIds": [
+          "ig-db-migration-readme__tts-default-cl100k-800-0__0000__338a39b904c5",
+          "ig-readme-root__tts-default-cl100k-800-0__0009__fa9f25f9e53c"
+        ]
+      }
+    },
+    {
+      "queryId": "devsupport-v01-q10",
+      "question": "刚把仓库 clone 下来，怎么设置才能让本地 git 提交强制校验 commit message 规范？",
+      "questionType": "paraphrase",
+      "answerability": "ANSWERABLE",
+      "candidateGold": {
+        "answerPoints": [
+          {
+            "answerPointIndex": 1,
+            "answerPointText": "执行 git config core.hooksPath .githooks 启用提交消息 hook",
+            "supportingChunkIds": [
+              "ig-githooks-readme__tts-default-cl100k-800-0__0000__002cabe3796b"
+            ],
+            "supportingDocIds": [
+              "ig-githooks-readme"
+            ],
+            "supportingEvidenceCount": 2,
+            "evidenceDetails": [
+              {
+                "evidenceIndex": 0,
+                "docId": "ig-githooks-readme",
+                "quote": "首次克隆仓库后执行：",
+                "chunkIds": [
+                  "ig-githooks-readme__tts-default-cl100k-800-0__0000__002cabe3796b"
+                ],
+                "crossChunk": false,
+                "matchType": "exact"
+              },
+              {
+                "evidenceIndex": 1,
+                "docId": "ig-githooks-readme",
+                "quote": "git config core.hooksPath .githooks",
+                "chunkIds": [
+                  "ig-githooks-readme__tts-default-cl100k-800-0__0000__002cabe3796b"
+                ],
+                "crossChunk": false,
+                "matchType": "exact"
+              }
+            ]
+          }
+        ],
+        "multipleAnswerPoints": false,
+        "multipleChunkCombinationRequired": false,
+        "combinationReason": "",
+        "allCandidateChunkIds": [
+          "ig-githooks-readme__tts-default-cl100k-800-0__0000__002cabe3796b"
+        ]
+      }
+    },
+    {
+      "queryId": "devsupport-v01-q11",
+      "question": "语音面试里 AI 回答默认用的是什么音色（声音）？",
+      "questionType": "paraphrase",
+      "answerability": "ANSWERABLE",
+      "candidateGold": {
+        "answerPoints": [
+          {
+            "answerPointIndex": 1,
+            "answerPointText": "Cherry（温柔女声）",
+            "supportingChunkIds": [
+              "ig-voice-arch__tts-default-cl100k-800-0__0002__7d9fe0ceb64a",
+              "ig-voice-arch__tts-default-cl100k-800-0__0005__d65d06e6e302",
+              "ig-setup-api-keys__tts-default-cl100k-800-0__0000__412b1fb66fc9"
+            ],
+            "supportingDocIds": [
+              "ig-voice-arch",
+              "ig-setup-api-keys"
+            ],
+            "supportingEvidenceCount": 3,
+            "evidenceDetails": [
+              {
+                "evidenceIndex": 0,
+                "docId": "ig-voice-arch",
+                "quote": "**音色**: Cherry（温柔女声）",
+                "chunkIds": [
+                  "ig-voice-arch__tts-default-cl100k-800-0__0002__7d9fe0ceb64a"
+                ],
+                "crossChunk": false,
+                "matchType": "exact"
+              },
+              {
+                "evidenceIndex": 1,
+                "docId": "ig-voice-arch",
+                "quote": "voice: Cherry",
+                "chunkIds": [
+                  "ig-voice-arch__tts-default-cl100k-800-0__0005__d65d06e6e302"
+                ],
+                "crossChunk": false,
+                "matchType": "exact"
+              },
+              {
+                "evidenceIndex": 2,
+                "docId": "ig-setup-api-keys",
+                "quote": "voice: Cherry",
+                "chunkIds": [
+                  "ig-setup-api-keys__tts-default-cl100k-800-0__0000__412b1fb66fc9"
+                ],
+                "crossChunk": false,
+                "matchType": "exact"
+              }
+            ]
+          }
+        ],
+        "multipleAnswerPoints": false,
+        "multipleChunkCombinationRequired": false,
+        "combinationReason": "",
+        "allCandidateChunkIds": [
+          "ig-voice-arch__tts-default-cl100k-800-0__0002__7d9fe0ceb64a",
+          "ig-voice-arch__tts-default-cl100k-800-0__0005__d65d06e6e302"
+        ]
+      }
+    },
+    {
+      "queryId": "devsupport-v01-q12",
+      "question": "简历上传后分析状态一直卡在“分析中”不动，我该往哪个方向排查？",
+      "questionType": "paraphrase",
+      "answerability": "ANSWERABLE",
+      "candidateGold": {
+        "answerPoints": [
+          {
+            "answerPointIndex": 1,
+            "answerPointText": "检查 Redis 连接",
+            "supportingChunkIds": [
+              "ig-readme-root__heading-aware-v1__0030__cbaf4b884d02"
+            ],
+            "supportingDocIds": [
+              "ig-readme-root"
+            ],
+            "supportingEvidenceCount": 1,
+            "evidenceDetails": [
+              {
+                "evidenceIndex": 0,
+                "docId": "ig-readme-root",
+                "quote": "检查 Redis 连接和 Stream Consumer 是否正常运行。查看后端日志确认是否有错误。",
+                "chunkIds": [
+                  "ig-readme-root__heading-aware-v1__0030__cbaf4b884d02"
+                ],
+                "crossChunk": false,
+                "matchType": "exact",
+                "configId": "heading-aware-v1"
+              }
+            ]
+          },
+          {
+            "answerPointIndex": 2,
+            "answerPointText": "检查 Stream Consumer 是否正常运行",
+            "supportingChunkIds": [
+              "ig-readme-root__heading-aware-v1__0030__cbaf4b884d02"
+            ],
+            "supportingDocIds": [
+              "ig-readme-root"
+            ],
+            "supportingEvidenceCount": 1,
+            "evidenceDetails": [
+              {
+                "evidenceIndex": 0,
+                "docId": "ig-readme-root",
+                "quote": "检查 Redis 连接和 Stream Consumer 是否正常运行。查看后端日志确认是否有错误。",
+                "chunkIds": [
+                  "ig-readme-root__heading-aware-v1__0030__cbaf4b884d02"
+                ],
+                "crossChunk": false,
+                "matchType": "exact",
+                "configId": "heading-aware-v1"
+              }
+            ]
+          },
+          {
+            "answerPointIndex": 3,
+            "answerPointText": "查看后端日志确认是否有错误",
+            "supportingChunkIds": [
+              "ig-readme-root__heading-aware-v1__0030__cbaf4b884d02"
+            ],
+            "supportingDocIds": [
+              "ig-readme-root"
+            ],
+            "supportingEvidenceCount": 1,
+            "evidenceDetails": [
+              {
+                "evidenceIndex": 0,
+                "docId": "ig-readme-root",
+                "quote": "检查 Redis 连接和 Stream Consumer 是否正常运行。查看后端日志确认是否有错误。",
+                "chunkIds": [
+                  "ig-readme-root__heading-aware-v1__0030__cbaf4b884d02"
+                ],
+                "crossChunk": false,
+                "matchType": "exact",
+                "configId": "heading-aware-v1"
+              }
+            ]
+          }
+        ],
+        "multipleAnswerPoints": true,
+        "multipleChunkCombinationRequired": false,
+        "combinationReason": "",
+        "allCandidateChunkIds": [
+          "ig-readme-root__tts-default-cl100k-800-0__0010__76472780832c"
+        ]
+      }
+    },
+    {
+      "queryId": "devsupport-v01-q13",
+      "question": "项目如何保证数据库 schema 与向量表结构一致、且重启不丢数据？请结合迁移策略与 JPA 配置说明。",
+      "questionType": "multi_evidence",
+      "answerability": "ANSWERABLE",
+      "candidateGold": {
+        "answerPoints": [
+          {
+            "answerPointIndex": 1,
+            "answerPointText": "由 Flyway 管理 schema：V1__init_schema.sql 空库初始化 + 后续增量迁移",
+            "supportingChunkIds": [
+              "ig-db-migration-readme__tts-default-cl100k-800-0__0000__338a39b904c5"
+            ],
+            "supportingDocIds": [
+              "ig-db-migration-readme"
+            ],
+            "supportingEvidenceCount": 1,
+            "evidenceDetails": [
+              {
+                "evidenceIndex": 0,
+                "docId": "ig-db-migration-readme",
+                "quote": "`V1__init_schema.sql` 负责空库初始化。",
+                "chunkIds": [
+                  "ig-db-migration-readme__tts-default-cl100k-800-0__0000__338a39b904c5"
+                ],
+                "crossChunk": false,
+                "matchType": "exact"
+              }
+            ]
+          },
+          {
+            "answerPointIndex": 2,
+            "answerPointText": "Hibernate ddl-auto=validate，只校验不建表/改表",
+            "supportingChunkIds": [
+              "ig-db-migration-readme__tts-default-cl100k-800-0__0000__338a39b904c5"
+            ],
+            "supportingDocIds": [
+              "ig-db-migration-readme"
+            ],
+            "supportingEvidenceCount": 1,
+            "evidenceDetails": [
+              {
+                "evidenceIndex": 1,
+                "docId": "ig-db-migration-readme",
+                "quote": "Hibernate `ddl-auto` 使用 `validate`，只校验 schema，不负责建表或改表。",
+                "chunkIds": [
+                  "ig-db-migration-readme__tts-default-cl100k-800-0__0000__338a39b904c5"
+                ],
+                "crossChunk": false,
+                "matchType": "exact"
+              }
+            ]
+          },
+          {
+            "answerPointIndex": 3,
+            "answerPointText": "pgvector initialize-schema=false，vector_store 表由 Flyway 创建",
+            "supportingChunkIds": [
+              "ig-db-migration-readme__tts-default-cl100k-800-0__0000__338a39b904c5",
+              "ig-readme-root__heading-aware-v1__0025__54fc7b317ed3"
+            ],
+            "supportingDocIds": [
+              "ig-db-migration-readme",
+              "ig-readme-root"
+            ],
+            "supportingEvidenceCount": 3,
+            "evidenceDetails": [
+              {
+                "evidenceIndex": 2,
+                "docId": "ig-db-migration-readme",
+                "quote": "Spring AI pgvector 表结构也由 Flyway 创建，`initialize-schema` 应保持 `false`。",
+                "chunkIds": [
+                  "ig-db-migration-readme__tts-default-cl100k-800-0__0000__338a39b904c5"
+                ],
+                "crossChunk": false,
+                "matchType": "exact"
+              },
+              {
+                "evidenceIndex": 3,
+                "docId": "ig-readme-root",
+                "quote": "`vector_store` 表已由 Flyway 创建，Spring AI 不再自动建表。",
+                "chunkIds": [
+                  "ig-readme-root__heading-aware-v1__0025__54fc7b317ed3"
+                ],
+                "crossChunk": false,
+                "matchType": "exact",
+                "configId": "heading-aware-v1"
+              },
+              {
+                "evidenceIndex": 4,
+                "docId": "ig-readme-root",
+                "quote": "initialize-schema: false",
+                "chunkIds": [
+                  "ig-readme-root__heading-aware-v1__0025__54fc7b317ed3"
+                ],
+                "crossChunk": false,
+                "matchType": "exact",
+                "configId": "heading-aware-v1"
+              }
+            ]
+          },
+          {
+            "answerPointIndex": 4,
+            "answerPointText": "避免 create 模式，否则每次重启删除所有数据",
+            "supportingChunkIds": [
+              "ig-readme-root__heading-aware-v1__0024__419a75de734c"
+            ],
+            "supportingDocIds": [
+              "ig-readme-root"
+            ],
+            "supportingEvidenceCount": 1,
+            "evidenceDetails": [
+              {
+                "evidenceIndex": 5,
+                "docId": "ig-readme-root",
+                "quote": "⚠️ **注意**：避免使用 `create` 模式，否则每次重启都会删除所有数据！",
+                "chunkIds": [
+                  "ig-readme-root__heading-aware-v1__0024__419a75de734c"
+                ],
+                "crossChunk": false,
+                "matchType": "exact",
+                "configId": "heading-aware-v1"
+              }
+            ]
+          }
+        ],
+        "multipleAnswerPoints": true,
+        "multipleChunkCombinationRequired": true,
+        "combinationReason": "无单个 chunk 同时属于所有 4 个答案要点的支持集合（共 5 个候选 chunk），需组合多个 chunk",
+        "allCandidateChunkIds": [
+          "ig-db-migration-readme__tts-default-cl100k-800-0__0000__338a39b904c5",
+          "ig-readme-root__tts-default-cl100k-800-0__0009__fa9f25f9e53c"
+        ]
+      }
+    },
+    {
+      "queryId": "devsupport-v01-q14",
+      "question": "语音面试依赖哪个外部服务、需要哪些密钥？ASR、TTS、LLM 分别用什么模型，是否共用同一个 Key？",
+      "questionType": "multi_evidence",
+      "answerability": "ANSWERABLE",
+      "candidateGold": {
+        "answerPoints": [
+          {
+            "answerPointIndex": 1,
+            "answerPointText": "外部服务为阿里云 DashScope（百炼）",
+            "supportingChunkIds": [
+              "ig-readme-root__heading-aware-v1__0008__7e0a97a99c3e",
+              "ig-setup-api-keys__tts-default-cl100k-800-0__0000__412b1fb66fc9"
+            ],
+            "supportingDocIds": [
+              "ig-readme-root",
+              "ig-setup-api-keys"
+            ],
+            "supportingEvidenceCount": 2,
+            "evidenceDetails": [
+              {
+                "evidenceIndex": 0,
+                "docId": "ig-readme-root",
+                "quote": "实时语音对话面试，WebSocket + 千问3 语音模型（ASR/TTS/LLM 统一 API Key）：",
+                "chunkIds": [
+                  "ig-readme-root__heading-aware-v1__0008__7e0a97a99c3e"
+                ],
+                "crossChunk": false,
+                "matchType": "exact",
+                "configId": "heading-aware-v1"
+              },
+              {
+                "evidenceIndex": 1,
+                "docId": "ig-setup-api-keys",
+                "quote": "**统一 API Key**: 一个密钥即可使用所有功能，无需分别申请！",
+                "chunkIds": [
+                  "ig-setup-api-keys__tts-default-cl100k-800-0__0000__412b1fb66fc9"
+                ],
+                "crossChunk": false,
+                "matchType": "exact"
+              }
+            ]
+          },
+          {
+            "answerPointIndex": 2,
+            "answerPointText": "LLM/ASR/TTS 共用一个 AI_BAILIAN_API_KEY",
+            "supportingChunkIds": [
+              "ig-readme-root__heading-aware-v1__0008__7e0a97a99c3e",
+              "ig-setup-api-keys__tts-default-cl100k-800-0__0000__412b1fb66fc9",
+              "ig-readme-root__heading-aware-v1__0016__f78325903673",
+              "ig-voice-arch__tts-default-cl100k-800-0__0000__ed91cddc6ed2"
+            ],
+            "supportingDocIds": [
+              "ig-readme-root",
+              "ig-setup-api-keys",
+              "ig-voice-arch"
+            ],
+            "supportingEvidenceCount": 5,
+            "evidenceDetails": [
+              {
+                "evidenceIndex": 0,
+                "docId": "ig-readme-root",
+                "quote": "实时语音对话面试，WebSocket + 千问3 语音模型（ASR/TTS/LLM 统一 API Key）：",
+                "chunkIds": [
+                  "ig-readme-root__heading-aware-v1__0008__7e0a97a99c3e"
+                ],
+                "crossChunk": false,
+                "matchType": "exact",
+                "configId": "heading-aware-v1"
+              },
+              {
+                "evidenceIndex": 1,
+                "docId": "ig-setup-api-keys",
+                "quote": "**统一 API Key**: 一个密钥即可使用所有功能，无需分别申请！",
+                "chunkIds": [
+                  "ig-setup-api-keys__tts-default-cl100k-800-0__0000__412b1fb66fc9"
+                ],
+                "crossChunk": false,
+                "matchType": "exact"
+              },
+              {
+                "evidenceIndex": 2,
+                "docId": "ig-setup-api-keys",
+                "quote": "AI_BAILIAN_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx",
+                "chunkIds": [
+                  "ig-setup-api-keys__tts-default-cl100k-800-0__0000__412b1fb66fc9"
+                ],
+                "crossChunk": false,
+                "matchType": "exact"
+              },
+              {
+                "evidenceIndex": 3,
+                "docId": "ig-readme-root",
+                "quote": "最少需要填写 `AI_BAILIAN_API_KEY`，用于 DashScope 文本模型、ASR 和 TTS：",
+                "chunkIds": [
+                  "ig-readme-root__heading-aware-v1__0016__f78325903673"
+                ],
+                "crossChunk": false,
+                "matchType": "exact",
+                "configId": "heading-aware-v1"
+              },
+              {
+                "evidenceIndex": 4,
+                "docId": "ig-voice-arch",
+                "quote": "- **配置简化**: 从 9 个环境变量减少到 2 个（统一使用 `AI_BAILIAN_API_KEY`）",
+                "chunkIds": [
+                  "ig-voice-arch__tts-default-cl100k-800-0__0000__ed91cddc6ed2"
+                ],
+                "crossChunk": false,
+                "matchType": "exact"
+              }
+            ]
+          },
+          {
+            "answerPointIndex": 3,
+            "answerPointText": "ASR 模型 qwen3-asr-flash-realtime",
+            "supportingChunkIds": [
+              "ig-setup-api-keys__tts-default-cl100k-800-0__0000__412b1fb66fc9"
+            ],
+            "supportingDocIds": [
+              "ig-setup-api-keys"
+            ],
+            "supportingEvidenceCount": 1,
+            "evidenceDetails": [
+              {
+                "evidenceIndex": 5,
+                "docId": "ig-setup-api-keys",
+                "quote": "**ASR 语音识别**: 将用户语音实时转换为文本（qwen3-asr-flash-realtime）",
+                "chunkIds": [
+                  "ig-setup-api-keys__tts-default-cl100k-800-0__0000__412b1fb66fc9"
+                ],
+                "crossChunk": false,
+                "matchType": "exact"
+              }
+            ]
+          },
+          {
+            "answerPointIndex": 4,
+            "answerPointText": "TTS 模型 qwen3-tts-flash-realtime",
+            "supportingChunkIds": [
+              "ig-voice-arch__tts-default-cl100k-800-0__0002__7d9fe0ceb64a"
+            ],
+            "supportingDocIds": [
+              "ig-voice-arch"
+            ],
+            "supportingEvidenceCount": 1,
+            "evidenceDetails": [
+              {
+                "evidenceIndex": 6,
+                "docId": "ig-voice-arch",
+                "quote": "**模型**: qwen3-tts-flash-realtime",
+                "chunkIds": [
+                  "ig-voice-arch__tts-default-cl100k-800-0__0002__7d9fe0ceb64a"
+                ],
+                "crossChunk": false,
+                "matchType": "exact"
+              }
+            ]
+          },
+          {
+            "answerPointIndex": 5,
+            "answerPointText": "LLM 模型 qwen3.5-flash",
+            "supportingChunkIds": [
+              "ig-voice-arch__tts-default-cl100k-800-0__0002__7d9fe0ceb64a"
+            ],
+            "supportingDocIds": [
+              "ig-voice-arch"
+            ],
+            "supportingEvidenceCount": 1,
+            "evidenceDetails": [
+              {
+                "evidenceIndex": 7,
+                "docId": "ig-voice-arch",
+                "quote": "**技术**: 阿里云DashScope (qwen3.5-flash)",
+                "chunkIds": [
+                  "ig-voice-arch__tts-default-cl100k-800-0__0002__7d9fe0ceb64a"
+                ],
+                "crossChunk": false,
+                "matchType": "exact"
+              }
+            ]
+          }
+        ],
+        "multipleAnswerPoints": true,
+        "multipleChunkCombinationRequired": true,
+        "combinationReason": "无单个 chunk 同时属于所有 5 个答案要点的支持集合（共 9 个候选 chunk），需组合多个 chunk",
+        "allCandidateChunkIds": [
+          "ig-readme-root__tts-default-cl100k-800-0__0002__15c2b46af8be",
+          "ig-readme-root__tts-default-cl100k-800-0__0006__ba619fe9be23",
+          "ig-setup-api-keys__tts-default-cl100k-800-0__0000__412b1fb66fc9",
+          "ig-voice-arch__tts-default-cl100k-800-0__0000__ed91cddc6ed2",
+          "ig-voice-arch__tts-default-cl100k-800-0__0002__7d9fe0ceb64a"
+        ]
+      }
+    },
+    {
+      "queryId": "devsupport-v01-q15",
+      "question": "知识库题库面试的“严格追问容量校验”是什么规则？当某方向/难度下追问数量不足时，后端返回哪个错误码？",
+      "questionType": "multi_evidence",
+      "answerability": "ANSWERABLE",
+      "candidateGold": {
+        "answerPoints": [
+          {
+            "answerPointIndex": 1,
+            "answerPointText": "开始面试前按方向、难度、主问题数和每题追问数实时计算可用容量",
+            "supportingChunkIds": [
+              "ig-readme-root__heading-aware-v1__0010__b31a74323eb4"
+            ],
+            "supportingDocIds": [
+              "ig-readme-root"
+            ],
+            "supportingEvidenceCount": 1,
+            "evidenceDetails": [
+              {
+                "evidenceIndex": 0,
+                "docId": "ig-readme-root",
+                "quote": "**严格面试容量校验**：开始面试前按方向、难度、主问题数和每题追问数实时计算可用容量；追问数量是硬约束，容量不足的选项会直接禁用，后端同时进行兜底校验。",
+                "chunkIds": [
+                  "ig-readme-root__heading-aware-v1__0010__b31a74323eb4"
+                ],
+                "crossChunk": false,
+                "matchType": "exact",
+                "configId": "heading-aware-v1"
+              }
+            ]
+          },
+          {
+            "answerPointIndex": 2,
+            "answerPointText": "追问数量是硬约束，容量不足的选项前端禁用，后端兜底校验",
+            "supportingChunkIds": [
+              "ig-readme-root__heading-aware-v1__0010__b31a74323eb4"
+            ],
+            "supportingDocIds": [
+              "ig-readme-root"
+            ],
+            "supportingEvidenceCount": 1,
+            "evidenceDetails": [
+              {
+                "evidenceIndex": 0,
+                "docId": "ig-readme-root",
+                "quote": "**严格面试容量校验**：开始面试前按方向、难度、主问题数和每题追问数实时计算可用容量；追问数量是硬约束，容量不足的选项会直接禁用，后端同时进行兜底校验。",
+                "chunkIds": [
+                  "ig-readme-root__heading-aware-v1__0010__b31a74323eb4"
+                ],
+                "crossChunk": false,
+                "matchType": "exact",
+                "configId": "heading-aware-v1"
+              }
+            ]
+          },
+          {
+            "answerPointIndex": 3,
+            "answerPointText": "追问池少于请求数量时返回错误码 INTERVIEW_QUESTION_INSUFFICIENT",
+            "supportingChunkIds": [
+              "ig-kb-interview-capacity-tdd__tts-default-cl100k-800-0__0000__7d679c5ce80d"
+            ],
+            "supportingDocIds": [
+              "ig-kb-interview-capacity-tdd"
+            ],
+            "supportingEvidenceCount": 1,
+            "evidenceDetails": [
+              {
+                "evidenceIndex": 1,
+                "docId": "ig-kb-interview-capacity-tdd",
+                "quote": "追问池少于请求数量时返回 `INTERVIEW_QUESTION_INSUFFICIENT`",
+                "chunkIds": [
+                  "ig-kb-interview-capacity-tdd__tts-default-cl100k-800-0__0000__7d679c5ce80d"
+                ],
+                "crossChunk": false,
+                "matchType": "exact"
+              }
+            ]
+          },
+          {
+            "answerPointIndex": 4,
+            "answerPointText": "空白追问题干不计入严格容量",
+            "supportingChunkIds": [
+              "ig-kb-interview-capacity-tdd__tts-default-cl100k-800-0__0000__7d679c5ce80d"
+            ],
+            "supportingDocIds": [
+              "ig-kb-interview-capacity-tdd"
+            ],
+            "supportingEvidenceCount": 1,
+            "evidenceDetails": [
+              {
+                "evidenceIndex": 2,
+                "docId": "ig-kb-interview-capacity-tdd",
+                "quote": "空白追问题干不计入严格容量",
+                "chunkIds": [
+                  "ig-kb-interview-capacity-tdd__tts-default-cl100k-800-0__0000__7d679c5ce80d"
+                ],
+                "crossChunk": false,
+                "matchType": "exact"
+              }
+            ]
+          }
+        ],
+        "multipleAnswerPoints": true,
+        "multipleChunkCombinationRequired": true,
+        "combinationReason": "无单个 chunk 同时属于所有 4 个答案要点的支持集合（共 4 个候选 chunk），需组合多个 chunk",
+        "allCandidateChunkIds": [
+          "ig-kb-interview-capacity-tdd__tts-default-cl100k-800-0__0000__7d679c5ce80d",
+          "ig-readme-root__tts-default-cl100k-800-0__0003__e79f3fc6b615"
+        ]
+      }
+    },
+    {
+      "queryId": "devsupport-v01-q16",
+      "question": "知识库题目异步生成如何保证同一知识库不会并发执行多个任务，且失败或 Worker 异常退出后能恢复？",
+      "questionType": "multi_evidence",
+      "answerability": "ANSWERABLE",
+      "candidateGold": {
+        "answerPoints": [
+          {
+            "answerPointIndex": 1,
+            "answerPointText": "基于 Redis Stream 异步执行题目生成",
+            "supportingChunkIds": [
+              "ig-readme-root__heading-aware-v1__0010__b31a74323eb4"
+            ],
+            "supportingDocIds": [
+              "ig-readme-root"
+            ],
+            "supportingEvidenceCount": 1,
+            "evidenceDetails": [
+              {
+                "evidenceIndex": 0,
+                "docId": "ig-readme-root",
+                "quote": "题目生成任务通过 Redis Stream 异步执行；生成不足时保留草稿",
+                "chunkIds": [
+                  "ig-readme-root__heading-aware-v1__0010__b31a74323eb4"
+                ],
+                "crossChunk": false,
+                "matchType": "exact",
+                "configId": "heading-aware-v1"
+              }
+            ]
+          },
+          {
+            "answerPointIndex": 2,
+            "answerPointText": "同一知识库同时只有一个活动任务，重复消息只有一个消费者能领取（原子领取）",
+            "supportingChunkIds": [
+              "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0000__6dc9b1d25ebc",
+              "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0001__3b574264b222"
+            ],
+            "supportingDocIds": [
+              "ig-kb-question-gen-async-tdd"
+            ],
+            "supportingEvidenceCount": 3,
+            "evidenceDetails": [
+              {
+                "evidenceIndex": 1,
+                "docId": "ig-kb-question-gen-async-tdd",
+                "quote": "同一知识库同时只能存在一个活动任务，重复消息和旧 Worker 不能覆盖当前任务。",
+                "chunkIds": [
+                  "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0000__6dc9b1d25ebc"
+                ],
+                "crossChunk": false,
+                "matchType": "exact"
+              },
+              {
+                "evidenceIndex": 2,
+                "docId": "ig-kb-question-gen-async-tdd",
+                "quote": "活动任务拒绝重复提交，重复消息只有一个消费者能领取",
+                "chunkIds": [
+                  "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0001__3b574264b222"
+                ],
+                "crossChunk": false,
+                "matchType": "exact"
+              },
+              {
+                "evidenceIndex": 3,
+                "docId": "ig-kb-question-gen-async-tdd",
+                "quote": "任务创建和投递分离、原子领取、重试复位、过期任务恢复、旧结果丢弃及题目替换完成事务均满足测试契约。",
+                "chunkIds": [
+                  "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0000__6dc9b1d25ebc"
+                ],
+                "crossChunk": false,
+                "matchType": "exact"
+              }
+            ]
+          },
+          {
+            "answerPointIndex": 3,
+            "answerPointText": "首次消费失败恢复 QUEUED 重新排队，重试耗尽进入 FAILED",
+            "supportingChunkIds": [
+              "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0000__6dc9b1d25ebc",
+              "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0001__3b574264b222"
+            ],
+            "supportingDocIds": [
+              "ig-kb-question-gen-async-tdd"
+            ],
+            "supportingEvidenceCount": 3,
+            "evidenceDetails": [
+              {
+                "evidenceIndex": 3,
+                "docId": "ig-kb-question-gen-async-tdd",
+                "quote": "任务创建和投递分离、原子领取、重试复位、过期任务恢复、旧结果丢弃及题目替换完成事务均满足测试契约。",
+                "chunkIds": [
+                  "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0000__6dc9b1d25ebc"
+                ],
+                "crossChunk": false,
+                "matchType": "exact"
+              },
+              {
+                "evidenceIndex": 4,
+                "docId": "ig-kb-question-gen-async-tdd",
+                "quote": "消费失败后任务能够重新排队；投递失败或重试耗尽后进入安全的失败状态。",
+                "chunkIds": [
+                  "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0000__6dc9b1d25ebc"
+                ],
+                "crossChunk": false,
+                "matchType": "exact"
+              },
+              {
+                "evidenceIndex": 5,
+                "docId": "ig-kb-question-gen-async-tdd",
+                "quote": "首次失败恢复 `QUEUED`，重试耗尽进入 `FAILED`",
+                "chunkIds": [
+                  "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0001__3b574264b222"
+                ],
+                "crossChunk": false,
+                "matchType": "exact"
+              }
+            ]
+          },
+          {
+            "answerPointIndex": 4,
+            "answerPointText": "长时间停留在 QUEUED/PROCESSING 的任务（Worker 异常退出）可被恢复",
+            "supportingChunkIds": [
+              "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0000__6dc9b1d25ebc",
+              "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0001__3b574264b222"
+            ],
+            "supportingDocIds": [
+              "ig-kb-question-gen-async-tdd"
+            ],
+            "supportingEvidenceCount": 3,
+            "evidenceDetails": [
+              {
+                "evidenceIndex": 3,
+                "docId": "ig-kb-question-gen-async-tdd",
+                "quote": "任务创建和投递分离、原子领取、重试复位、过期任务恢复、旧结果丢弃及题目替换完成事务均满足测试契约。",
+                "chunkIds": [
+                  "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0000__6dc9b1d25ebc"
+                ],
+                "crossChunk": false,
+                "matchType": "exact"
+              },
+              {
+                "evidenceIndex": 6,
+                "docId": "ig-kb-question-gen-async-tdd",
+                "quote": "Worker 或服务异常退出后，长时间停留在 `QUEUED` / `PROCESSING` 的任务能够恢复。",
+                "chunkIds": [
+                  "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0000__6dc9b1d25ebc"
+                ],
+                "crossChunk": false,
+                "matchType": "exact"
+              },
+              {
+                "evidenceIndex": 7,
+                "docId": "ig-kb-question-gen-async-tdd",
+                "quote": "Pending reclaim 与过期 `PROCESSING` 任务可恢复",
+                "chunkIds": [
+                  "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0001__3b574264b222"
+                ],
+                "crossChunk": false,
+                "matchType": "exact"
+              }
+            ]
+          },
+          {
+            "answerPointIndex": 5,
+            "answerPointText": "taskId 变化后旧 Worker 不删除或保存题目（旧结果丢弃）",
+            "supportingChunkIds": [
+              "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0000__6dc9b1d25ebc",
+              "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0001__3b574264b222"
+            ],
+            "supportingDocIds": [
+              "ig-kb-question-gen-async-tdd"
+            ],
+            "supportingEvidenceCount": 2,
+            "evidenceDetails": [
+              {
+                "evidenceIndex": 3,
+                "docId": "ig-kb-question-gen-async-tdd",
+                "quote": "任务创建和投递分离、原子领取、重试复位、过期任务恢复、旧结果丢弃及题目替换完成事务均满足测试契约。",
+                "chunkIds": [
+                  "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0000__6dc9b1d25ebc"
+                ],
+                "crossChunk": false,
+                "matchType": "exact"
+              },
+              {
+                "evidenceIndex": 8,
+                "docId": "ig-kb-question-gen-async-tdd",
+                "quote": "taskId 变化后旧 Worker 不删除或保存题目",
+                "chunkIds": [
+                  "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0001__3b574264b222"
+                ],
+                "crossChunk": false,
+                "matchType": "exact"
+              }
+            ]
+          }
+        ],
+        "multipleAnswerPoints": true,
+        "multipleChunkCombinationRequired": true,
+        "combinationReason": "无单个 chunk 同时属于所有 5 个答案要点的支持集合（共 9 个候选 chunk），需组合多个 chunk",
+        "allCandidateChunkIds": [
+          "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0000__6dc9b1d25ebc",
+          "ig-kb-question-gen-async-tdd__tts-default-cl100k-800-0__0001__3b574264b222",
+          "ig-readme-root__tts-default-cl100k-800-0__0003__e79f3fc6b615"
+        ]
+      }
+    },
+    {
+      "queryId": "devsupport-v01-q17",
+      "question": "RAG 问答助手检索时的相似度阈值（similarity threshold）默认值是多少？对应的配置项名称是什么？",
+      "questionType": "no_answer",
+      "answerability": "NO_ANSWER",
+      "candidateGold": null,
+      "reason": "NO_ANSWER: 语料不包含答案",
+      "missingFromCorpus": "相似度阈值默认值与配置键名；动态 TopK 各档位的具体数值。",
+      "answerSourceOutsideCorpus": "实际配置在 app/src/main/resources/application.yml（如 APP_AI_RAG_TOPK_SHORT/MEDIUM/LONG 默认 20/12/8）；相似度阈值需查检索源码。二者均不在选定语料内，故本题对该语料为无答案。此标注仅为定位说明，不参与索引、查询或回答上下文。",
+      "nearMissChunks": [
+        {
+          "evidenceIndex": 0,
+          "quote": "**RAG 检索增强**：集成 pgvector，通过查询改写、相似度阈值和 TopK 策略提升 AI 问答的准确性与专业度。",
+          "mappedChunkIds": [
+            "ig-readme-root__tts-default-cl100k-800-0__0003__e79f3fc6b615"
+          ],
+          "note": "nearMiss - 语料仅定性提及相关主题，不包含完整答案"
+        }
+      ]
+    },
+    {
+      "queryId": "devsupport-v01-q18",
+      "question": "知识库文档向量化时的分块（chunk）大小是多少 token？chunk 之间是否有重叠（overlap），重叠多少？",
+      "questionType": "no_answer",
+      "answerability": "NO_ANSWER",
+      "candidateGold": null,
+      "reason": "NO_ANSWER: 语料不包含答案",
+      "missingFromCorpus": "TokenTextSplitter 的 chunk size 与 overlap 具体数值。",
+      "answerSourceOutsideCorpus": "实际在 app/src/main/java/interview/guide/modules/knowledgebase/service/KnowledgeBaseVectorService.java（TokenTextSplitter 默认配置），不在选定语料内。此标注仅为定位说明，不参与索引、查询或回答上下文。",
+      "nearMissChunks": [
+        {
+          "evidenceIndex": 0,
+          "quote": "**文档智能处理**：支持 PDF、DOCX、Markdown 等多种格式文档的自动上传、分块与异步向量化。",
+          "mappedChunkIds": [
+            "ig-readme-root__tts-default-cl100k-800-0__0003__e79f3fc6b615"
+          ],
+          "note": "nearMiss - 语料仅定性提及相关主题，不包含完整答案"
+        }
+      ]
+    },
+    {
+      "queryId": "devsupport-v01-q19",
+      "question": "完整 docker-compose.yml 部署里，MinIO 的 createbuckets 初始化服务具体执行了哪些命令、把 bucket 设为什么访问策略？",
+      "questionType": "no_answer",
+      "answerability": "NO_ANSWER",
+      "candidateGold": null,
+      "reason": "NO_ANSWER: 语料不包含答案",
+      "missingFromCorpus": "createbuckets 服务的 entrypoint 命令（mc alias/mb/anonymous 等）与 bucket 匿名访问策略。",
+      "answerSourceOutsideCorpus": "实际在 docker-compose.yml 的 createbuckets 服务（mc mb myminio/interview-guide、mc anonymous set public），不在选定语料内。此标注仅为定位说明，不参与索引、查询或回答上下文。",
+      "nearMissChunks": [
+        {
+          "evidenceIndex": 0,
+          "quote": "Docker Compose 编排了 6 个服务：PostgreSQL（pgvector）、Redis、MinIO（S3 兼容存储）、MinIO Bucket 初始化、Spring Boot 后端、React 前端（Nginx）。",
+          "mappedChunkIds": [
+            "ig-readme-root__tts-default-cl100k-800-0__0007__c6d462233363"
+          ],
+          "note": "nearMiss - 语料仅定性提及相关主题，不包含完整答案"
+        }
+      ]
+    },
+    {
+      "queryId": "devsupport-v01-q20",
+      "question": "语音面试 WebSocket 自定义 JSON 消息协议中，AUDIO / SUBTITLE / CONTROL 各消息类型的完整字段（payload 结构）分别是什么？",
+      "questionType": "no_answer",
+      "answerability": "NO_ANSWER",
+      "candidateGold": null,
+      "reason": "NO_ANSWER: 语料不包含答案",
+      "missingFromCorpus": "每种 WebSocket 消息类型的 payload 字段结构与示例。",
+      "answerSourceOutsideCorpus": "完整协议在源码 VoiceInterviewWebSocketHandler 及前端 WebSocket 类型定义中，不在选定语料内。此标注仅为定位说明，不参与索引、查询或回答上下文。",
+      "nearMissChunks": [
+        {
+          "evidenceIndex": 0,
+          "quote": "**协议**: 自定义JSON消息格式",
+          "mappedChunkIds": [
+            "ig-voice-arch__tts-default-cl100k-800-0__0002__7d9fe0ceb64a"
+          ],
+          "note": "nearMiss - 语料仅定性提及相关主题，不包含完整答案"
+        },
+        {
+          "evidenceIndex": 1,
+          "quote": "- `AUDIO`: 音频数据",
+          "mappedChunkIds": [
+            "ig-voice-arch__tts-default-cl100k-800-0__0002__7d9fe0ceb64a"
+          ],
+          "note": "nearMiss - 语料仅定性提及相关主题，不包含完整答案"
+        }
+      ]
+    }
+  ],
+  "provenance": {
+    "derivedFromDataset": "devsupport-v0.1",
+    "baseCommit": "1c5f3e6",
+    "parsePath": "DocumentParseService.parseContent(bytes, 'ig-readme-root.md') = Tika AutoDetectParser + TextCleaningService.cleanText",
+    "sourceRawSha256": "699c33582d74b5f74212457c2f0d5e262b8b873c37e9e58a9245b6a53570460c",
+    "productionCleanedSha256": "f47b6a972fb49ee0c26eee9aec314fa620a43d83aceed00022b7e631d05aa6d1",
+    "cleanedChars": 17901,
+    "cleanedMatchesBaselineManifest": true,
+    "readmeRootChunker": "heading-aware-v1",
+    "splitStrategy": "heading-aware on production-cleaned text",
+    "nonReadmeDocs": "inherited from baseline verbatim",
+    "mappingRule": "whitespace-normalized verbatim quote containment"
+  }
+}

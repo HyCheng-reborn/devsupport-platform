@@ -1,0 +1,90 @@
+{
+ "provenance": {
+  "type": "OFFLINE_RECOMPUTE_NOT_NEW_RETRIEVAL",
+  "basedOnEvalRunId": "26e7f099",
+  "topKSource": "heading-aware-v0/p1c-l1-per-query.json",
+  "goldBefore": "heading-aware-v0",
+  "goldAfter": "heading-aware-v0.1",
+  "change": "q11-AP0 += ig-setup-api-keys__...0000__412b1fb66fc9 (verbatim quote 'voice: Cherry')",
+  "beforeRecomputeMatchesFrozenReport": true
+ },
+ "macroByK_before": {
+  "k=1": {
+   "macroHitAtK": 0.8125,
+   "macroMrrAtK": 0.8125,
+   "macroApcAtK": 0.728125,
+   "macroFullCoverageAtK": 0.5625,
+   "coveredPointsAtK": 28,
+   "totalAnswerPoints": 38,
+   "perQueryFCcount": 9
+  },
+  "k=3": {
+   "macroHitAtK": 0.9375,
+   "macroMrrAtK": 0.8541666666666666,
+   "macroApcAtK": 0.9125,
+   "macroFullCoverageAtK": 0.875,
+   "coveredPointsAtK": 35,
+   "totalAnswerPoints": 38,
+   "perQueryFCcount": 14
+  },
+  "k=5": {
+   "macroHitAtK": 0.9375,
+   "macroMrrAtK": 0.8541666666666666,
+   "macroApcAtK": 0.9125,
+   "macroFullCoverageAtK": 0.875,
+   "coveredPointsAtK": 35,
+   "totalAnswerPoints": 38,
+   "perQueryFCcount": 14
+  },
+  "k=10": {
+   "macroHitAtK": 1.0,
+   "macroMrrAtK": 0.8630952380952381,
+   "macroApcAtK": 1.0,
+   "macroFullCoverageAtK": 1.0,
+   "coveredPointsAtK": 38,
+   "totalAnswerPoints": 38,
+   "perQueryFCcount": 16
+  }
+ },
+ "macroByK_after": {
+  "k=1": {
+   "macroHitAtK": 0.8125,
+   "macroMrrAtK": 0.8125,
+   "macroApcAtK": 0.728125,
+   "macroFullCoverageAtK": 0.5625,
+   "coveredPointsAtK": 28,
+   "totalAnswerPoints": 38,
+   "perQueryFCcount": 9
+  },
+  "k=3": {
+   "macroHitAtK": 1.0,
+   "macroMrrAtK": 0.875,
+   "macroApcAtK": 0.975,
+   "macroFullCoverageAtK": 0.9375,
+   "coveredPointsAtK": 36,
+   "totalAnswerPoints": 38,
+   "perQueryFCcount": 15
+  },
+  "k=5": {
+   "macroHitAtK": 1.0,
+   "macroMrrAtK": 0.875,
+   "macroApcAtK": 0.975,
+   "macroFullCoverageAtK": 0.9375,
+   "coveredPointsAtK": 36,
+   "totalAnswerPoints": 38,
+   "perQueryFCcount": 15
+  },
+  "k=10": {
+   "macroHitAtK": 1.0,
+   "macroMrrAtK": 0.875,
+   "macroApcAtK": 1.0,
+   "macroFullCoverageAtK": 1.0,
+   "coveredPointsAtK": 38,
+   "totalAnswerPoints": 38,
+   "perQueryFCcount": 16
+  }
+ },
+ "changedQueriesSupportingSets": [
+  "devsupport-v01-q11"
+ ]
+}

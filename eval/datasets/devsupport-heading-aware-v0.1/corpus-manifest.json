@@ -1,0 +1,200 @@
+{
+  "datasetId": "devsupport",
+  "version": "heading-aware-v0",
+  "status": "candidate-experiment",
+  "kind": "candidate-heading-aware-dataset",
+  "description": "研发项目知识助手（InterviewGuide）离线检索评测开发集草案的语料清单。全部为仓库内真实文档的逐字节副本，未改写、未编造。",
+  "notATestSet": true,
+  "preparedAt": "2026-09-29",
+  "snapshotCommit": "d2fd5e633248b2c008cf387ab82651a56cca8502",
+  "snapshotCommitNote": "snapshotCommit 为准备该草案时的工作区 HEAD（P1-A 提交后）。每个文档另记 sourceCommit = 该文件最近一次改动的提交（git log -1）。",
+  "sourceLicense": "AGPL-3.0（见 README.md 许可证章节）",
+  "hashAlgorithm": "sha256",
+  "charCountMethod": "Python len(text)：UTF-8 解码后的 Unicode 码点数（保留 CRLF，不规范化）；lineCount = 换行符 \\n 计数",
+  "excerptPolicy": "本轮全部采用整文件副本（excerptMode=whole-file），excerpt 内容与原文件逐字节一致，故 excerptSha256 == originalSha256。未做章节抽取。",
+  "chunkMappingStatus": "已建立：见 candidate-gold.json（生产清洗文本，逐字 quote 映射）",
+  "excludedOnPurpose": [
+    ".env / .env.example（含密钥占位与配置，不作为语料）",
+    "AGENTS.md、CLAUDE.md、.claude/rules/*.md（Agent 操作指令，非产品知识）",
+    "日志、个人资料、构建产物、缓存",
+    "frontend/README.md（Vite 官方模板样板文，无项目专有内容）",
+    "app/src/main/resources/skills/**（面试题库/技能参考，非本项目研发文档）",
+    "interview-guide_本机环境与启动关闭说明.md（本机环境说明，未跟踪）"
+  ],
+  "totals": {
+    "documentCount": 7,
+    "totalChars": 39076,
+    "totalLines": 1415,
+    "totalBytes": 58266
+  },
+  "documents": [
+    {
+      "docId": "ig-readme-root",
+      "title": "智能 AI 面试官平台 README（项目主文档）",
+      "originalPath": "README.md",
+      "corpusFile": "corpus/ig-readme-root.md",
+      "sourceCommit": "7ee0ff2",
+      "excerptMode": "whole-file",
+      "excerptRange": {
+        "startLine": 1,
+        "endLine": 576
+      },
+      "originalSha256": "699c33582d74b5f74212457c2f0d5e262b8b873c37e9e58a9245b6a53570460c",
+      "excerptSha256": "699c33582d74b5f74212457c2f0d5e262b8b873c37e9e58a9245b6a53570460c",
+      "lineCount": 576,
+      "charCount": 19800,
+      "topics": [
+        "项目启动与部署",
+        "配置",
+        "数据库",
+        "Redis",
+        "对象存储",
+        "知识库使用",
+        "项目结构",
+        "故障排查"
+      ],
+      "notes": "主来源，覆盖快速开始、Docker 部署、服务端口/账号表、常见问题（FAQ）与项目结构。",
+      "chunkCount": 33,
+      "chunkerNote": "candidate: heading-aware-v1 于生产清洗文本(cleanedSha256=f47b6a972fb4)切分为 33 chunks"
+    },
+    {
+      "docId": "ig-voice-arch",
+      "title": "AI 语音面试系统架构文档",
+      "originalPath": "docs/voice-interview-architecture.md",
+      "corpusFile": "corpus/ig-voice-arch.md",
+      "sourceCommit": "28e97a3",
+      "excerptMode": "whole-file",
+      "excerptRange": {
+        "startLine": 1,
+        "endLine": 546
+      },
+      "originalSha256": "3a511bc9ec766e14d68bb4c3358ab68060c11e07e4fda704282b6755c7e78d8a",
+      "excerptSha256": "3a511bc9ec766e14d68bb4c3358ab68060c11e07e4fda704282b6755c7e78d8a",
+      "lineCount": 546,
+      "charCount": 10902,
+      "topics": [
+        "架构",
+        "配置",
+        "部署",
+        "API 接口",
+        "语音服务",
+        "故障排查"
+      ],
+      "notes": "含 REST 接口清单、语音服务配置样例、数据模型与常见问题。文档头部标注“最后更新 2026-04-06”。"
+    },
+    {
+      "docId": "ig-db-migration-readme",
+      "title": "Flyway 数据库迁移说明",
+      "originalPath": "app/src/main/resources/db/migration/README.md",
+      "corpusFile": "corpus/ig-db-migration-readme.md",
+      "sourceCommit": "f42f750",
+      "excerptMode": "whole-file",
+      "excerptRange": {
+        "startLine": 1,
+        "endLine": 13
+      },
+      "originalSha256": "03eec49a7ea524794d3fee19120ae33ba320778b06078f51c0004512605b6e45",
+      "excerptSha256": "03eec49a7ea524794d3fee19120ae33ba320778b06078f51c0004512605b6e45",
+      "lineCount": 13,
+      "charCount": 472,
+      "topics": [
+        "数据库",
+        "配置",
+        "Flyway",
+        "故障排查"
+      ],
+      "notes": "说明 Flyway 迁移、ddl-auto=validate、pgvector initialize-schema=false、测试环境 H2。"
+    },
+    {
+      "docId": "ig-setup-api-keys",
+      "title": "API 密钥配置指南",
+      "originalPath": "SETUP_API_KEYS.md",
+      "corpusFile": "corpus/ig-setup-api-keys.md",
+      "sourceCommit": "28e97a3",
+      "excerptMode": "whole-file",
+      "excerptRange": {
+        "startLine": 1,
+        "endLine": 137
+      },
+      "originalSha256": "e0abdc3d5c504ad7548d7fa3f648dbf685bd7de791082d119d72957a16318002",
+      "excerptSha256": "e0abdc3d5c504ad7548d7fa3f648dbf685bd7de791082d119d72957a16318002",
+      "lineCount": 137,
+      "charCount": 2535,
+      "topics": [
+        "配置",
+        "密钥",
+        "语音服务",
+        "故障排查"
+      ],
+      "notes": "仅含占位密钥（如 sk-xxxxxxxx / sk-your-actual-key-here），无任何真实密钥；说明 DashScope 统一 Key、ASR/TTS 模型、验证日志与常见问题。"
+    },
+    {
+      "docId": "ig-githooks-readme",
+      "title": "Git 提交消息 Hook 说明",
+      "originalPath": ".githooks/README.md",
+      "corpusFile": "corpus/ig-githooks-readme.md",
+      "sourceCommit": "f42f750",
+      "excerptMode": "whole-file",
+      "excerptRange": {
+        "startLine": 1,
+        "endLine": 24
+      },
+      "originalSha256": "4d7e1aa4204a895698801148d2ef6686222e5c786c78a5fe0fd4e358c2414913",
+      "excerptSha256": "4d7e1aa4204a895698801148d2ef6686222e5c786c78a5fe0fd4e358c2414913",
+      "lineCount": 24,
+      "charCount": 343,
+      "topics": [
+        "项目启动与部署",
+        "开发流程",
+        "命令"
+      ],
+      "notes": "启用提交消息 hook 的命令、commit message 格式与允许的类型。"
+    },
+    {
+      "docId": "ig-kb-question-gen-async-tdd",
+      "title": "知识库问题异步生成 TDD 证据",
+      "originalPath": ".claude/tdd/knowledge-base-question-generation-async.tdd.md",
+      "corpusFile": "corpus/ig-kb-question-gen-async-tdd.md",
+      "sourceCommit": "a63bb34",
+      "excerptMode": "whole-file",
+      "excerptRange": {
+        "startLine": 1,
+        "endLine": 77
+      },
+      "originalSha256": "5ceace0f8f115141876dc5b89762b4d920d98dd584248283dabf5305d3f7f311",
+      "excerptSha256": "5ceace0f8f115141876dc5b89762b4d920d98dd584248283dabf5305d3f7f311",
+      "lineCount": 77,
+      "charCount": 3165,
+      "topics": [
+        "知识库使用",
+        "异步可靠性",
+        "Redis Stream",
+        "故障排查"
+      ],
+      "notes": "工程/TDD 证据文档（非 Agent 操作指令）。描述题目异步生成状态机（QUEUED/PROCESSING/COMPLETED/FAILED）、活动任务唯一性、重试与恢复、事务边界。含内部提交检查点哈希。"
+    },
+    {
+      "docId": "ig-kb-interview-capacity-tdd",
+      "title": "知识库面试严格追问容量 TDD 证据",
+      "originalPath": ".claude/tdd/knowledge-base-interview-capacity.tdd.md",
+      "corpusFile": "corpus/ig-kb-interview-capacity-tdd.md",
+      "sourceCommit": "0b99aaa",
+      "excerptMode": "whole-file",
+      "excerptRange": {
+        "startLine": 1,
+        "endLine": 42
+      },
+      "originalSha256": "de3665921d64f7e959eb653e36811f6f6083712745ae2af9bff8c568203b83ed",
+      "excerptSha256": "de3665921d64f7e959eb653e36811f6f6083712745ae2af9bff8c568203b83ed",
+      "lineCount": 42,
+      "charCount": 1859,
+      "topics": [
+        "知识库使用",
+        "面试容量校验",
+        "错误码"
+      ],
+      "notes": "工程/TDD 证据文档（非 Agent 操作指令）。描述严格追问容量规则与错误码 INTERVIEW_QUESTION_INSUFFICIENT。含内部提交检查点哈希。"
+    }
+  ],
+  "derivedFrom": "devsupport-v0.1 (1c5f3e6); ig-readme-root 经同一生产解析+清洗后按 heading-aware 重切，其余文档继承"
+}
