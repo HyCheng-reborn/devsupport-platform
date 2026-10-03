@@ -1,3 +1,15 @@
+**2026-10-03 -- I-4 RAG Chat SSE 集成测试（Testcontainers PostgreSQL/pgvector + Redis，Mock LLM）**
+- 新增 `RagChatSseIntegrationTest.java`：3 个集成测试场景
+  - SSE 事件顺序 data→sources→done 且 PostgreSQL 落库正确
+  - sources 事件包含正确的 kb_id、service、environment 标签
+  - PostgreSQL 读取：getSessionDetail 返回持久化的消息和来源
+- Testcontainers 启动 pgvector/pgvector:pg16 + redis:7-alpine 隔离容器
+- Mock LlmProviderRegistry + KnowledgeBaseVectorService，零真实 LLM/Embedding/Redis Stream/S3 调用
+- 新增 `testcontainers-postgresql` 依赖（`app/build.gradle`）
+- 定点：3 tests / 0 failures / 0 errors / 0 skipped
+- 全量：511 tests / 10 failures / 3 skipped（10 个失败均为预先存在的 VoiceInterviewIntegrationTest Redis 连接问题，与本次变更无关）
+- 未改任何生产代码
+
 **2026-10-03 -- I-3 切片 3：VoiceInterviewIntegrationTest 恢复（YAML 缩进修复 + WebSocket 测试环境修复）**
 - 修复 `application-test.yml` dashscope provider model 属性缩进（6 → 8 空格）
 - `@SpringBootTest` → `@SpringBootTest(webEnvironment = RANDOM_PORT)` 支持 WebSocket
