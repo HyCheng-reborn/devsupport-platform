@@ -102,6 +102,10 @@ docker compose -f docker-compose.dev.yml up -d
 - 不要硬编码密钥、Token、数据库密码。
 - 不要使用 `Executors.newXxxThreadPool()`，需要线程池时显式配置 `ThreadPoolExecutor`。
 
+## Mainline Reference
+
+**必读**：[DEVSUPPORT_ROADMAP.md](./DEVSUPPORT_ROADMAP.md) — 产品定位、开发阶段、验收标准与 Agent 执行边界。执行任何开发任务前必须先阅读该文件，确认当前阶段和工作范围。
+
 ## More Rules
 
 - 后端 Java 细则：`.claude/rules/backend.md`
