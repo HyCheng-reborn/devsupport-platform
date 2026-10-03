@@ -158,6 +158,8 @@ tasks.register('evalVerifyTika', JavaExec) {
 tasks.register('evalP1cReal', Test) {
     group = 'evaluation'
     description = 'Run P1-C L1 real vector retrieval evaluation (requires paid API key)'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
     useJUnitPlatform {
         includeTags 'real-eval'
     }
@@ -173,6 +175,34 @@ tasks.register('evalP1cReal', Test) {
         def val = project.findProperty(key)
         if (val != null && val.toString() != '') {
             systemProperty key, val.toString()
+        }
+    }
+    // 从仓库根目录 .env 加载环境变量（AI_BAILIAN_API_KEY 等），供测试进程读取
+    def envFile = rootProject.file('.env')
+    if (envFile.exists()) {
+        envFile.eachLine { line ->
+            def trimmed = line.trim()
+            if (trimmed.isEmpty() || trimmed.startsWith('#')) return
+            def idx = trimmed.indexOf('=')
+            if (idx > 0) {
+                def k = trimmed.substring(0, idx).trim()
+                def v = trimmed.substring(idx + 1).trim()
+                environment k, v
+            }
+        }
+    }
+    // 从 .env.eval 加载评测专用变量（EVAL_DB_PASSWORD、EVAL_RUNNER_PASSWORD 等）
+    def evalEnvFile = rootProject.file('.env.eval')
+    if (evalEnvFile.exists()) {
+        evalEnvFile.eachLine { line ->
+            def trimmed = line.trim()
+            if (trimmed.isEmpty() || trimmed.startsWith('#')) return
+            def idx = trimmed.indexOf('=')
+            if (idx > 0) {
+                def k = trimmed.substring(0, idx).trim()
+                def v = trimmed.substring(idx + 1).trim()
+                environment k, v
+            }
         }
     }
     jvmArgs '--enable-native-access=ALL-UNNAMED'

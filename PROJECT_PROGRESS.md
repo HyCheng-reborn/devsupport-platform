@@ -922,6 +922,42 @@ START `2026-10-02 16:44:47+08` / END `16:45:45+08`（**57s**）→ **FOCUSED_EXI
 
 本轮仅 4 份 markdown，`git revert <sha>` 即可；不影响任何 build/test/run。
 
+## I-6 P1-C L1 真实向量评测 + 基础设施修复
+
+**状态**：`真实环境已验证`（P1-C L1 向量检索组件基线）。基础设施修复（.gitattributes CRLF + build.gradle evalP1cReal 配置）已提交。
+
+**背景**：I-6 是 P1-C L1 的真实评测执行，使用独立 PostgreSQL 容器（端口 5433）+ 阿里云百炼 Embedding API（text-embedding-v3, 1024 维）。评测前需修复两个基础设施问题：
+1. `.gitattributes`：Windows 上 `*.sh` 被 Git 自动转换为 CRLF 行尾，导致 Linux 容器中 shebang 解析失败
+2. `app/build.gradle`：`evalP1cReal` 自定义 Test 任务缺少 `testClassesDirs`/`classpath` 配置（显示 NO-SOURCE），且无法加载 `.env`/`.env.eval` 环境变量
+
+**评测结果**（`app/build/eval/p1c-l1-report.json`）：
+- 20 个查询（16 可答题 + 4 NO_ANSWER 诊断），0 失败
+- roundAvailability: **USABLE**
+- 预算使用：23/50（**WITHIN_LIMIT**），HTTP 观测 24 次
+- 工件冻结校验：**PASS**（4 文件 SHA-256 归一化匹配）
+- 入库验证：**PASS**（28 chunks，1024 维，0 重复）
+- 清理状态：**CLEANED**（28 行删除，0 残留）
+
+**检索质量指标（宏平均，分母=16 道可答题）**：
+
+| K | Hit@K | MRR@K | APC@K | FullCoverage@K |
+|---|---|---|---|---|
+| 1 | 68.75% | 68.75% | 54.06% | 31.25% |
+| 3 | 81.25% | 75.00% | 72.50% | 62.50% |
+| 5 | **93.75%** | 77.81% | 88.13% | 81.25% |
+| 10 | **100%** | 78.85% | **100%** | **100%** |
+
+**基础设施修复**：
+- `.gitattributes`：添加 `*.sh text eol=lf`，强制 shell 脚本使用 LF 行尾
+- `app/build.gradle`：`evalP1cReal` 任务补全 `testClassesDirs`/`classpath`，新增 `.env`/`.env.eval` 文件加载逻辑（文件不存在时优雅跳过）
+
+**未验证**：
+- 未验证真实 LLM/SSE/生产环境 RAG 问答
+- 未验证 S3 上传/Redis Stream
+- 本评测仅覆盖 L1 向量检索组件（不含查询改写、动态 topK/阈值）
+
+---
+
 ## I-3 切片 1：VoiceInterviewServiceTest mock 漂移修复（保留后端回归测试恢复）
 
 **状态**：`离线通过`。定点 32/32 全绿，全量 508/0/0/14。

@@ -1,3 +1,13 @@
+**2026-10-03 -- I-6 P1-C L1 真实向量评测 + 基础设施修复**
+- `.gitattributes`：添加 `*.sh text eol=lf`，修复 Windows 上 shell 脚本 CRLF 行尾导致 Linux 容器 shebang 解析失败
+- `app/build.gradle`：`evalP1cReal` 任务补全 `testClassesDirs`/`classpath`（修复 NO-SOURCE），新增 `.env`/`.env.eval` 环境变量加载逻辑（文件不存在时优雅跳过）
+- P1-C L1 真实评测：20 查询全部完成，0 失败，roundAvailability: USABLE
+- 预算使用：23/50（WITHIN_LIMIT），HTTP 观测 24 次
+- 工件冻结校验：PASS；入库验证：PASS（28 chunks, 1024 维）；清理：CLEANED（28 行删除）
+- 检索质量（宏平均 k=5）：Hit@5=93.75%, MRR@5=77.81%, APC@5=88.13%, FullCoverage@5=81.25%
+- 检索质量（宏平均 k=10）：Hit@10=100%, MRR@10=78.85%, APC@10=100%, FullCoverage@10=100%
+- 未改任何生产代码；未验证真实 LLM/SSE/S3/Redis Stream/生产环境 RAG 问答
+
 **2026-10-03 -- I-4 RAG Chat SSE 集成测试（Testcontainers PostgreSQL/pgvector + Redis，Mock LLM）**
 - 新增 `RagChatSseIntegrationTest.java`：3 个集成测试场景
   - SSE 事件顺序 data→sources→done 且 PostgreSQL 落库正确
