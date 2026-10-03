@@ -1,3 +1,18 @@
+**2026-10-04 -- DevSupport 阶段 1 完成：主壳交付与上下文贯通**
+- 四导航重建：文档中心 (`/docs`)、排查会话 (`/chat`)、案例库 (`/cases`)、评测结果 (`/eval-results`)，Layout 从旧五入口改为四入口
+- 后端新增 `GET /api/knowledgebase/resolve-context` 端点，service/environment 解析为匹配的 KB IDs 传入向量检索
+- RAG Chat 会话创建支持 service/environment 参数，自动 union 显式 kbIds，旧请求兼容
+- ContextSelector 组件：service + environment 双选择器，实时显示检索范围；project/version 禁用标注"阶段 2"
+- 评测结果页：加载 heading-aware-v0/v0.1 和 v0.1 baseline 三套数据集离线评测指标
+- 来源引用增强：展示 service（蓝色）和 environment（绿色）标签快照
+- 案例库占位页：明确标注"待建设"
+- 代码审查修复：环境过滤下推到 SQL `LOWER(environment) = LOWER(:env)`；会话上下文清除联动
+- 设计冲突处理：service/environment 从纯组织标签升级为影响检索范围的上下文
+- 后端测试：577 tests，新增 12+ 上下文解析测试全通过
+- 前端：`pnpm run build` 通过，53 个单元测试全通过
+- 浏览器 E2E：8 项全部通过（真实前端 + 真实后端 + 真实 PostgreSQL/Redis）
+- 未推送远程；未调用真实 LLM/Embedding
+
 **2026-10-04 -- DevSupport 路线图阶段 0 完成：遗留 Resume 文件分类保留 + 路线图状态更新**
 - 4 个未跟踪的 Resume demo 遗留文件已作为独立提交保留（`ea8fc22`，标注"遗留模块维护"）：`DevSupport_项目开发总方案_v1.0.md`、`DemoResumeGradingService.java`、`application-demo.yml`、`app/src/test/java/interview/guide/modules/resume/`（6 个测试文件）
 - `DEVSUPPORT_ROADMAP.md` 阶段 0 状态从"实现中"更新为"已完成"，阶段状态表与工作区事实核对一致

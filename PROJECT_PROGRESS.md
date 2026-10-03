@@ -3,7 +3,7 @@
 > 本项目（远程仓库 `HyCheng-reborn/devsupport-platform`，本地目录名仍为 `interview-guide`）的进度事实源。
 > **跨机器 remote 别名映射（读文档前先对齐，避免 `origin` 误读）**：本机 `devsupport` = `HyCheng-reborn/devsupport-platform`（推送目标），本机 `origin` = `Snailclimb/interview-guide`（上游，**勿推**）；另一台验证机（批次 C/D 补验）的 `origin` = `HyCheng-reborn/devsupport-platform`，故其文档/提交记录里的「push 到 `origin/master`」等同于本机的「push 到 `devsupport/master`」。判断实际目标仓库一律以 remote URL 为准，不要只看别名。
 > 新会话接手时先读本文件，再读「交接区」列出的文件。
-> 最近更新：**2026-09-30 方案第二轮修订（北京时间）**，作者 Qoder。
+> 最近更新：**2026-10-04 DevSupport 阶段 1 完成（四导航重建 + 上下文贯通 + 评测结果页）**，作者 Qoder。
 
 ## 0. 维护规则
 
@@ -30,6 +30,19 @@
 - **P1-C**（当前阶段）：真实 pgvector + 真实 Embedding 的 **L1 向量检索组件基线**，明确不含查询改写、动态 topK/阈值（这三项生产里都开着，见 §3.4）。
 
 ## 2. 已完成且有证据
+
+- **DevSupport 路线图阶段 1 完成（2026-10-04，提交 `2aa4e8c` + `5798f62`）** — 状态 `已完成`。
+  - 四导航重建：文档中心 (`/docs`)、排查会话 (`/chat`)、案例库 (`/cases`)、评测结果 (`/eval-results`)，Layout 从旧五入口改为四入口。
+  - 上下文贯通：新增 `GET /api/knowledgebase/resolve-context` 端点，service/environment 解析为 KB IDs 传入向量检索；RAG Chat 会话创建支持 service/environment 参数；旧请求兼容。
+  - ContextSelector 组件：service + environment 双选择器，实时显示检索范围；project/version 禁用标注"阶段 2 前置工作"。
+  - 评测结果页：加载 heading-aware-v0/v0.1 和 v0.1 baseline 三套数据集离线评测指标（K=1/3/5/10）。
+  - 来源引用增强：展示 service（蓝色）和 environment（绿色）标签快照。
+  - 案例库占位：明确标注"待建设"，不做假数据。
+  - 设计冲突处理：service/environment 从纯组织标签升级为影响检索范围的上下文；project/version 因数据模型缺失在 UI 明确禁用。
+  - 代码审查修复：环境过滤下推到 SQL；会话上下文清除联动。
+  - 浏览器验证：8 项 E2E 全部通过（真实前端 + 真实后端 + 真实 PostgreSQL/Redis）。
+  - 后端测试：577 tests，新增 12+ 上下文解析测试全通过。
+  - 前端：`pnpm run build` 通过，53 个单元测试全通过。
 
 - **DevSupport 路线图阶段 0 完成（2026-10-04，提交 `ea8fc22`）** — 状态 `已完成`。
   - 4 个未跟踪的 Resume demo 遗留文件已作为独立提交保留（标注"遗留模块维护"）：`DevSupport_项目开发总方案_v1.0.md`、`DemoResumeGradingService.java`、`application-demo.yml`、`app/src/test/java/interview/guide/modules/resume/`（6 个测试文件）。
