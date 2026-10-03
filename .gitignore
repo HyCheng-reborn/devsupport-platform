@@ -46,3 +46,7 @@ status.txt
 
 # Local environment notes
 interview-guide_*.md
+
+# E2E screenshots / demo sample files (evidence, not source)
+# 注：/docs 已整体忽略，此处显式声明以明确用途
+docs/evidence/

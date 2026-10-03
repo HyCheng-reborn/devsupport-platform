@@ -131,6 +131,8 @@ Phase 1 沿用上游面试项目的技术栈与运行时基础设施，用户可
 
 Phase 1 前端导航（`Layout.tsx`）仅暴露：**知识库管理 / 问答助手 / 设置** 三个入口；访问面试相关旧路由会重定向到知识库首页。相关上游材料（原项目 OSS 图片链接、付费教程等）本轮未核验可访问性，不在本 README 引用。
 
+> **注**：当前工作区有未提交的 Resume 导航改动（`Layout.tsx` 新增「简历管理」入口）。路线图阶段 1 将把主导航重建为 DevSupport 的四入口（文档中心 / 排查会话 / 案例库 / 评测结果），届时上述「三个入口」描述会随之更新。方向详见 [DEVSUPPORT_ROADMAP.md](./DEVSUPPORT_ROADMAP.md)。
+
 ## 项目结构
 
 ```
@@ -417,6 +419,10 @@ $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 | README / AGENTS.md | DevSupport | **本轮 Phase 1 内更新（批次 D）** |
 
 **上游作者维护的付费教程**：本项目改造不依赖该教程，本 README 不再引用其外链；如需了解上游原始面试项目背景，请直接访问上游仓库。
+
+## 项目路线图
+
+详见 [DEVSUPPORT_ROADMAP.md](./DEVSUPPORT_ROADMAP.md) — 产品定位、开发阶段、验收标准与 Agent 执行边界。
 
 ## 贡献
 
