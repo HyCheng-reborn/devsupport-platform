@@ -3,6 +3,7 @@ package interview.guide.eval;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import interview.guide.eval.P1cRetrievalHandler.Hit;
 import java.io.BufferedReader;
@@ -11,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -1552,5 +1554,270 @@ class P1cOfflineUnitTest {
     }
     throw new IllegalStateException("无法定位 P1-B 数据集目录（user.dir="
         + System.getProperty("user.dir") + "）");
+  }
+
+  /** 定位仓库内的独立候选数据集目录（heading-aware）；只读，绝不写入。 */
+  private static Path locateCandidateDatasetDir() {
+    for (Path p = Path.of(System.getProperty("user.dir")); p != null; p = p.getParent()) {
+      Path cand = p.resolve("eval/datasets/devsupport-heading-aware-v0");
+      if (Files.isDirectory(cand)) {
+        return cand;
+      }
+    }
+    return Path.of("eval/datasets/devsupport-heading-aware-v0");
+  }
+
+  @Nested
+  @DisplayName("P1-C 数据集离线预检（基线28 / 候选50 / 缺金标ID / 哈希漂移）")
+  class DatasetPreflightTest {
+
+    private static final Set<String> REQUIRED4 = Set.of(
+        "chunks.jsonl", "candidate-gold.json", "corpus-manifest.json", "chunk-manifest.json");
+
+    private P1cDatasetValidator.Result runPreflight(Path dir, int expectedChunks) throws Exception {
+      var chunks = P1cRealRetrievalEvalTest.readChunks(dir.resolve("chunks.jsonl"));
+      Set<String> ids = new HashSet<>();
+      for (var c : chunks) {
+        ids.add(c.chunkId());
+      }
+      var gold = P1cRealRetrievalEvalTest.readCandidateGold(dir.resolve("candidate-gold.json"));
+      int ans = 0;
+      int noa = 0;
+      int pts = 0;
+      List<String> sup = new ArrayList<>();
+      for (var e : gold.entries()) {
+        if ("ANSWERABLE".equals(e.answerability())) {
+          ans++;
+          var aps = P1cRealRetrievalEvalTest.extractAnswerPoints(e);
+          pts += aps.size();
+          for (var ap : aps) {
+            sup.addAll(ap.supportingChunkIds());
+          }
+        } else if ("NO_ANSWER".equals(e.answerability())) {
+          noa++;
+        }
+      }
+      return P1cDatasetValidator.validate(ids, chunks.size(), gold.entries().size(),
+          ans, noa, pts, sup, expectedChunks, 20, 16, 4, 38);
+    }
+
+    @Test
+    @DisplayName("基线数据集按 28 chunk 预检通过，金标 ID 全闭环")
+    void baseline_preflightAt28_passes() throws Exception {
+      assertThat(runPreflight(locateRepoDatasetDir(), 28).passed()).isTrue();
+    }
+
+    @Test
+    @DisplayName("候选数据集按 49 chunk 预检通过，且自身冻结清单哈希逐项匹配")
+    void candidate_preflightAt49_passes_andFreezeMatches() throws Exception {
+      Path dir = locateCandidateDatasetDir();
+      assumeTrue(Files.isDirectory(dir), "候选数据集目录不存在，跳过真实文件校验");
+      assertThat(runPreflight(dir, 49).passed()).isTrue();
+      assertThat(P1cFrozenArtifactVerifier.verifyAgainstFreezeList(dir, REQUIRED4).passed()).isTrue();
+    }
+
+    @Test
+    @DisplayName("同一候选数据集按 28 预期校验必须失败（防止候选冒充基线闸门）")
+    void candidate_checkedAgainstBaselineCount_fails() throws Exception {
+      Path dir = locateCandidateDatasetDir();
+      assumeTrue(Files.isDirectory(dir), "候选数据集目录不存在，跳过");
+      var r = runPreflight(dir, 28);
+      assertThat(r.passed()).isFalse();
+      assertThat(r.violations()).anyMatch(v -> v.contains("chunk 数量不符") && v.contains("期望 28"));
+    }
+
+    @Test
+    @DisplayName("金标引用不在数据集 chunk 集合内：预检报缺失，先于任何网络调用")
+    void validate_missingGoldChunkId_reportsViolation() {
+      var r = P1cDatasetValidator.validate(Set.of("c1", "c2"), 2, 1, 1, 0, 1,
+          List.of("c1", "ghost-9"), 2, 1, 1, 0, 1);
+      assertThat(r.passed()).isFalse();
+      assertThat(r.violations()).anyMatch(v -> v.contains("ghost-9") && v.contains("不在数据集"));
+    }
+
+    @Test
+    @DisplayName("候选数据集哈希漂移：冻结比对给出违例（离线、无网络）")
+    void validate_freezeHashDrift_detected() throws Exception {
+      Path dir = locateCandidateDatasetDir();
+      assumeTrue(Files.isDirectory(dir), "候选数据集目录不存在，跳过");
+      byte[] bytes = Files.readAllBytes(dir.resolve("chunks.jsonl"));
+      String actual = P1cFrozenArtifactVerifier.sha256NormalizedLf(bytes);
+      String tampered = actual.substring(0, 63) + (actual.charAt(63) == 'a' ? 'b' : 'a');
+      Map<String, String> actualMap = new LinkedHashMap<>();
+      actualMap.put("chunks.jsonl", actual);
+      var violations = P1cFrozenArtifactVerifier.compare(
+          List.of(new P1cFrozenArtifactVerifier.ExpectedArtifact("chunks.jsonl", tampered, actual)),
+          actualMap, REQUIRED4);
+      assertThat(violations).anyMatch(v -> v.contains("内容漂移") && v.contains("chunks.jsonl"));
+    }
+
+    @Test
+    @DisplayName("候选金标：16 可答/4 NO_ANSWER/38 要点、49 chunk、引用全闭环")
+    void goldMapping_countsAndClosure() throws Exception {
+      Path dir = locateCandidateDatasetDir();
+      assumeTrue(Files.isDirectory(dir), "候选数据集目录不存在，跳过");
+      var chunks = P1cRealRetrievalEvalTest.readChunks(dir.resolve("chunks.jsonl"));
+      Set<String> ids = new HashSet<>();
+      for (var c : chunks) {
+        ids.add(c.chunkId());
+      }
+      var gold = P1cRealRetrievalEvalTest.readCandidateGold(dir.resolve("candidate-gold.json"));
+      int ans = 0;
+      int noa = 0;
+      int pts = 0;
+      List<String> sup = new ArrayList<>();
+      for (var e : gold.entries()) {
+        if ("ANSWERABLE".equals(e.answerability())) {
+          ans++;
+          var aps = P1cRealRetrievalEvalTest.extractAnswerPoints(e);
+          pts += aps.size();
+          for (var ap : aps) {
+            sup.addAll(ap.supportingChunkIds());
+          }
+        } else if ("NO_ANSWER".equals(e.answerability())) {
+          noa++;
+        }
+      }
+      assertThat(ids).hasSize(49);
+      assertThat(ans).isEqualTo(16);
+      assertThat(noa).isEqualTo(4);
+      assertThat(pts).isEqualTo(38);
+      // 金标引用闭包：每条 supportingChunkId 都必须在 49-chunk 集合内（非向量命中断言）
+      assertThat(sup).allMatch(ids::contains);
+    }
+
+    @Test
+    @DisplayName("Q02/Q06/Q07/Q14 映射边界：歧义双命中、已覆盖、同 chunk 两点、不可达要点")
+    void goldMapping_queryBoundaries() throws Exception {
+      Path dir = locateCandidateDatasetDir();
+      assumeTrue(Files.isDirectory(dir), "候选数据集目录不存在，跳过");
+      var gold = P1cRealRetrievalEvalTest.readCandidateGold(dir.resolve("candidate-gold.json"));
+      Map<String, List<List<String>>> byQ = new LinkedHashMap<>();
+      for (var e : gold.entries()) {
+        if (!"ANSWERABLE".equals(e.answerability())) {
+          continue;
+        }
+        List<List<String>> perAp = new ArrayList<>();
+        for (var ap : P1cRealRetrievalEvalTest.extractAnswerPoints(e)) {
+          perAp.add(ap.supportingChunkIds());
+        }
+        byQ.put(e.queryId(), perAp);
+      }
+      // Q02：逐字命令串命中 2 个 ig-readme-root chunk（歧义按证据定义→保留两个合法支撑）
+      var q02 = byQ.get("devsupport-v01-q02");
+      assertThat(q02).hasSize(1);
+      assertThat(q02.get(0)).hasSize(2);
+      assertThat(q02.get(0)).allMatch(id -> id.startsWith("ig-readme-root__"));
+      // Q06：单支撑 chunk（基线 FC@5 已✓，属共享 hw0018 的回归风险位而非改进位）
+      var q06 = byQ.get("devsupport-v01-q06");
+      assertThat(q06).hasSize(1);
+      assertThat(q06.get(0)).hasSize(1);
+      assertThat(q06.get(0).get(0)).startsWith("ig-readme-root__");
+      // Q07：两个要点落到同一个 ig-readme-root chunk（需该 chunk 进 Top-K 才能同时翻两点）
+      var q07 = byQ.get("devsupport-v01-q07");
+      assertThat(q07).hasSize(2);
+      assertThat(q07.get(0)).hasSize(1);
+      assertThat(q07.get(0)).isEqualTo(q07.get(1));
+      assertThat(q07.get(0).get(0)).startsWith("ig-readme-root__");
+      // Q14：5 个要点中至少 1 个完全不含 ig-readme-root 支撑（落在未重切文档，候选不可达）
+      var q14 = byQ.get("devsupport-v01-q14");
+      assertThat(q14).hasSize(5);
+      boolean q14HasOut_OfScopePoint = q14.stream().anyMatch(
+          list -> list.stream().noneMatch(id -> id.startsWith("ig-readme-root__")));
+      assertThat(q14HasOut_OfScopePoint).isTrue();
+    }
+
+    @Test
+    @DisplayName("匹配规则：要点任一支撑 chunk 进 top-K 即覆盖（支撑 Q02 双命中的口径）")
+    void matchRule_anySupportHitCounts() {
+      var points = List.of(new P1cAnswerPointMetrics.AnswerPoint(
+          1, List.of("ig-readme-root__heading-aware-v1__0018__x", "ig-readme-root__heading-aware-v1__0028__y")));
+      var topK = List.of("noise", "ig-readme-root__heading-aware-v1__0028__y");
+
+      var result = P1cAnswerPointMetrics.compute(points, topK);
+
+      assertThat(result.coveredPoints()).isEqualTo(1);
+      assertThat(result.fullCoverage()).isTrue();
+    }
+  }
+
+  @Nested
+  @DisplayName("P1-C 候选 49-chunk 预算计数（批次/重试/查询/回退，最坏情况受 50 门控）")
+  class CandidateAttemptCountTest {
+
+    private static final String RUN = "run-1";
+    private static final String KB = P1cEvalResultValidator.EXPECTED_KB_ID;
+    private static final Set<String> FROZEN = Set.of("hit-1");
+
+    private static P1cRetrievalHandler.SearchFunction mainOk() {
+      return (q, filtered, topK) -> List.of(new Hit("hit-1", 0.5, RUN, KB, true));
+    }
+
+    private static P1cRetrievalHandler.SearchFunction mainFailFallbackOk() {
+      return (q, filtered, topK) -> {
+        if (filtered) {
+          throw new RuntimeException("主检索故障（测试桩）");
+        }
+        return List.of(new Hit("hit-1", 0.4, RUN, KB, true));
+      };
+    }
+
+    /** 复刻 addBatchWithOneRetry 的计数：每批一次 tryAcquire；重试再多一次。按批次而非按 chunk。 */
+    private static void ingestion(P1cEvalCallBudget budget, int chunks, boolean everyBatchRetried) {
+      List<Integer> items = new ArrayList<>();
+      for (int i = 0; i < chunks; i++) {
+        items.add(i);
+      }
+      for (List<Integer> batch : P1cRealRetrievalEvalTest.partition(items, 10)) {
+        budget.tryAcquire();
+        if (everyBatchRetried) {
+          budget.recordFailure();
+          budget.tryAcquire();
+        }
+        budget.recordSuccess();
+      }
+    }
+
+    @Test
+    @DisplayName("干净运行：5 入库批次 + 20 查询 = 25 attempts，50 上限内")
+    void cleanRun_candidateTotals25Attempts() {
+      P1cEvalCallBudget budget = new P1cEvalCallBudget(50);
+      ingestion(budget, 49, false);
+      assertThat(budget.getAttempts()).isEqualTo(5);
+      var handler = new P1cRetrievalHandler(budget, mainOk(), RUN, KB, FROZEN, 10, 30);
+      for (int i = 0; i < 20; i++) {
+        handler.retrieve("q" + i);
+      }
+      assertThat(budget.getAttempts()).isEqualTo(25);
+      assertThat(budget.getAttempts()).isLessThanOrEqualTo(50);
+    }
+
+    @Test
+    @DisplayName("最坏情况：每批次重试一次 + 每题触发回退 = 恰好 50 attempts，再要即耗尽")
+    void worstCase_candidateHitsExactly50ThenExhausts() {
+      P1cEvalCallBudget budget = new P1cEvalCallBudget(50);
+      ingestion(budget, 49, true);
+      assertThat(budget.getAttempts()).isEqualTo(10);
+      var handler = new P1cRetrievalHandler(budget, mainFailFallbackOk(), RUN, KB, FROZEN, 10, 30);
+      for (int i = 0; i < 20; i++) {
+        var out = handler.retrieve("q" + i);
+        assertThat(out.status()).isEqualTo(P1cRetrievalHandler.Status.OK_WITH_HITS);
+        assertThat(out.fallbackAttempted()).isTrue();
+      }
+      assertThat(budget.getAttempts()).isEqualTo(50);
+      assertThatThrownBy(budget::tryAcquire).isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    @DisplayName("预算耗尽时 handler 返回 BUDGET_EXCEEDED，请求从未发出")
+    void budgetExceeded_handlerReturnsFlagWithoutHttp() {
+      P1cEvalCallBudget budget = new P1cEvalCallBudget(1);
+      var handler = new P1cRetrievalHandler(budget, mainOk(), RUN, KB, FROZEN, 10, 30);
+      assertThat(handler.retrieve("q0").status())
+          .isEqualTo(P1cRetrievalHandler.Status.OK_WITH_HITS);
+      assertThat(handler.retrieve("q1").status())
+          .isEqualTo(P1cRetrievalHandler.Status.BUDGET_EXCEEDED);
+      assertThat(budget.getAttempts()).isEqualTo(1);
+    }
   }
 }

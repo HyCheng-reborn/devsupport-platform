@@ -1,0 +1,54 @@
+{
+  "datasetId": "devsupport",
+  "version": "heading-aware-v0",
+  "status": "candidate-experiment",
+  "chunkerConfig": {
+    "ig-readme-root": {
+      "splitterClass": "heading-aware (build/eval-experiments/heading-aware/split.py)",
+      "configId": "heading-aware-v1",
+      "mergeBelowTokens": 100,
+      "splitAboveTokens": 1200,
+      "headingBoundaries": "## / ###",
+      "inputText": "production-cleaned README (Tika + TextCleaningService.cleanText), sha256=f47b6a972fb49ee0c26eee9aec314fa620a43d83aceed00022b7e631d05aa6d1"
+    },
+    "otherDocs": {
+      "note": "verbatim copy of devsupport-v0.1 chunks; configId tts-default-cl100k-800-0"
+    }
+  },
+  "evalChunkIdPolicy": {
+    "format": "{docId}__{configId}__{seq:04d}__{sha256(text):12}",
+    "note": "readme-root 用 heading-aware-v1 稳定 ID；其余保持基线 ID"
+  },
+  "fairnessNote": "候选 ig-readme-root 现与 baseline 走同一生产解析+清洗文本（cleanedSha256 一致），唯一变量=切分策略。",
+  "documentStats": [
+    {
+      "docId": "ig-db-migration-readme",
+      "chunkCount": 1
+    },
+    {
+      "docId": "ig-githooks-readme",
+      "chunkCount": 1
+    },
+    {
+      "docId": "ig-kb-interview-capacity-tdd",
+      "chunkCount": 2
+    },
+    {
+      "docId": "ig-kb-question-gen-async-tdd",
+      "chunkCount": 3
+    },
+    {
+      "docId": "ig-readme-root",
+      "chunkCount": 33
+    },
+    {
+      "docId": "ig-setup-api-keys",
+      "chunkCount": 2
+    },
+    {
+      "docId": "ig-voice-arch",
+      "chunkCount": 7
+    }
+  ],
+  "totalChunks": 49
+}

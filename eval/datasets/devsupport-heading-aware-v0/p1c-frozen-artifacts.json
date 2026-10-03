@@ -1,0 +1,38 @@
+{
+  "kind": "p1c-frozen-artifact-freeze-list",
+  "datasetId": "devsupport",
+  "version": "heading-aware-v0",
+  "purpose": "P1-C 候选 heading-aware（生产清洗文本）冻结工件校验",
+  "recordedAt": "2026-10-03",
+  "recordedFromCommit": "1c5f3e6",
+  "parsePath": "DocumentParseService.parseContent(Tika)+TextCleaningService.cleanText",
+  "productionCleanedSha256": "f47b6a972fb49ee0c26eee9aec314fa620a43d83aceed00022b7e631d05aa6d1",
+  "hashCaliber": "字节级 CRLF/CR→LF → UTF-8 → SHA-256 小写 hex",
+  "comparedField": "expectedSha256NormalizedLf",
+  "artifacts": [
+    {
+      "fileName": "chunks.jsonl",
+      "expectedSha256NormalizedLf": "80deabfc8b419fcd4a6fb4a2993ab43fd8ca12875032b0092bd97a57544f118a",
+      "sha256RawBytesAtRecord": "80deabfc8b419fcd4a6fb4a2993ab43fd8ca12875032b0092bd97a57544f118a",
+      "sizeBytesAtRecord": 68580
+    },
+    {
+      "fileName": "candidate-gold.json",
+      "expectedSha256NormalizedLf": "cbaadbe1d18320beb4ecdf6eeb31cb578d0fbf4e0b7cbb4261d16936b05818ea",
+      "sha256RawBytesAtRecord": "cbaadbe1d18320beb4ecdf6eeb31cb578d0fbf4e0b7cbb4261d16936b05818ea",
+      "sizeBytesAtRecord": 63184
+    },
+    {
+      "fileName": "corpus-manifest.json",
+      "expectedSha256NormalizedLf": "a7c1a0b1137d7c96cfa50e385e5f3cb7c8db0c9ac816ff9980664277ebad60d7",
+      "sha256RawBytesAtRecord": "a7c1a0b1137d7c96cfa50e385e5f3cb7c8db0c9ac816ff9980664277ebad60d7",
+      "sizeBytesAtRecord": 8336
+    },
+    {
+      "fileName": "chunk-manifest.json",
+      "expectedSha256NormalizedLf": "59afe46b750fb5bd60b9fec189238ff39c36119e6de5f8dd08a9ebbe2f3c019c",
+      "sha256RawBytesAtRecord": "59afe46b750fb5bd60b9fec189238ff39c36119e6de5f8dd08a9ebbe2f3c019c",
+      "sizeBytesAtRecord": 1554
+    }
+  ]
+}

@@ -93,13 +93,19 @@ public class P1cRealRetrievalEvalTest {
 
   private static final int TOP_K = 10;
   private static final int FALLBACK_TOP_K = 30;
-  private static final int BUDGET_HARD_LIMIT = 50;
-  private static final int EMBEDDING_BATCH_SIZE = 10;
-  private static final int EXPECTED_CHUNK_COUNT = 28;
-  private static final int EXPECTED_QUERY_COUNT = 20;
-  private static final int EXPECTED_ANSWERABLE_COUNT = 16;
-  private static final int EXPECTED_NO_ANSWER_COUNT = 4;
-  private static final int EXPECTED_ANSWER_POINTS = 38;
+  // 预算硬上限：默认 50，不得擅自调高；仅当调用方显式 -Peval.budget.hardLimit=... 时才覆盖。
+  private static final int BUDGET_HARD_LIMIT = Integer.getInteger("eval.budget.hardLimit", 50);
+  private static final int EMBEDDING_BATCH_SIZE = Integer.getInteger("eval.embedding.batchSize", 10);
+  // 数据集预期规模：默认对齐基线 devsupport-v0.1（28 chunk / 38 要点 / 20 题 / 16+4）。
+  // 独立候选数据集通过系统属性覆盖，Phase 0 在任何网络调用前据此校验。
+  private static final int EXPECTED_CHUNK_COUNT = Integer.getInteger("eval.expected.chunkCount", 28);
+  private static final int EXPECTED_QUERY_COUNT = Integer.getInteger("eval.expected.queryCount", 20);
+  private static final int EXPECTED_ANSWERABLE_COUNT =
+      Integer.getInteger("eval.expected.answerableCount", 16);
+  private static final int EXPECTED_NO_ANSWER_COUNT =
+      Integer.getInteger("eval.expected.noAnswerCount", 4);
+  private static final int EXPECTED_ANSWER_POINTS =
+      Integer.getInteger("eval.expected.answerPoints", 38);
   private static final String EXPECTED_MARKER_UUID = "f47ac10b-58cc-4372-a567-0e0283c5d9e7";
   private static final String EXPECTED_MARKER_TYPE = "p1c-eval-isolated";
   private static final String KB_ID = P1cEvalResultValidator.EXPECTED_KB_ID;
@@ -256,10 +262,6 @@ public class P1cRealRetrievalEvalTest {
       chunkManifestSha256 = sha256File(chunkManifestPath);
 
       chunks = readChunks(chunksPath);
-      if (chunks.size() != EXPECTED_CHUNK_COUNT) {
-        throw new IllegalStateException("chunks.jsonl 行数应为 " + EXPECTED_CHUNK_COUNT
-            + ": 实际 " + chunks.size());
-      }
       for (ChunkRecord chunk : chunks) {
         if (!frozenChunkIds.add(chunk.chunkId())) {
           throw new IllegalStateException("chunks.jsonl 存在重复 chunkId: " + chunk.chunkId());
@@ -270,23 +272,30 @@ public class P1cRealRetrievalEvalTest {
       int answerable = 0;
       int noAnswer = 0;
       int points = 0;
+      List<String> goldSupportingIds = new ArrayList<>();
       for (CandidateGoldEntry entry : candidateGold.entries()) {
         if ("ANSWERABLE".equals(entry.answerability())) {
           answerable++;
-          points += extractAnswerPoints(entry).size();
+          List<P1cAnswerPointMetrics.AnswerPoint> aps = extractAnswerPoints(entry);
+          points += aps.size();
+          for (P1cAnswerPointMetrics.AnswerPoint ap : aps) {
+            goldSupportingIds.addAll(ap.supportingChunkIds());
+          }
         } else if ("NO_ANSWER".equals(entry.answerability())) {
           noAnswer++;
         }
       }
-      if (candidateGold.entries().size() != EXPECTED_QUERY_COUNT
-          || answerable != EXPECTED_ANSWERABLE_COUNT || noAnswer != EXPECTED_NO_ANSWER_COUNT) {
-        throw new IllegalStateException("candidate-gold.json 题数契约不符: total="
-            + candidateGold.entries().size() + ", ANSWERABLE=" + answerable
-            + ", NO_ANSWER=" + noAnswer);
-      }
-      if (points != EXPECTED_ANSWER_POINTS) {
-        throw new IllegalStateException("答案要点总数应为 " + EXPECTED_ANSWER_POINTS
-            + "（多 K 微平均分母）: 实际 " + points);
+
+      // 数据集预检：数量契约 + 金标 ID 闭环。必须在读取凭据、构建 Embedding 客户端、连接数据库
+      // 之前完成——金标指向不存在的 chunk 时所有命中会恒为 0，绝不能带着它去发起付费检索。
+      P1cDatasetValidator.Result preflight = P1cDatasetValidator.validate(
+          Set.copyOf(frozenChunkIds), chunks.size(), candidateGold.entries().size(),
+          answerable, noAnswer, points, goldSupportingIds,
+          EXPECTED_CHUNK_COUNT, EXPECTED_QUERY_COUNT, EXPECTED_ANSWERABLE_COUNT,
+          EXPECTED_NO_ANSWER_COUNT, EXPECTED_ANSWER_POINTS);
+      if (!preflight.passed()) {
+        throw new IllegalStateException("数据集预检失败（先于任何凭据/网络调用）:\n  - "
+            + String.join("\n  - ", preflight.violations()));
       }
 
       String apiKey = requireCredential("eval.embedding.apiKey", "AI_BAILIAN_API_KEY",

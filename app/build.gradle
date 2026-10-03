@@ -132,6 +132,24 @@ tasks.register('evalOfflineChunk', JavaExec) {
     ]
 }
 
+// P1-C 候选离线工具：复现 baseline 生产解析+清洗输入（Tika+TextCleaningService），写到 build/ 临时目录
+// 不启动 Spring、不触网、不调 Embedding/LLM；只读 baseline 语料，输出到 gitignored build/，不改任何工件
+tasks.register('evalDumpCleaned', JavaExec) {
+    group = 'evaluation'
+    description = 'Offline: reproduce baseline production parse+clean input for a corpus file (no Spring, no network)'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'interview.guide.eval.P1cCleanedTextDump'
+    workingDir = rootProject.projectDir
+    def inProp = project.findProperty('cleanIn') ?: 'eval/datasets/devsupport-v0.1/corpus/ig-readme-root.md'
+    def outProp = project.findProperty('cleanOut') ?: 'build/eval-experiments/heading-aware/ig-readme-root.cleaned.md'
+    args = [rootProject.file(inProp.toString()).absolutePath, rootProject.file(outProp.toString()).absolutePath]
+    jvmArgs = [
+        '-Dfile.encoding=UTF-8',
+        '-Dstdout.encoding=UTF-8',
+        '-Dstderr.encoding=UTF-8'
+    ]
+}
+
 // P1-B Tika 差异验证：证明 .md 语料跳过 Tika 是安全的
 tasks.register('evalVerifyTika', JavaExec) {
     group = 'evaluation'
@@ -165,13 +183,21 @@ tasks.register('evalP1cReal', Test) {
     }
     systemProperty 'eval.p1c.realApi',
         project.findProperty('eval.p1c.realApi') ?: 'false'
-    // 数据集路径：显式指向仓库根目录的绝对路径，避免 Test 任务在 app/ 下运行时相对路径失效
-    systemProperty 'eval.datasetDir', rootProject.file('eval/datasets/devsupport-v0.1').absolutePath
+    // 数据集路径：默认基线 devsupport-v0.1；显式 -Peval.datasetDir=... 时指向独立候选数据集
+    def dsDirProp = project.findProperty('eval.datasetDir')
+    systemProperty 'eval.datasetDir',
+        (dsDirProp != null && dsDirProp.toString() != '')
+            ? rootProject.file(dsDirProp.toString()).absolutePath
+            : rootProject.file('eval/datasets/devsupport-v0.1').absolutePath
 
-    // 只有用户在命令行显式 -P 时才转发；否则 Java 端从环境变量读取
+    // 只有用户在命令行显式 -P 时才转发；否则 Java 端用默认值（基线：28/38/20/16/4，预算 50）。
+    // 候选数据集通过 eval.expected.chunkCount=50 等覆盖；预算硬上限不在此擅自抬高。
     ['eval.embedding.apiKey', 'eval.embedding.baseUrl', 'eval.embedding.model',
      'eval.embedding.dimensions', 'eval.datasource.url', 'eval.datasource.username',
-     'eval.datasource.password'].each { key ->
+     'eval.datasource.password',
+     'eval.expected.chunkCount', 'eval.expected.queryCount', 'eval.expected.answerableCount',
+     'eval.expected.noAnswerCount', 'eval.expected.answerPoints', 'eval.embedding.batchSize',
+     'eval.budget.hardLimit'].each { key ->
         def val = project.findProperty(key)
         if (val != null && val.toString() != '') {
             systemProperty key, val.toString()
