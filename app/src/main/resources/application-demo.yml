@@ -1,0 +1,31 @@
+# ============================================================
+# Demo profile 配置 —— 仅用于本地演示，请勿在生产环境激活
+# ============================================================
+# 启动方式（任选其一）：
+#   ./gradlew :app:bootRun --args='--spring.profiles.active=demo'
+#   或设置环境变量：SPRING_PROFILES_ACTIVE=demo
+#
+# 作用：
+#   1. 激活 DemoResumeGradingService（@Profile("demo")），返回固定的逼真简历分析结果，
+#      替代真实的 ResumeGradingService（@Profile("!demo")），演示时不产生任何真实 LLM 调用与费用。
+#   2. 为无 API Key 的本机提供占位默认值，保证 Spring 上下文可正常启动。
+#
+# 说明：
+#   - 数据库、Redis、存储等配置沿用 application.yml 的环境变量注入，无需在此重复覆盖。
+#   - 下方 api-key 使用 ${AI_BAILIAN_API_KEY:<占位值>} 形式：
+#     若已配置真实环境变量则优先使用真实值；否则回退到非空占位值，
+#     以满足 QwenAsrService/QwenTtsService 的 @PostConstruct 非空校验（语音功能不在本次演示范围）。
+#     简历分析走 DemoResumeGradingService，不会真正调用这些 API。
+
+app:
+  ai:
+    providers:
+      dashscope:
+        # 占位默认值，避免缺少 AI_BAILIAN_API_KEY 时占位符解析失败导致启动中断
+        api-key: ${AI_BAILIAN_API_KEY:demo-local-placeholder-key}
+  voice-interview:
+    qwen:
+      asr:
+        api-key: ${AI_BAILIAN_API_KEY:demo-local-placeholder-key}
+      tts:
+        api-key: ${AI_BAILIAN_API_KEY:demo-local-placeholder-key}
