@@ -64,3 +64,31 @@ test('conflict 未指定 → 正常状态推导', () => {
 test('DOC_STATUS_LABEL.conflict 为“版本冲突”', () => {
   assert.equal(DOC_STATUS_LABEL.conflict, '版本冲突');
 });
+
+// ========== ADOPTING / ABANDONED 状态 ==========
+
+test('vectorStatus=ADOPTING + active → adopting（采用中）', () => {
+  assert.equal(deriveStatus('ADOPTING', true), 'adopting');
+});
+
+test('vectorStatus=ABANDONED + active → abandoned（已放弃）', () => {
+  assert.equal(deriveStatus('ABANDONED', true), 'abandoned');
+});
+
+test('vectorStatus=CONFLICT（无 conflict 标记）→ conflict', () => {
+  assert.equal(deriveStatus('CONFLICT', true), 'conflict');
+});
+
+test('ADOPTING + active=false → retired（停用优先于采用中）', () => {
+  assert.equal(deriveStatus('ADOPTING', false), 'retired');
+});
+
+test('ABANDONED + active=false → retired（停用优先于已放弃）', () => {
+  assert.equal(deriveStatus('ABANDONED', false), 'retired');
+});
+
+test('DOC_STATUS_LABEL 包含 adopting/abandoned/conflict 的正确标签', () => {
+  assert.equal(DOC_STATUS_LABEL.adopting, '采用中');
+  assert.equal(DOC_STATUS_LABEL.abandoned, '已放弃');
+  assert.equal(DOC_STATUS_LABEL.conflict, '版本冲突');
+});

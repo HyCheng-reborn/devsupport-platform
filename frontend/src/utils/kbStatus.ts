@@ -4,7 +4,7 @@ import type { VectorStatus } from '../api/knowledgebase';
  * 文档中心展示状态（阶段 2）：合并"向量索引状态"与"生命周期 active 标记"。
  * 停用/被新版本取代（active=false）优先，即使索引曾完成也显示"已停用"且退出检索。
  */
-export type DocStatus = 'processing' | 'pending' | 'searchable' | 'failed' | 'retired' | 'conflict';
+export type DocStatus = 'processing' | 'pending' | 'searchable' | 'failed' | 'retired' | 'conflict' | 'adopting' | 'abandoned';
 
 export function deriveStatus(
   vectorStatus: VectorStatus | undefined,
@@ -22,6 +22,12 @@ export function deriveStatus(
       return 'failed';
     case 'COMPLETED':
       return 'searchable';
+    case 'ADOPTING':
+      return 'adopting';
+    case 'ABANDONED':
+      return 'abandoned';
+    case 'CONFLICT':
+      return 'conflict';
     default:
       return 'pending';
   }
@@ -34,6 +40,8 @@ export const DOC_STATUS_LABEL: Record<DocStatus, string> = {
   failed: '失败',
   retired: '已停用',
   conflict: '版本冲突',
+  adopting: '采用中',
+  abandoned: '已放弃',
 };
 
 /** 仅启用中的文档提供"停用"操作；已停用不再重复停用。 */

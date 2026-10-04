@@ -33,7 +33,7 @@ async function mockDocCenterApis(page: Page) {
       kbItem({ id: 10, name: '启用文档A', project: 'billing', versionNo: 2, versionLabel: 'v2' }),
       kbItem({ id: 11, name: '失败文档B', vectorStatus: 'FAILED', vectorError: '向量化失败: 解析超时' }),
       kbItem({ id: 12, name: '停用文档C', active: false, documentKey: 'dkC', versionNo: 1 }),
-      kbItem({ id: 13, name: '冲突文档D', active: true, documentKey: 'dkD', versionNo: 2, versionConflict: true, conflictReason: 'SAME_VERSION_DIFFERENT_CONTENT' }),
+      kbItem({ id: 13, name: '冲突文档D', vectorStatus: 'CONFLICT', active: true, documentKey: 'dkD', versionNo: 2, versionConflict: true, conflictReason: 'SAME_VERSION_DIFFERENT_CONTENT' }),
     ])));
 }
 
@@ -259,5 +259,127 @@ test.describe('阶段 2 文档中心冲突操作', () => {
     await abandonBtn.click();
     const abandon = await abandonReq;
     expect(abandon.url()).toContain('/api/knowledgebase/13/abandon');
+  });
+});
+
+// ========== ADOPTING / ABANDONED 状态展示 ==========
+
+test.describe('阶段 2 文档中心 ADOPTING/ABANDONED 状态', () => {
+  test('ADOPTING 状态显示“采用中”徽标，无 adopt/abandon 按钮', async ({ page }) => {
+    await page.route('**/api/knowledgebase/stats', (r) =>
+      r.fulfill(ok({ totalCount: 1, totalQuestionCount: 0, totalAccessCount: 0, completedCount: 0, processingCount: 1 })));
+    await page.route('**/api/knowledgebase/categories', (r) => r.fulfill(ok([])));
+    await page.route('**/api/knowledgebase/services', (r) => r.fulfill(ok([])));
+    await page.route('**/api/knowledgebase/environments', (r) => r.fulfill(ok([])));
+    await page.route('**/api/knowledgebase/list**', (r) =>
+      r.fulfill(ok([
+        kbItem({ id: 20, name: '采用中文档E', vectorStatus: 'ADOPTING', active: true }),
+      ])));
+
+    await page.goto('/docs');
+
+    const row = page.locator('tr', { hasText: '采用中文档E' });
+
+    // “采用中”状态文本可见（使用 exact 匹配避免命中行名）
+    await expect(row.getByText('采用中', { exact: true })).toBeVisible();
+
+    // 不应有 adopt/abandon 按钮
+    await expect(row.getByTitle('采用此版本')).toHaveCount(0);
+    await expect(row.getByTitle('放弃此版本')).toHaveCount(0);
+
+    // 不应有重新向量化按钮
+    await expect(row.getByTitle('重新向量化')).toHaveCount(0);
+  });
+
+  test('ABANDONED 状态显示“已放弃”徽标，无 revectorize 按钮', async ({ page }) => {
+    await page.route('**/api/knowledgebase/stats', (r) =>
+      r.fulfill(ok({ totalCount: 1, totalQuestionCount: 0, totalAccessCount: 0, completedCount: 0, processingCount: 0 })));
+    await page.route('**/api/knowledgebase/categories', (r) => r.fulfill(ok([])));
+    await page.route('**/api/knowledgebase/services', (r) => r.fulfill(ok([])));
+    await page.route('**/api/knowledgebase/environments', (r) => r.fulfill(ok([])));
+    await page.route('**/api/knowledgebase/list**', (r) =>
+      r.fulfill(ok([
+        kbItem({ id: 21, name: '已放弃文档F', vectorStatus: 'ABANDONED', active: true }),
+      ])));
+
+    await page.goto('/docs');
+
+    const row = page.locator('tr', { hasText: '已放弃文档F' });
+
+    // “已放弃”状态文本可见（使用 exact 匹配避免命中行名）
+    await expect(row.getByText('已放弃', { exact: true })).toBeVisible();
+
+    // 不应有重新向量化按钮（仅 FAILED 状态有）
+    await expect(row.getByTitle('重新向量化')).toHaveCount(0);
+
+    // 不应有 adopt/abandon 按钮
+    await expect(row.getByTitle('采用此版本')).toHaveCount(0);
+    await expect(row.getByTitle('放弃此版本')).toHaveCount(0);
+  });
+
+  test('CONFLICT 状态显示 adopt/abandon 按钮', async ({ page }) => {
+    await page.route('**/api/knowledgebase/stats', (r) =>
+      r.fulfill(ok({ totalCount: 1, totalQuestionCount: 0, totalAccessCount: 0, completedCount: 0, processingCount: 0 })));
+    await page.route('**/api/knowledgebase/categories', (r) => r.fulfill(ok([])));
+    await page.route('**/api/knowledgebase/services', (r) => r.fulfill(ok([])));
+    await page.route('**/api/knowledgebase/environments', (r) => r.fulfill(ok([])));
+    await page.route('**/api/knowledgebase/list**', (r) =>
+      r.fulfill(ok([
+        kbItem({ id: 22, name: '冲突文档G', vectorStatus: 'CONFLICT', active: true, versionConflict: true, conflictReason: 'SAME_VERSION_DIFFERENT_CONTENT' }),
+      ])));
+
+    await page.goto('/docs');
+
+    const row = page.locator('tr', { hasText: '冲突文档G' });
+
+    // “版本冲突”状态文本可见（使用 first 避免命中徽标和状态列两处）
+    await expect(row.getByText('版本冲突').first()).toBeVisible();
+
+    // adopt/abandon 按钮可见
+    await expect(row.getByTitle('采用此版本')).toBeVisible();
+    await expect(row.getByTitle('放弃此版本')).toBeVisible();
+  });
+
+  test('adopt API 调用后，状态从 CONFLICT 变为 ADOPTING', async ({ page }) => {
+    let listCallCount = 0;
+
+    await page.route('**/api/knowledgebase/stats', (r) =>
+      r.fulfill(ok({ totalCount: 1, totalQuestionCount: 0, totalAccessCount: 0, completedCount: 0, processingCount: 0 })));
+    await page.route('**/api/knowledgebase/categories', (r) => r.fulfill(ok([])));
+    await page.route('**/api/knowledgebase/services', (r) => r.fulfill(ok([])));
+    await page.route('**/api/knowledgebase/environments', (r) => r.fulfill(ok([])));
+
+    // 前两次 list 返回 CONFLICT（React strict mode 可能双调用），后续返回 ADOPTING
+    await page.route('**/api/knowledgebase/list**', (r) => {
+      listCallCount++;
+      if (listCallCount <= 2) {
+        return r.fulfill(ok([
+          kbItem({ id: 23, name: '冲突转采用文档H', vectorStatus: 'CONFLICT', active: true, versionConflict: true, conflictReason: 'SAME_VERSION_DIFFERENT_CONTENT' }),
+        ]));
+      }
+      return r.fulfill(ok([
+        kbItem({ id: 23, name: '冲突转采用文档H', vectorStatus: 'ADOPTING', active: true, versionConflict: false }),
+      ]));
+    });
+
+    await page.route('**/api/knowledgebase/*/adopt', (r) => r.fulfill(ok(null)));
+
+    await page.goto('/docs');
+
+    // 初始状态：CONFLICT
+    const row = page.locator('tr', { hasText: '冲突转采用文档H' });
+    await expect(row.getByText('版本冲突').first()).toBeVisible();
+
+    // 点击 adopt
+    page.once('dialog', (dialog) => {
+      expect(dialog.message()).toContain('采用此版本');
+      dialog.accept();
+    });
+    await row.getByTitle('采用此版本').click();
+
+    // adopt 后列表刷新，状态变为 ADOPTING
+    await expect(row.getByText('采用中', { exact: true })).toBeVisible({ timeout: 5000 });
+    // CONFLICT 徽标不再显示
+    await expect(row.getByText('版本冲突')).toHaveCount(0);
   });
 });
