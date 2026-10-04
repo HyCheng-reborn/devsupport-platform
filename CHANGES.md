@@ -5,7 +5,16 @@
 - 前端：冲突筛选复选框 + 采用/放弃按钮（确认弹窗+loading+反馈）
 - 测试：后端 **614 tests**（601 passed, 10 Voice Redis 遗留失败, 3 skipped），DevSupport 全绿；前端单测 **43/43**，E2E **10/10**
 - 阶段 2 验收通过：冲突可触发、可展示、可处理、不污染检索。源码实现+自动化验证已完成，真实付费模型端到端未验证
-- 主要文件：`V20261006__add_conflict_columns.sql`、`KnowledgeBaseEntity.java`、`KnowledgeBaseRepository.java`、`KnowledgeBaseUploadService.java`、`KnowledgeBaseVersionService.java`、`KnowledgeBaseController.java`、`KnowledgeBaseConflictService.java`、`KnowledgeBaseManagePage.tsx`、`knowledgebase.ts`
+- 主要文件：`V20261006__add_conflict_and_normalized_version.sql`、`KnowledgeBaseEntity.java`、`KnowledgeBaseRepository.java`、`KnowledgeBaseUploadService.java`、`KnowledgeBaseVersionService.java`、`KnowledgeBaseController.java`、`KnowledgeBaseConflictService.java`、`KnowledgeBaseManagePage.tsx`、`knowledgebase.ts`
+
+**2026-10-05 -- DevSupport 状态一致性修复：并发冲突归属 + adopt 异步状态机 + ABANDONED 状态**
+- 缺陷1修复：并发冲突时获胜 active 版本不变，失败上传存为独立冲突候选（VERSION_CONFLICT），不覆盖/不丢弃
+- 缺陷2修复：adopt 改为异步状态机 CONFLICT→ADOPTING→向量化→promote→COMPLETED，失败回退 CONFLICT，旧版本始终 active
+- 缺陷3修复：ABANDONED 状态替代 FAILED，放弃记录不显示重试按钮
+- 迁移：`V20261007__add_adopting_abandoned_states.sql` 新增 ADOPTING/ABANDONED CHECK 约束
+- 测试：后端 **626 tests**（613 passed, 10 Voice Redis 遗留失败, 3 skipped），DevSupport 全绿；前端单测 **49/49**，E2E **14/14**
+- 并发测试：Testcontainers 真实触发部分唯一索引竞争验证
+- 主要文件：`V20261007__add_adopting_abandoned_states.sql`、`VectorStatus.java`、`AsyncTaskStreamConstants.java`、`VectorizeStreamConsumer.java`、`VectorizeStreamProducer.java`、`KnowledgeBaseConflictService.java`、`KnowledgeBasePersistenceService.java`、`KnowledgeBaseUploadService.java`、`KnowledgeBaseManagePage.tsx`、`knowledgebase.ts`
 
 **2026-10-04 -- DevSupport 版本筛选链路补全：KnowledgeBaseManagePage 新增版本下拉、kbFilter 新增 versionFilter 维度、测试补齐**
 - 版本筛选链路补全：`KnowledgeBaseManagePage` 新增版本下拉筛选控件；`kbFilter.ts` 新增 `versionFilter` 维度，前端采用 client-side 过滤（在已加载数据上按版本号过滤；后端 API 亦支持 version 参数但前端当前走客户端路径）

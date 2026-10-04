@@ -76,6 +76,11 @@ public final class AsyncTaskStreamConstants {
      */
     public static final String FIELD_KB_ID = "kbId";
 
+    /**
+     * 冲突版本采纳模式字段
+     */
+    public static final String FIELD_ADOPT_MODE = "adoptMode";
+
     // ========== 简历分析 Stream 配置 ==========
 
     /**

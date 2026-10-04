@@ -125,18 +125,24 @@ public class KnowledgeBaseUploadService {
         } catch (DataIntegrityViolationException dive) {
             // 并发安全网：partial unique index 被违反，说明另一个事务已插入同 (documentKey, normalizedVersionLabel)
             log.warn("并发冲突检测到唯一索引违反: documentKey={}, normalizedVersionLabel={}", documentKey, normalizedVersionLabel, dive);
-            // 重新加载已存在的实体并标记为冲突
-            List<KnowledgeBaseEntity> conflicters = knowledgeBaseRepository
-                .findByDocumentKeyAndNormalizedVersionLabelAndActiveTrue(documentKey, normalizedVersionLabel);
-            if (!conflicters.isEmpty()) {
-                KnowledgeBaseEntity conflictEntity = conflicters.stream()
-                    .filter(e -> !e.getFileHash().equals(fileHash))
-                    .findFirst()
-                    .orElse(conflicters.get(0));
-                persistenceService.markAsConflict(conflictEntity.getId());
-                return buildConflictResult(conflictEntity, content.length());
+            // 将当前上传保存为冲突候选：active=false, conflict=true, vectorStatus=CONFLICT
+            // 这样它不满足唯一索引 WHERE 子句 (active=TRUE AND conflict=FALSE)，可以插入
+            KnowledgeBaseEntity conflictCandidate;
+            try {
+                conflictCandidate = persistenceService.saveKnowledgeBase(
+                    file, name, category, meta, documentKey, versionNo, fileKey, fileUrl, fileHash,
+                    normalizedVersionLabel, true);
+            } catch (Exception innerEx) {
+                // DB 保存彻底失败，清理 S3 对象
+                log.error("冲突候选保存失败，清理 S3: fileKey={}", fileKey, innerEx);
+                try {
+                    storageService.deleteKnowledgeBase(fileKey);
+                } catch (Exception cleanupEx) {
+                    log.warn("S3 清理失败（可后续手动清理）: fileKey={}", fileKey, cleanupEx);
+                }
+                throw new BusinessException(ErrorCode.INTERNAL_ERROR, "版本冲突记录保存失败");
             }
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "版本冲突检测失败");
+            return buildConflictResult(conflictCandidate, content.length());
         }
 
         // 8. 如果检测到版本冲突，返回冲突结果（已在保存时标记）
@@ -222,6 +228,11 @@ public class KnowledgeBaseUploadService {
     public void revectorize(Long kbId) {
         KnowledgeBaseEntity kb = knowledgeBaseRepository.findById(kbId)
             .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "知识库不存在"));
+
+        // 拒绝 ABANDONED 状态
+        if (kb.getVectorStatus() == VectorStatus.ABANDONED) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "已放弃的知识库无法重新向量化");
+        }
 
         log.info("开始重新向量化知识库: kbId={}, name={}", kbId, kb.getName());
 

@@ -77,19 +77,15 @@ class KnowledgeBaseConflictServiceTest {
   class AdoptVersion {
 
     @Test
-    @DisplayName("正常采纳：停用旧版本，激活冲突版本并发送向量化任务")
+    @DisplayName("正常采纳：设置 ADOPTING 并发送向量化任务（adoptMode=true），旧版本不被动")
     void adopt_success() {
-      // 准备：冲突版本和当前 active 版本
+      // 准备：冲突版本
       KnowledgeBaseEntity conflictEntity = buildConflictEntity(2L, "dk1", true);
-      KnowledgeBaseEntity activeEntity = buildConflictEntity(1L, "dk1", false);
-      activeEntity.setActive(true);
 
       when(repository.findById(2L)).thenReturn(Optional.of(conflictEntity));
-      when(repository.findByDocumentKeyAndActiveTrueOrderByVersionNoDesc("dk1"))
-          .thenReturn(List.of(activeEntity, conflictEntity));
       when(parseService.downloadAndParseContent("storage-key-2", "doc-2.md"))
           .thenReturn("这是冲突版本的文档内容");
-      doNothing().when(vectorizeStreamProducer).sendVectorizeTask(eq(2L), anyString());
+      doNothing().when(vectorizeStreamProducer).sendVectorizeTask(eq(2L), anyString(), eq(true));
 
       // Mock transactionalExecutor 直接执行 Runnable
       doAnswer(invocation -> {
@@ -101,21 +97,13 @@ class KnowledgeBaseConflictServiceTest {
       // 执行
       conflictService.adoptVersion(2L);
 
-      // 验证：旧版本被停用
-      assertThat(activeEntity.getActive()).isFalse();
-      verify(repository).save(activeEntity);
-
-      // 验证：冲突版本被激活
-      assertThat(conflictEntity.getActive()).isTrue();
-      assertThat(conflictEntity.getConflict()).isFalse();
-      assertThat(conflictEntity.getVectorStatus()).isEqualTo(VectorStatus.PENDING);
+      // 验证：冲突版本设为 ADOPTING
+      assertThat(conflictEntity.getVectorStatus()).isEqualTo(VectorStatus.ADOPTING);
+      assertThat(conflictEntity.getVectorError()).isNull();
       verify(repository).save(conflictEntity);
 
-      // 验证：旧版本向量被删除
-      verify(vectorService).deleteByKnowledgeBaseId(1L);
-
-      // 验证：向量化任务已发送
-      verify(vectorizeStreamProducer).sendVectorizeTask(eq(2L), eq("这是冲突版本的文档内容"));
+      // 验证：向量化任务已发送（adoptMode=true）
+      verify(vectorizeStreamProducer).sendVectorizeTask(eq(2L), eq("这是冲突版本的文档内容"), eq(true));
     }
 
     @Test
@@ -170,8 +158,8 @@ class KnowledgeBaseConflictServiceTest {
 
       // 验证：冲突标记被清除
       assertThat(conflictEntity.getConflict()).isFalse();
-      // 验证：vectorStatus 变为 FAILED
-      assertThat(conflictEntity.getVectorStatus()).isEqualTo(VectorStatus.FAILED);
+      // 验证：vectorStatus 变为 ABANDONED
+      assertThat(conflictEntity.getVectorStatus()).isEqualTo(VectorStatus.ABANDONED);
       // 验证：active 仍为 false
       assertThat(conflictEntity.getActive()).isFalse();
       // 验证：保存操作被调用
@@ -179,18 +167,20 @@ class KnowledgeBaseConflictServiceTest {
     }
 
     @Test
-    @DisplayName("非冲突版本调用 abandon → 抛出 BusinessException")
+    @DisplayName("非冲突版本调用 abandon → 根据状态处理（ADOPTING 中则抛异常）")
     void abandon_notConflict_throws() {
-      KnowledgeBaseEntity normalEntity = buildConflictEntity(1L, "dk1", false);
-      normalEntity.setActive(true);
-      normalEntity.setConflict(false);
+      // 使用 ADOPTING 状态的实体，验证 abandon 在 ADOPTING 时抛异常
+      KnowledgeBaseEntity adoptingEntity = buildConflictEntity(1L, "dk1", true);
+      adoptingEntity.setActive(false);
+      adoptingEntity.setConflict(true);
+      adoptingEntity.setVectorStatus(VectorStatus.ADOPTING);
 
-      when(repository.findById(1L)).thenReturn(Optional.of(normalEntity));
+      when(repository.findById(1L)).thenReturn(Optional.of(adoptingEntity));
 
       // 执行并验证
       assertThatThrownBy(() -> conflictService.abandonVersion(1L))
           .isInstanceOf(BusinessException.class)
-          .hasMessageContaining("不是冲突状态");
+          .hasMessageContaining("正在采纳中");
 
       // 验证：没有触发保存操作
       verify(repository, never()).save(any());
@@ -206,6 +196,81 @@ class KnowledgeBaseConflictServiceTest {
           .hasMessageContaining("知识库不存在");
 
       verify(repository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("放弃已 ABANDONED 的版本 → 幂等无操作")
+    void abandon_alreadyAbandoned_idempotent() {
+      KnowledgeBaseEntity entity = buildConflictEntity(2L, "dk1", true);
+      entity.setActive(false);
+      entity.setConflict(false);
+      entity.setVectorStatus(VectorStatus.ABANDONED);
+
+      when(repository.findById(2L)).thenReturn(Optional.of(entity));
+
+      // 执行：不应抛异常
+      conflictService.abandonVersion(2L);
+
+      // 验证：没有保存操作（幂等）
+      verify(repository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("放弃正在 ADOPTING 中的版本 → 抛出 BusinessException")
+    void abandon_whileAdopting_throws() {
+      KnowledgeBaseEntity entity = buildConflictEntity(2L, "dk1", true);
+      entity.setActive(false);
+      entity.setConflict(true);
+      entity.setVectorStatus(VectorStatus.ADOPTING);
+
+      when(repository.findById(2L)).thenReturn(Optional.of(entity));
+
+      assertThatThrownBy(() -> conflictService.abandonVersion(2L))
+          .isInstanceOf(BusinessException.class)
+          .hasMessageContaining("正在采纳中");
+
+      verify(repository, never()).save(any());
+    }
+  }
+
+  @DisplayName("采纳状态机边界")
+  @Nested
+  class AdoptStateMachine {
+
+    @Test
+    @DisplayName("采纳已在 ADOPTING 中的版本 → 幂等无操作")
+    void adopt_alreadyAdopting_idempotent() {
+      KnowledgeBaseEntity entity = buildConflictEntity(2L, "dk1", true);
+      entity.setActive(false);
+      entity.setConflict(true);
+      entity.setVectorStatus(VectorStatus.ADOPTING);
+
+      when(repository.findById(2L)).thenReturn(Optional.of(entity));
+
+      // 执行：不应抛异常
+      conflictService.adoptVersion(2L);
+
+      // 验证：没有额外的保存或向量化操作（幂等）
+      verify(repository, never()).save(any());
+      verify(vectorizeStreamProducer, never()).sendVectorizeTask(anyLong(), anyString());
+    }
+
+    @Test
+    @DisplayName("采纳已 ABANDONED 的版本 → 抛出 BusinessException")
+    void adopt_alreadyAbandoned_throws() {
+      KnowledgeBaseEntity entity = buildConflictEntity(2L, "dk1", true);
+      entity.setActive(false);
+      entity.setConflict(true);
+      entity.setVectorStatus(VectorStatus.ABANDONED);
+
+      when(repository.findById(2L)).thenReturn(Optional.of(entity));
+
+      assertThatThrownBy(() -> conflictService.adoptVersion(2L))
+          .isInstanceOf(BusinessException.class)
+          .hasMessageContaining("已被放弃");
+
+      verify(repository, never()).save(any());
+      verify(vectorizeStreamProducer, never()).sendVectorizeTask(anyLong(), anyString());
     }
   }
 }

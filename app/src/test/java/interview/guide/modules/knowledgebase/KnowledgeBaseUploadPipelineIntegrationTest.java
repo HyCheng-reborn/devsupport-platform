@@ -40,8 +40,13 @@ import org.testcontainers.utility.DockerImageName;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * 阶段 2 真实本地集成：上传 → RustFS/S3 对象 + PG 元数据 → Redis Stream 实际生产/消费 → 确定性 Embedding
@@ -312,18 +317,17 @@ class KnowledgeBaseUploadPipelineIntegrationTest {
         // 2. 采纳冲突版本
         conflictService.adoptVersion(id2);
 
-        // 3. 断言 v1 被停用
+        // 3. 等待异步向量化完成（消费者执行 promote 逻辑）
+        KnowledgeBaseEntity kb2Done = awaitStatus(id2, VectorStatus.COMPLETED, 30_000);
+        assertThat(kb2Done.getVectorStatus()).isEqualTo(VectorStatus.COMPLETED);
+        assertThat(kb2Done.getActive()).as("冲突版本应被激活").isTrue();
+        assertThat(kb2Done.getConflict()).as("冲突标记应被清除").isFalse();
+
+        // 4. 断言 v1 被停用
         KnowledgeBaseEntity kb1After = knowledgeBaseRepository.findById(id1).orElseThrow();
         assertThat(kb1After.getActive()).as("旧版本应被停用").isFalse();
 
-        // 4. 断言 v2 被激活且冲突标记清除
-        KnowledgeBaseEntity kb2After = knowledgeBaseRepository.findById(id2).orElseThrow();
-        assertThat(kb2After.getActive()).as("冲突版本应被激活").isTrue();
-        assertThat(kb2After.getConflict()).as("冲突标记应被清除").isFalse();
-
-        // 5. 等待向量化完成
-        KnowledgeBaseEntity kb2Done = awaitStatus(id2, VectorStatus.COMPLETED, 30_000);
-        assertThat(kb2Done.getVectorStatus()).isEqualTo(VectorStatus.COMPLETED);
+        // 5. 断言向量数据
         assertThat(vectorRowCount(id2)).as("采纳后应向量化").isGreaterThan(0);
 
         // 6. resolve-context 包含 v2 不包含 v1
@@ -415,5 +419,316 @@ class KnowledgeBaseUploadPipelineIntegrationTest {
         // 5. resolve-context 只包含 v2
         var scope = listService.resolveContext("upgrade-svc", "prod", "billing");
         assertThat(scope).extracting(item -> item.id()).contains(id2).doesNotContain(id1);
+    }
+
+    // ─────────── 辅助方法 ───────────
+
+    /**
+     * 创建冲突场景：上传 v1（active+COMPLETED），再上传同 versionLabel 不同内容的 v2（conflict）。
+     * @return [id1, id2]
+     */
+    private Long[] createConflictScenario(String svcPrefix) throws Exception {
+        MockMultipartFile v1 = mdFile(svcPrefix + "-v1.md",
+            svcPrefix + " 支付网关 生产环境 端口配置 8080 超时排查 runbook");
+        Long id1 = extractId(uploadService.uploadKnowledgeBase(
+            v1, svcPrefix + "文档", null, svcPrefix, "prod", "billing",
+            "runbook", "wiki", "v1.0", null));
+        awaitStatus(id1, VectorStatus.COMPLETED, 30_000);
+
+        MockMultipartFile v2 = mdFile(svcPrefix + "-v2.md",
+            svcPrefix + " 支付网关 生产环境 端口配置 9090 完全不同内容");
+        Long id2 = extractId(uploadService.uploadKnowledgeBase(
+            v2, svcPrefix + "文档", null, svcPrefix, "prod", "billing",
+            "runbook", "wiki", "v1.0", null));
+        return new Long[] { id1, id2 };
+    }
+
+    // ─────────── 新增测试：并发 + 失败路径 + 状态机 ───────────
+
+    @Test
+    @DisplayName("并发上传同 documentKey + 同 versionLabel → 恰好一个 active + 一个 conflict")
+    void concurrentUploadSameKeySameLabel_oneActiveOneConflict() throws Exception {
+        // 预上传 v1 建立 documentKey
+        MockMultipartFile v1 = mdFile("concurrent-base.md",
+            "并发测试 支付网关 生产环境 端口配置 8080 基础版本");
+        Long id1 = extractId(uploadService.uploadKnowledgeBase(
+            v1, "并发测试文档", null, "concurrent-svc", "prod", "billing",
+            "runbook", "wiki", "v1.0", null));
+        awaitStatus(id1, VectorStatus.COMPLETED, 30_000);
+
+        // 两个线程同时上传同 versionLabel 不同内容
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch go = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+
+        var futureA = executor.submit(() -> {
+            ready.countDown();
+            try { go.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+            MockMultipartFile file = mdFile("concurrent-a.md",
+                "并发测试 支付网关 生产环境 端口配置 AAA 线程A内容");
+            return uploadService.uploadKnowledgeBase(
+                file, "并发测试文档", null, "concurrent-svc", "prod", "billing",
+                "runbook", "wiki", "v2.0", null);
+        });
+        var futureB = executor.submit(() -> {
+            ready.countDown();
+            try { go.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+            MockMultipartFile file = mdFile("concurrent-b.md",
+                "并发测试 支付网关 生产环境 端口配置 BBB 线程B内容");
+            return uploadService.uploadKnowledgeBase(
+                file, "并发测试文档", null, "concurrent-svc", "prod", "billing",
+                "runbook", "wiki", "v2.0", null);
+        });
+
+        ready.await(5, TimeUnit.SECONDS);
+        go.countDown(); // 同时释放
+
+        Map<String, Object> resultA = futureA.get(60, TimeUnit.SECONDS);
+        Map<String, Object> resultB = futureB.get(60, TimeUnit.SECONDS);
+        executor.shutdown();
+
+        Long idA = extractId(resultA);
+        Long idB = extractId(resultB);
+        assertThat(idA).isNotEqualTo(idB);
+
+        // 等待两个记录的异步处理完成
+        awaitStatus(idA, VectorStatus.COMPLETED, 30_000);
+        // idB 可能是 COMPLETED 或 CONFLICT，取决于是否触发并发冲突
+        KnowledgeBaseEntity kbB = knowledgeBaseRepository.findById(idB).orElseThrow();
+
+        // 查询同 documentKey 的所有记录（排除预置的 v1）
+        String docKey = knowledgeBaseRepository.findById(idA).orElseThrow().getDocumentKey();
+        List<KnowledgeBaseEntity> allForDoc = knowledgeBaseRepository
+            .findByDocumentKeyOrderByVersionNoDesc(docKey);
+        List<KnowledgeBaseEntity> concurrentRecords = allForDoc.stream()
+            .filter(e -> e.getVersionNo() > 1) // 排除预置的 v1
+            .toList();
+
+        assertThat(concurrentRecords).hasSize(2);
+
+        // 恰好一个 active=true, conflict=false
+        long activeCount = concurrentRecords.stream()
+            .filter(e -> Boolean.TRUE.equals(e.getActive()) && Boolean.FALSE.equals(e.getConflict()))
+            .count();
+        // 恰好一个 active=false, conflict=true, vectorStatus=CONFLICT
+        long conflictCount = concurrentRecords.stream()
+            .filter(e -> Boolean.FALSE.equals(e.getActive())
+                && Boolean.TRUE.equals(e.getConflict())
+                && e.getVectorStatus() == VectorStatus.CONFLICT)
+            .count();
+
+        assertThat(activeCount).as("应恰好一个 active 记录").isEqualTo(1);
+        assertThat(conflictCount).as("应恰好一个 conflict 记录").isGreaterThanOrEqualTo(1);
+
+        // 两条记录有不同的 fileHash/storageKey
+        KnowledgeBaseEntity kbA = knowledgeBaseRepository.findById(idA).orElseThrow();
+        assertThat(kbA.getFileHash()).isNotEqualTo(kbB.getFileHash());
+        assertThat(kbA.getStorageKey()).isNotEqualTo(kbB.getStorageKey());
+
+        // resolve-context 只返回 active 的
+        var scope = listService.resolveContext("concurrent-svc", "prod", "billing");
+        Long activeId = concurrentRecords.stream()
+            .filter(e -> Boolean.TRUE.equals(e.getActive()))
+            .findFirst().orElseThrow().getId();
+        Long conflictId = concurrentRecords.stream()
+            .filter(e -> Boolean.FALSE.equals(e.getActive()))
+            .findFirst().orElseThrow().getId();
+        assertThat(scope).extracting(item -> item.id())
+            .contains(activeId).doesNotContain(conflictId);
+    }
+
+    @Test
+    @DisplayName("采纳时 S3 下载失败 → 旧版本保持 active，冲突记录回退 CONFLICT")
+    void adoptFailure_s3ParseError_oldVersionStaysActive() throws Exception {
+        Long[] ids = createConflictScenario("s3fail");
+        Long id1 = ids[0], id2 = ids[1];
+
+        // 篡改冲突记录的 storageKey 为不存在的 key，模拟 S3 下载失败
+        KnowledgeBaseEntity kb2 = knowledgeBaseRepository.findById(id2).orElseThrow();
+        assertThat(kb2.getConflict()).isTrue();
+        kb2.setStorageKey("nonexistent-key-that-will-fail-on-download");
+        knowledgeBaseRepository.save(kb2);
+
+        // 执行采纳
+        conflictService.adoptVersion(id2);
+
+        // 断言：冲突记录回退到 CONFLICT（不是 ADOPTING）
+        KnowledgeBaseEntity kb2After = knowledgeBaseRepository.findById(id2).orElseThrow();
+        assertThat(kb2After.getVectorStatus())
+            .as("S3 失败后应回退到 CONFLICT")
+            .isEqualTo(VectorStatus.CONFLICT);
+        assertThat(kb2After.getVectorError()).contains("S3 下载失败");
+
+        // 断言：旧版本仍然 active
+        KnowledgeBaseEntity kb1After = knowledgeBaseRepository.findById(id1).orElseThrow();
+        assertThat(kb1After.getActive()).as("旧版本应保持 active").isTrue();
+        assertThat(kb1After.getVectorStatus()).isEqualTo(VectorStatus.COMPLETED);
+
+        // 旧版本向量仍可检索
+        assertThat(vectorRowCount(id1)).isGreaterThan(0);
+    }
+
+    @Test
+    @DisplayName("采纳成功：记录 active ID 切换，旧版本向量删除，新版本 COMPLETED")
+    void adoptSuccess_newVectorizedThenActiveSwitched() throws Exception {
+        Long[] ids = createConflictScenario("adoptok");
+        Long id1 = ids[0], id2 = ids[1];
+
+        // 确认 id1 是 active 的
+        KnowledgeBaseEntity kb1Before = knowledgeBaseRepository.findById(id1).orElseThrow();
+        assertThat(kb1Before.getActive()).isTrue();
+        assertThat(kb1Before.getVectorStatus()).isEqualTo(VectorStatus.COMPLETED);
+        KnowledgeBaseEntity kb2Before = knowledgeBaseRepository.findById(id2).orElseThrow();
+        assertThat(kb2Before.getConflict()).isTrue();
+        assertThat(kb2Before.getActive()).isFalse();
+
+        // 执行采纳
+        conflictService.adoptVersion(id2);
+
+        // 等待异步向量化完成（消费者执行 promote 逻辑）
+        KnowledgeBaseEntity kb2Done = awaitStatus(id2, VectorStatus.COMPLETED, 30_000);
+        assertThat(kb2Done.getVectorStatus()).isEqualTo(VectorStatus.COMPLETED);
+        assertThat(kb2Done.getActive()).isTrue();
+        assertThat(kb2Done.getConflict()).isFalse();
+
+        // 旧版本被停用 + 向量删除
+        KnowledgeBaseEntity kb1After = knowledgeBaseRepository.findById(id1).orElseThrow();
+        assertThat(kb1After.getActive()).as("旧版本应被停用").isFalse();
+        assertThat(vectorRowCount(id1)).as("旧版本向量应被删除").isZero();
+
+        // 新版本有向量
+        assertThat(vectorRowCount(id2)).isGreaterThan(0);
+
+        // active ID 确实发生了切换：采纳前 id1 是 active，采纳后 id2 是 active
+        assertThat(kb1Before.getActive()).as("采纳前 id1 是 active").isTrue();
+        assertThat(kb2Before.getActive()).as("采纳前 id2 不是 active").isFalse();
+        assertThat(kb2Done.getActive()).as("采纳后 id2 是 active").isTrue();
+        assertThat(kb1After.getActive()).as("采纳后 id1 不是 active").isFalse();
+    }
+
+    @Test
+    @DisplayName("重复采纳同一冲突版本 → 第二次幂等无效果")
+    void adoptIdempotent_duplicateClickNoEffect() throws Exception {
+        Long[] ids = createConflictScenario("adoptdup");
+        Long id2 = ids[1];
+
+        // 第一次采纳
+        conflictService.adoptVersion(id2);
+
+        // 等待完成
+        awaitStatus(id2, VectorStatus.COMPLETED, 30_000);
+
+        // 第二次采纳：记录已不是 conflict=true，应抛异常
+        KnowledgeBaseEntity kb2AfterFirst = knowledgeBaseRepository.findById(id2).orElseThrow();
+        assertThat(kb2AfterFirst.getConflict()).isFalse();
+        assertThat(kb2AfterFirst.getActive()).isTrue();
+
+        assertThatThrownBy(() -> conflictService.adoptVersion(id2))
+            .isInstanceOf(interview.guide.common.exception.BusinessException.class)
+            .hasMessageContaining("不是冲突状态");
+
+        // 状态不变
+        KnowledgeBaseEntity kb2AfterSecond = knowledgeBaseRepository.findById(id2).orElseThrow();
+        assertThat(kb2AfterSecond.getActive()).isTrue();
+        assertThat(kb2AfterSecond.getVectorStatus()).isEqualTo(VectorStatus.COMPLETED);
+    }
+
+    @Test
+    @DisplayName("放弃设置 ABANDONED 状态（不是 FAILED），当前 active 不受影响")
+    void abandonSetsAbandonedStatus_notFailed() throws Exception {
+        Long[] ids = createConflictScenario("abnst");
+        Long id1 = ids[0], id2 = ids[1];
+
+        conflictService.abandonVersion(id2);
+
+        KnowledgeBaseEntity kb2 = knowledgeBaseRepository.findById(id2).orElseThrow();
+        assertThat(kb2.getVectorStatus())
+            .as("放弃后应为 ABANDONED（不是 FAILED）")
+            .isEqualTo(VectorStatus.ABANDONED);
+        assertThat(kb2.getActive()).isFalse();
+        assertThat(kb2.getConflict()).isFalse();
+
+        // 当前 active 版本不受影响
+        KnowledgeBaseEntity kb1 = knowledgeBaseRepository.findById(id1).orElseThrow();
+        assertThat(kb1.getActive()).isTrue();
+        assertThat(kb1.getVectorStatus()).isEqualTo(VectorStatus.COMPLETED);
+    }
+
+    @Test
+    @DisplayName("重复放弃同一冲突版本 → 第二次幂等无效果")
+    void abandonIdempotent() throws Exception {
+        Long[] ids = createConflictScenario("abndup");
+        Long id2 = ids[1];
+
+        // 第一次放弃
+        conflictService.abandonVersion(id2);
+        KnowledgeBaseEntity kb2First = knowledgeBaseRepository.findById(id2).orElseThrow();
+        assertThat(kb2First.getVectorStatus()).isEqualTo(VectorStatus.ABANDONED);
+
+        // 第二次放弃：幂等，不抛异常
+        conflictService.abandonVersion(id2);
+
+        // 状态不变
+        KnowledgeBaseEntity kb2Second = knowledgeBaseRepository.findById(id2).orElseThrow();
+        assertThat(kb2Second.getVectorStatus()).isEqualTo(VectorStatus.ABANDONED);
+        assertThat(kb2Second.getActive()).isFalse();
+        assertThat(kb2Second.getConflict()).isFalse();
+    }
+
+    @Test
+    @DisplayName("已放弃的版本无法重新向量化 → 抛出 BusinessException")
+    void abandonedCannotRevectorize() throws Exception {
+        Long[] ids = createConflictScenario("abnrevec");
+        Long id2 = ids[1];
+
+        // 放弃
+        conflictService.abandonVersion(id2);
+        KnowledgeBaseEntity kb2 = knowledgeBaseRepository.findById(id2).orElseThrow();
+        assertThat(kb2.getVectorStatus()).isEqualTo(VectorStatus.ABANDONED);
+
+        // 尝试重新向量化 → 抛异常
+        assertThatThrownBy(() -> uploadService.revectorize(id2))
+            .isInstanceOf(interview.guide.common.exception.BusinessException.class)
+            .hasMessageContaining("已放弃");
+    }
+
+    @Test
+    @DisplayName("resolve-context 只返回 active 版本（排除 conflict + abandoned 记录）")
+    void resolveContextOnlyReturnsActive() throws Exception {
+        // 创建 active 版本
+        MockMultipartFile v1 = mdFile("resolve-v1.md",
+            "resolve测试 支付网关 生产环境 端口配置 8080 基础版本");
+        Long activeId = extractId(uploadService.uploadKnowledgeBase(
+            v1, "resolve测试文档", null, "resolve-svc", "prod", "billing",
+            "runbook", "wiki", "v1.0", null));
+        awaitStatus(activeId, VectorStatus.COMPLETED, 30_000);
+
+        // 创建冲突版本
+        MockMultipartFile v2 = mdFile("resolve-v2.md",
+            "resolve测试 支付网关 生产环境 端口配置 9090 冲突内容");
+        Long conflictId = extractId(uploadService.uploadKnowledgeBase(
+            v2, "resolve测试文档", null, "resolve-svc", "prod", "billing",
+            "runbook", "wiki", "v1.0", null));
+
+        // 创建另一个冲突版本然后放弃
+        MockMultipartFile v3 = mdFile("resolve-v3.md",
+            "resolve测试 支付网关 生产环境 端口配置 AAA 放弃内容");
+        Long abandonedId = extractId(uploadService.uploadKnowledgeBase(
+            v3, "resolve测试文档", null, "resolve-svc", "prod", "billing",
+            "runbook", "wiki", "v1.0", null));
+        conflictService.abandonVersion(abandonedId);
+
+        // 验证三种状态
+        KnowledgeBaseEntity kbConflict = knowledgeBaseRepository.findById(conflictId).orElseThrow();
+        assertThat(kbConflict.getConflict()).isTrue();
+        KnowledgeBaseEntity kbAbandoned = knowledgeBaseRepository.findById(abandonedId).orElseThrow();
+        assertThat(kbAbandoned.getVectorStatus()).isEqualTo(VectorStatus.ABANDONED);
+
+        // resolve-context 只返回 active
+        var scope = listService.resolveContext("resolve-svc", "prod", "billing");
+        assertThat(scope).extracting(item -> item.id())
+            .contains(activeId)
+            .doesNotContain(conflictId)
+            .doesNotContain(abandonedId);
     }
 }

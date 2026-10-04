@@ -3,6 +3,7 @@ package interview.guide.modules.knowledgebase.listener;
 import interview.guide.common.async.AbstractStreamConsumer;
 import interview.guide.common.constant.AsyncTaskStreamConstants;
 import interview.guide.infrastructure.redis.RedisService;
+import interview.guide.modules.knowledgebase.model.KnowledgeBaseEntity;
 import interview.guide.modules.knowledgebase.model.VectorStatus;
 import interview.guide.modules.knowledgebase.repository.KnowledgeBaseRepository;
 import interview.guide.modules.knowledgebase.service.KnowledgeBaseVectorService;
@@ -10,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.stream.StreamMessageId;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -22,18 +24,21 @@ public class VectorizeStreamConsumer extends AbstractStreamConsumer<VectorizeStr
 
     private final KnowledgeBaseVectorService vectorService;
     private final KnowledgeBaseRepository knowledgeBaseRepository;
+    private final interview.guide.common.transaction.TransactionalExecutor transactionalExecutor;
 
     public VectorizeStreamConsumer(
         RedisService redisService,
         KnowledgeBaseVectorService vectorService,
-        KnowledgeBaseRepository knowledgeBaseRepository
+        KnowledgeBaseRepository knowledgeBaseRepository,
+        interview.guide.common.transaction.TransactionalExecutor transactionalExecutor
     ) {
         super(redisService);
         this.vectorService = vectorService;
         this.knowledgeBaseRepository = knowledgeBaseRepository;
+        this.transactionalExecutor = transactionalExecutor;
     }
 
-    record VectorizePayload(Long kbId, String content) {}
+    record VectorizePayload(Long kbId, String content, boolean adoptMode) {}
 
     @Override
     protected String taskDisplayName() {
@@ -68,12 +73,13 @@ public class VectorizeStreamConsumer extends AbstractStreamConsumer<VectorizeStr
             log.warn("消息格式错误，跳过: messageId={}", messageId);
             return null;
         }
-        return new VectorizePayload(Long.parseLong(kbIdStr), content);
+        boolean adoptMode = Boolean.parseBoolean(data.getOrDefault(AsyncTaskStreamConstants.FIELD_ADOPT_MODE, "false"));
+        return new VectorizePayload(Long.parseLong(kbIdStr), content, adoptMode);
     }
 
     @Override
     protected String payloadIdentifier(VectorizePayload payload) {
-        return "kbId=" + payload.kbId();
+        return "kbId=" + payload.kbId() + (payload.adoptMode() ? "(adopt)" : "");
     }
 
     @Override
@@ -100,12 +106,72 @@ public class VectorizeStreamConsumer extends AbstractStreamConsumer<VectorizeStr
 
     @Override
     protected void markCompleted(VectorizePayload payload) {
-        updateVectorStatus(payload.kbId(), VectorStatus.COMPLETED, null);
+        Long kbId = payload.kbId();
+        // 检查是否为 adopt 模式
+        if (payload.adoptMode()) {
+            // 在事务中执行 promote 逻辑：停用旧版本，激活新版本
+            promoteAdoptedVersion(kbId);
+        } else {
+            updateVectorStatus(kbId, VectorStatus.COMPLETED, null);
+        }
     }
 
     @Override
     protected void markFailed(VectorizePayload payload, String error) {
-        updateVectorStatus(payload.kbId(), VectorStatus.FAILED, error);
+        Long kbId = payload.kbId();
+        // 如果是 adopt 模式，设置为 CONFLICT 而不是 FAILED
+        if (payload.adoptMode()) {
+            updateVectorStatus(kbId, VectorStatus.CONFLICT, error);
+        } else {
+            updateVectorStatus(kbId, VectorStatus.FAILED, error);
+        }
+    }
+
+    /**
+     * 执行 adopt 模式的 promote 逻辑：
+     * 1. 在事务中：停用同 documentKey 的当前 active 版本，激活新版本
+     * 2. 事务外：删除旧版本的向量数据
+     */
+    private void promoteAdoptedVersion(Long kbId) {
+        knowledgeBaseRepository.findById(kbId).ifPresent(newKb -> {
+            String documentKey = newKb.getDocumentKey();
+            if (documentKey == null || documentKey.isBlank()) {
+                // 无 documentKey，直接标记为 COMPLETED
+                updateVectorStatus(kbId, VectorStatus.COMPLETED, null);
+                return;
+            }
+
+            // 查找同 documentKey 的当前 active 版本（排除自己）
+            List<KnowledgeBaseEntity> currentActive = knowledgeBaseRepository
+                .findByDocumentKeyAndActiveTrueOrderByVersionNoDesc(documentKey).stream()
+                .filter(e -> !e.getId().equals(kbId))
+                .toList();
+
+            // 在事务中：停用旧版本 + 激活新版本
+            transactionalExecutor.run(() -> {
+                for (KnowledgeBaseEntity old : currentActive) {
+                    old.setActive(false);
+                    knowledgeBaseRepository.save(old);
+                }
+                newKb.setActive(true);
+                newKb.setConflict(false);
+                newKb.setVectorStatus(VectorStatus.COMPLETED);
+                newKb.setVectorError(null);
+                knowledgeBaseRepository.save(newKb);
+            });
+
+            // 事务外：删除旧版本的向量
+            for (KnowledgeBaseEntity old : currentActive) {
+                try {
+                    vectorService.deleteByKnowledgeBaseId(old.getId());
+                } catch (Exception e) {
+                    log.warn("删除旧版本向量失败（可后续手动清理）: oldKbId={}", old.getId(), e);
+                }
+            }
+
+            log.info("冲突版本采纳完成: kbId={}, documentKey={}, 已停用旧版本数={}",
+                kbId, documentKey, currentActive.size());
+        });
     }
 
     @Override
@@ -116,7 +182,8 @@ public class VectorizeStreamConsumer extends AbstractStreamConsumer<VectorizeStr
             Map<String, String> message = Map.of(
                 AsyncTaskStreamConstants.FIELD_KB_ID, kbId.toString(),
                 AsyncTaskStreamConstants.FIELD_CONTENT, content,
-                AsyncTaskStreamConstants.FIELD_RETRY_COUNT, String.valueOf(retryCount)
+                AsyncTaskStreamConstants.FIELD_RETRY_COUNT, String.valueOf(retryCount),
+                AsyncTaskStreamConstants.FIELD_ADOPT_MODE, String.valueOf(payload.adoptMode())
             );
 
             redisService().streamAdd(
@@ -128,7 +195,8 @@ public class VectorizeStreamConsumer extends AbstractStreamConsumer<VectorizeStr
 
         } catch (Exception e) {
             log.error("重试入队失败: kbId={}, error={}", kbId, e.getMessage(), e);
-            updateVectorStatus(kbId, VectorStatus.FAILED, truncateError("重试入队失败: " + e.getMessage()));
+            VectorStatus failStatus = payload.adoptMode() ? VectorStatus.CONFLICT : VectorStatus.FAILED;
+            updateVectorStatus(kbId, failStatus, truncateError("重试入队失败: " + e.getMessage()));
         }
     }
 

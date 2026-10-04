@@ -3,7 +3,7 @@ import { streamSse } from './stream';
 import type { InterviewSession } from '../types/interview';
 
 // 向量化状态
-export type VectorStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+export type VectorStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'CONFLICT' | 'ADOPTING' | 'ABANDONED';
 export type QuestionGenStatus = 'NONE' | 'QUEUED' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
 
 export interface KnowledgeBaseItem {
@@ -256,7 +256,7 @@ export const knowledgeBaseApi = {
   /**
    * 获取所有知识库列表
    */
-  async getAllKnowledgeBases(sortBy?: SortOption, vectorStatus?: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED', service?: string, environment?: string, project?: string, docType?: string, version?: string): Promise<KnowledgeBaseItem[]> {
+  async getAllKnowledgeBases(sortBy?: SortOption, vectorStatus?: VectorStatus, service?: string, environment?: string, project?: string, docType?: string, version?: string): Promise<KnowledgeBaseItem[]> {
     const params = new URLSearchParams();
     if (sortBy) {
       params.append('sortBy', sortBy);

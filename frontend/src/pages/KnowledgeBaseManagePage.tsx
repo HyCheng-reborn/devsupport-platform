@@ -13,8 +13,10 @@ import {
   Eye,
   FileText,
   HardDrive,
+  Loader,
   Loader2,
   MessageSquare,
+  MinusCircle,
   RefreshCw,
   Search,
   Trash2,
@@ -64,6 +66,12 @@ function StatusIcon({ status }: { status: VectorStatus }) {
       return <Clock className="w-4 h-4 text-yellow-500" />;
     case 'FAILED':
       return <AlertCircle className="w-4 h-4 text-red-500" />;
+    case 'CONFLICT':
+      return <AlertCircle className="w-4 h-4 text-orange-500" />;
+    case 'ADOPTING':
+      return <Loader className="w-4 h-4 text-amber-500 animate-spin" />;
+    case 'ABANDONED':
+      return <MinusCircle className="w-4 h-4 text-gray-400" />;
     default:
       return <CheckCircle className="w-4 h-4 text-green-500" />;
   }
@@ -80,6 +88,12 @@ function getStatusText(status: VectorStatus): string {
       return '待处理';
     case 'FAILED':
       return '失败';
+    case 'CONFLICT':
+      return '版本冲突';
+    case 'ADOPTING':
+      return '采用中';
+    case 'ABANDONED':
+      return '已放弃';
     default:
       return '未知';
   }
@@ -976,11 +990,11 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
                       {deriveStatus(kb.vectorStatus, kb.active, kb.conflict) === 'retired' && (
                         <span className="px-2 py-0.5 bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 rounded text-xs">已停用</span>
                       )}
-                      {(kb.versionConflict || kb.conflict) && (
+                      {kb.vectorStatus === 'CONFLICT' && (
                         <span className="px-2 py-0.5 bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 rounded text-xs">版本冲突</span>
                       )}
                     </div>
-                    {(kb.conflict || kb.versionConflict) && kb.conflictReason && (
+                    {kb.vectorStatus === 'CONFLICT' && kb.conflictReason && (
                       <p className="text-xs text-red-500 dark:text-red-400 mt-1">{kb.conflictReason}</p>
                     )}
                   </td>
@@ -1033,7 +1047,7 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
                         </button>
                       )}
                       {/* 冲突操作按钮 */}
-                      {(kb.conflict || kb.versionConflict) && (
+                      {kb.vectorStatus === 'CONFLICT' && (
                         <>
                           <button
                             onClick={() => handleAdoptConflict(kb.id)}

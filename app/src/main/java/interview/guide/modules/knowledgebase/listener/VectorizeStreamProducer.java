@@ -20,7 +20,11 @@ public class VectorizeStreamProducer extends AbstractStreamProducer<VectorizeStr
 
     private final KnowledgeBaseRepository knowledgeBaseRepository;
 
-    record VectorizeTaskPayload(Long kbId, String content) {}
+    record VectorizeTaskPayload(Long kbId, String content, boolean adoptMode) {
+        VectorizeTaskPayload(Long kbId, String content) {
+            this(kbId, content, false);
+        }
+    }
 
     public VectorizeStreamProducer(RedisService redisService, KnowledgeBaseRepository knowledgeBaseRepository) {
         super(redisService);
@@ -35,6 +39,17 @@ public class VectorizeStreamProducer extends AbstractStreamProducer<VectorizeStr
      */
     public void sendVectorizeTask(Long kbId, String content) {
         sendTask(new VectorizeTaskPayload(kbId, content));
+    }
+
+    /**
+     * 发送向量化任务到 Redis Stream（支持 adopt 模式）
+     *
+     * @param kbId      知识库ID
+     * @param content   文档内容
+     * @param adoptMode 是否为冲突版本采纳模式
+     */
+    public void sendVectorizeTask(Long kbId, String content, boolean adoptMode) {
+        sendTask(new VectorizeTaskPayload(kbId, content, adoptMode));
     }
 
     @Override
@@ -52,18 +67,19 @@ public class VectorizeStreamProducer extends AbstractStreamProducer<VectorizeStr
         return Map.of(
             AsyncTaskStreamConstants.FIELD_KB_ID, payload.kbId().toString(),
             AsyncTaskStreamConstants.FIELD_CONTENT, payload.content(),
-            AsyncTaskStreamConstants.FIELD_RETRY_COUNT, "0"
+            AsyncTaskStreamConstants.FIELD_RETRY_COUNT, "0",
+            AsyncTaskStreamConstants.FIELD_ADOPT_MODE, String.valueOf(payload.adoptMode())
         );
     }
 
     @Override
     protected String payloadIdentifier(VectorizeTaskPayload payload) {
-        return "kbId=" + payload.kbId();
+        return "kbId=" + payload.kbId() + (payload.adoptMode() ? "(adopt)" : "");
     }
 
     @Override
     protected void onSendFailed(VectorizeTaskPayload payload, String error) {
-        updateVectorStatus(payload.kbId(), VectorStatus.FAILED, truncateError(error));
+        updateVectorStatus(payload.kbId(), payload.adoptMode() ? VectorStatus.CONFLICT : VectorStatus.FAILED, truncateError(error));
     }
 
     /**

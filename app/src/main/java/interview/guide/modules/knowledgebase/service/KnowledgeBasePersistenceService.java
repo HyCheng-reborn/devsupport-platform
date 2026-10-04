@@ -108,7 +108,11 @@ public class KnowledgeBasePersistenceService {
 
     /**
      * 标记知识库为版本冲突状态（active=false, conflict=true, vectorStatus=CONFLICT）。
+     *
+     * <p>注意：此方法仅用于预保存冲突标记（如上传时检测到冲突），不应用于修改已存在的 active 版本。
+     * 并发冲突场景请使用 {@link #saveKnowledgeBase} 的 isConflict 参数。
      */
+    @Deprecated
     @Transactional(rollbackFor = Exception.class)
     public void markAsConflict(Long kbId) {
         KnowledgeBaseEntity kb = knowledgeBaseRepository.findById(kbId)
