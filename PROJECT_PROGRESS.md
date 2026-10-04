@@ -3,7 +3,7 @@
 > 本项目（远程仓库 `HyCheng-reborn/devsupport-platform`，本地目录名仍为 `interview-guide`）的进度事实源。
 > **跨机器 remote 别名映射（读文档前先对齐，避免 `origin` 误读）**：本机 `devsupport` = `HyCheng-reborn/devsupport-platform`（推送目标），本机 `origin` = `Snailclimb/interview-guide`（上游，**勿推**）；另一台验证机（批次 C/D 补验）的 `origin` = `HyCheng-reborn/devsupport-platform`，故其文档/提交记录里的「push 到 `origin/master`」等同于本机的「push 到 `devsupport/master`」。判断实际目标仓库一律以 remote URL 为准，不要只看别名。
 > 新会话接手时先读本文件，再读「交接区」列出的文件。
-> 最近更新：**2026-10-04 DevSupport 阶段 2 验收缺口修复（来源快照版本标注 + 文档中心 project/docType 筛选 + 测试补齐）**。前一轮：阶段 2 收尾（版本冲突标识 + 真实 RustFS/Redis Stream 集成 + 前端 E2E）。
+> 最近更新：**2026-10-04 版本筛选链路补全（KnowledgeBaseManagePage 新增版本下拉、kbFilter 新增 versionFilter 维度、测试补齐 kbFilter 26/26 + E2E 4/4）**。前一轮：阶段 2 验收缺口修复（来源快照版本标注 + project/docType 筛选）。
 
 ## 0. 维护规则
 
@@ -31,14 +31,14 @@
 
 ## 2. 已完成且有证据
 
-- **DevSupport 阶段 2：文档中心与知识版本生命周期（2026-10-04）** — 状态 `代码已写 · 离线通过 · Testcontainers 真实 PG/pgvector 集成通过 · 验收缺口已修复（版本冲突语义待决）；真实模型/S3/浏览器端到端未验证`。
+- **DevSupport 阶段 2：文档中心与知识版本生命周期（2026-10-04）** — 状态 `筛选链路已补全 · 冲突语义待决（代码已写 · 离线通过 · Testcontainers 真实 PG/pgvector 集成通过）；真实模型/S3/浏览器端到端未验证`。
   - 迁移 `V20261005` 只 ADD 列 project/docType/source/versionLabel/documentKey/versionNo/active + 索引，**不改** fileHash 全局唯一（内容去重不变；同文件跨项目归属仍不支持=已知边界）。
   - 元数据贯通 UI→API→DB→异步→检索过滤；`resolve-context` 仅 active + project。
   - 版本：新版本停用同 documentKey 旧版本(active=false) 并删除其向量（旧版退出检索，双保险）；`PUT /{id}/retire`。
   - 文档中心展示 处理中/待处理/可检索/失败/已停用 + 项目/版本列 + 停用（`kbStatus.deriveStatus`）；上传页元数据面板。
   - 测试：KnowledgeBaseVersionServiceTest(4)、KnowledgeBaseUploadServiceTest（去重/versionNo 递增/显式 documentKey）、KnowledgeBaseContextResolveTest（active/project）、Testcontainers 真实 PG/pgvector 的 KnowledgeBaseLifecycleIntegrationTest(2/0)；知识库包 `:app:test` exit 0。
   - 收尾（2026-10-04）：版本冲突标识（KnowledgeBaseListService→ListItemDTO.versionConflict + 文档中心徽标 + 单测）；真实集成 `KnowledgeBaseUploadPipelineIntegrationTest`(2/0，Testcontainers pgvector+Redis+**RustFS**，确定性 embedding) 覆盖 上传→S3/PG→Redis Stream 异步 COMPLETED→检索新版排除旧版→幂等重试；Playwright E2E `kb-doc-center.spec.ts`(mock) 状态/重试/停用/版本/上传元数据。未做：真实付费模型端到端、生产部署、检索答案逐条版本标注。未提交、未推送。
-  - 验收缺口修复（2026-10-04）：(1) **来源快照版本标注**：`SourceReference` 扩展 versionLabel/versionNo/documentKey，排查会话来源面板展示紫色版本标签（`sourceDisplay.ts` 映射 + 单测 14/14）。(2) **文档中心 project/docType 筛选**：后端列表 API 支持查询参数，前端新增下拉筛选（`kbFilter.ts` 单测 18/18）。(3) 测试补齐：后端定点 36/36；前端 build exit 0；E2E kb-doc-center 3/3 + chat-scope 3/3。全量后端 **601 tests / 588 passed / 10 failed（Voice Redis 遗留）/ 3 skipped**，DevSupport 全绿。**阶段 2 验收缺口已修复**（版本冲突产品语义待决：选项A 标识-only vs 选项B 多版本 active 需用户决策）。
+  - 验收缺口修复 + 版本筛选链路补全（2026-10-04）：(1) **来源快照版本标注**：`SourceReference` 扩展 versionLabel/versionNo/documentKey，排查会话来源面板展示紫色版本标签（`sourceDisplay.ts` 映射 + 单测 14/14）。(2) **文档中心 project/docType/version 筛选**：后端列表 API 支持查询参数；前端文档中心新增下拉筛选，前端采用 client-side 过滤（`kbFilter.ts` 的 `versionFilter` 维度在已加载数据上过滤；后端 API 亦支持 version 参数但前端当前走客户端路径）。`KnowledgeBaseManagePage` 新增版本下拉；`kbFilter.ts` 新增 `versionFilter` 维度（`kbFilter.test.ts` 26/26）。(3) 测试补齐：后端定点 36/36；前端 build exit 0；E2E kb-doc-center 4/4（含版本筛选用例）+ chat-scope 3/3。全量后端 **601 tests / 588 passed / 10 failed（Voice Redis 遗留）/ 3 skipped**，DevSupport 全绿。**阶段 2 筛选链路已补全**（project/docType/version 后端 API + 前端 UI 均可用），但**版本冲突产品语义仍待决**：选项A 标识-only vs 选项B 多版本 active 需用户决策。
 
 - **DevSupport 路线图阶段 1 完成（2026-10-04，提交 `2aa4e8c` + `5798f62`）** — 状态 `已完成`。
   - 四导航重建：文档中心 (`/docs`)、排查会话 (`/chat`)、案例库 (`/cases`)、评测结果 (`/eval-results`)，Layout 从旧五入口改为四入口。

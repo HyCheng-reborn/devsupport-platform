@@ -13,6 +13,7 @@ export interface FilterableKB {
   environment: string | null;
   project?: string | null;
   docType?: string | null;
+  versionLabel?: string | null;
 }
 
 /**
@@ -26,7 +27,8 @@ export function applyFilters<T extends FilterableKB>(
   serviceFilter: FilterState,
   environmentFilter: FilterState,
   projectFilter?: FilterState,
-  docTypeFilter?: FilterState
+  docTypeFilter?: FilterState,
+  versionFilter?: FilterState
 ): T[] {
   let result = items;
 
@@ -55,6 +57,14 @@ export function applyFilters<T extends FilterableKB>(
       result = result.filter(kb => kb.docType === null || kb.docType === undefined);
     } else if (docTypeFilter.type === 'value') {
       result = result.filter(kb => kb.docType === docTypeFilter.value);
+    }
+  }
+
+  if (versionFilter) {
+    if (versionFilter.type === 'unclassified') {
+      result = result.filter(kb => kb.versionLabel === null || kb.versionLabel === undefined || kb.versionLabel === '');
+    } else if (versionFilter.type === 'value') {
+      result = result.filter(kb => kb.versionLabel?.toLowerCase() === versionFilter.value.toLowerCase());
     }
   }
 

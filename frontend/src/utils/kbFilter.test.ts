@@ -10,6 +10,7 @@ interface TestKB {
   environment: string | null;
   project?: string | null;
   docType?: string | null;
+  versionLabel?: string | null;
 }
 
 const ALL: FilterState = { type: 'all' };
@@ -17,11 +18,11 @@ const UNCLASSIFIED: FilterState = { type: 'unclassified' };
 const val = (v: string): FilterState => ({ type: 'value', value: v });
 
 const items: TestKB[] = [
-  { id: 1, name: 'kb1', service: 'auth', environment: 'prod', project: 'billing', docType: 'runbook' },
-  { id: 2, name: 'kb2', service: 'auth', environment: null, project: null, docType: 'runbook' },
-  { id: 3, name: 'kb3', service: null, environment: 'prod', project: 'billing', docType: null },
-  { id: 4, name: 'kb4', service: null, environment: null, project: null, docType: null },
-  { id: 5, name: 'kb5', service: '\\0UNCATEGORIZED', environment: 'staging', project: 'order', docType: 'error-code' },
+  { id: 1, name: 'kb1', service: 'auth', environment: 'prod', project: 'billing', docType: 'runbook', versionLabel: 'v1' },
+  { id: 2, name: 'kb2', service: 'auth', environment: null, project: null, docType: 'runbook', versionLabel: 'v2' },
+  { id: 3, name: 'kb3', service: null, environment: 'prod', project: 'billing', docType: null, versionLabel: null },
+  { id: 4, name: 'kb4', service: null, environment: null, project: null, docType: null, versionLabel: null },
+  { id: 5, name: 'kb5', service: '\\0UNCATEGORIZED', environment: 'staging', project: 'order', docType: 'error-code', versionLabel: 'v1' },
 ];
 
 test('all + all → 返回全部 5 项', () => {
@@ -122,5 +123,49 @@ test('service:auth + project:unclassified → 交集 (id=2)', () => {
 
 test('四个维度全指定 → 精确命中 (id=5)', () => {
   const result = applyFilters(items, ALL, val('staging'), val('order'), val('error-code'));
+  assert.deepEqual(result.map(i => i.id), [5]);
+});
+
+// ========== version 筛选 ==========
+
+test('version:all → 返回全部 5 项', () => {
+  const result = applyFilters(items, ALL, ALL, ALL, ALL, ALL);
+  assert.equal(result.length, 5);
+});
+
+test('version:unclassified → 只显示 versionLabel 为 null 的项 (id=3,4)', () => {
+  const result = applyFilters(items, ALL, ALL, ALL, ALL, UNCLASSIFIED);
+  assert.deepEqual(result.map(i => i.id), [3, 4]);
+});
+
+test('version:value:v1 → 只显示 versionLabel=v1 的项 (id=1,5)', () => {
+  const result = applyFilters(items, ALL, ALL, ALL, ALL, val('v1'));
+  assert.deepEqual(result.map(i => i.id), [1, 5]);
+});
+
+test('version:value:v2 → 只显示 versionLabel=v2 的项 (id=2)', () => {
+  const result = applyFilters(items, ALL, ALL, ALL, ALL, val('v2'));
+  assert.deepEqual(result.map(i => i.id), [2]);
+});
+
+// ========== version 组合筛选 ==========
+
+test('version:v1 + project:billing → 交集 (id=1)', () => {
+  const result = applyFilters(items, ALL, ALL, val('billing'), ALL, val('v1'));
+  assert.deepEqual(result.map(i => i.id), [1]);
+});
+
+test('version:v1 + docType:runbook → 交集 (id=1)', () => {
+  const result = applyFilters(items, ALL, ALL, ALL, val('runbook'), val('v1'));
+  assert.deepEqual(result.map(i => i.id), [1]);
+});
+
+test('version:v1 + project:order + docType:error-code → 交集 (id=5)', () => {
+  const result = applyFilters(items, ALL, ALL, val('order'), val('error-code'), val('v1'));
+  assert.deepEqual(result.map(i => i.id), [5]);
+});
+
+test('五个维度全指定 → 精确命中 (id=5)', () => {
+  const result = applyFilters(items, ALL, val('staging'), val('order'), val('error-code'), val('v1'));
   assert.deepEqual(result.map(i => i.id), [5]);
 });

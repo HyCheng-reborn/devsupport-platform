@@ -54,8 +54,8 @@ test.describe('阶段 2 文档中心', () => {
     await expect(page.getByText('失败').first()).toBeVisible();
     await expect(page.getByText('已停用').first()).toBeVisible();
     await expect(page.getByText('版本冲突').first()).toBeVisible();
-    // 版本列展示 v2
-    await expect(page.getByText('v2').first()).toBeVisible();
+    // 版本列展示 v2（在表格行内，不在筛选下拉中）
+    await expect(page.locator('tr', { hasText: '启用文档A' }).getByText('v2').first()).toBeVisible();
 
     // 失败文档有"重新向量化"（重试），点击 → POST revectorize
     const failedRow = page.locator('tr', { hasText: '失败文档B' });
@@ -121,7 +121,7 @@ test.describe('阶段 2 上传元数据', () => {
   });
 });
 
-// ========== 项目/文档类型筛选控件 ==========
+// ========== 项目/文档类型/版本筛选控件 ==========
 
 test.describe('阶段 2 文档中心筛选控件', () => {
   test('项目和文档类型筛选下拉可见且可筛选列表', async ({ page }) => {
@@ -147,5 +147,35 @@ test.describe('阶段 2 文档中心筛选控件', () => {
     await expect(page.locator('tr', { hasText: '失败文档B' })).toHaveCount(0);
     await expect(page.locator('tr', { hasText: '停用文档C' })).toHaveCount(0);
     await expect(page.locator('tr', { hasText: '冲突文档D' })).toHaveCount(0);
+  });
+
+  test('版本筛选下拉可见且可筛选列表', async ({ page }) => {
+    await mockDocCenterApis(page);
+
+    await page.goto('/docs');
+
+    // 版本筛选下拉可见
+    const versionSelect = page.locator('select').filter({ hasText: '全部版本' });
+    await expect(versionSelect).toBeVisible();
+
+    // 初始状态：4 条文档
+    await expect(page.locator('tr', { hasText: '启用文档A' })).toBeVisible();
+    await expect(page.locator('tr', { hasText: '失败文档B' })).toBeVisible();
+    await expect(page.locator('tr', { hasText: '停用文档C' })).toBeVisible();
+    await expect(page.locator('tr', { hasText: '冲突文档D' })).toBeVisible();
+
+    // 选择 version=v2 → 只显示启用文档A (versionLabel='v2')
+    await versionSelect.selectOption('val:v2');
+    await expect(page.locator('tr', { hasText: '启用文档A' })).toBeVisible();
+    await expect(page.locator('tr', { hasText: '失败文档B' })).toHaveCount(0);
+    await expect(page.locator('tr', { hasText: '停用文档C' })).toHaveCount(0);
+    await expect(page.locator('tr', { hasText: '冲突文档D' })).toHaveCount(0);
+
+    // 选择“未分类” → 显示 versionLabel 为 null 的 3 条文档
+    await versionSelect.selectOption('unclassified');
+    await expect(page.locator('tr', { hasText: '启用文档A' })).toHaveCount(0);
+    await expect(page.locator('tr', { hasText: '失败文档B' })).toBeVisible();
+    await expect(page.locator('tr', { hasText: '停用文档C' })).toBeVisible();
+    await expect(page.locator('tr', { hasText: '冲突文档D' })).toBeVisible();
   });
 });

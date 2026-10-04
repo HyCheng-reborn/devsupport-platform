@@ -1,3 +1,10 @@
+**2026-10-04 -- DevSupport 版本筛选链路补全：KnowledgeBaseManagePage 新增版本下拉、kbFilter 新增 versionFilter 维度、测试补齐**
+- 版本筛选链路补全：`KnowledgeBaseManagePage` 新增版本下拉筛选控件；`kbFilter.ts` 新增 `versionFilter` 维度，前端采用 client-side 过滤（在已加载数据上按版本号过滤；后端 API 亦支持 version 参数但前端当前走客户端路径）
+- 测试补齐：`kbFilter.test.ts` 26/26（新增 versionFilter 维度用例）；E2E `kb-doc-center.spec.ts` 4/4（新增版本筛选下拉可见且可筛选列表用例）
+- 阶段 2 状态更新：筛选链路已补全（project/docType/version 后端 API + 前端 UI 均可用），但**版本冲突产品语义仍待决**（选项A 标识-only vs 选项B 多版本 active 需用户决策），不称“验收通过”或“全部完成”
+- 边界：真实付费模型端到端、生产部署未验证；未提交、未推送；未改 .env/wrapper/评测工件/Docker 卷
+- 主要文件：`KnowledgeBaseManagePage.tsx`、`kbFilter.ts`/`.test.ts`、`kb-doc-center.spec.ts`
+
 **2026-10-04 -- DevSupport 阶段 2 验收缺口修复：来源快照版本标注 + 文档中心 project/docType 筛选 + 测试补齐**
 - 检索来源标注版本：`SourceReference` 扩展 `versionLabel`/`versionNo`/`documentKey` 字段；前端 `sourceDisplay.ts` 映射来源快照为展示视图，排查会话来源面板展示紫色版本标签；新增 `sourceDisplay.test.ts` 14/14
 - 文档中心支持按 project/docType 筛选：后端列表 API 新增 project/docType 查询参数；前端文档中心新增对应下拉筛选控件；`kbFilter.test.ts` 18/18
