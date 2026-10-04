@@ -229,7 +229,7 @@ public class KnowledgeBaseUploadService {
         KnowledgeBaseEntity kb = knowledgeBaseRepository.findById(kbId)
             .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "知识库不存在"));
 
-        // 拒绝 ABANDONED 状态
+        // 已放弃的记录不允许重新向量化
         if (kb.getVectorStatus() == VectorStatus.ABANDONED) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "已放弃的知识库无法重新向量化");
         }

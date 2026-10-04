@@ -163,6 +163,17 @@ public interface KnowledgeBaseRepository extends JpaRepository<KnowledgeBaseEnti
     List<KnowledgeBaseEntity> findByDocumentKeyAndConflictTrue(String documentKey);
 
     /**
+     * 原子性尝试将冲突记录从 CONFLICT 转为 ADOPTING。
+     * 利用条件 UPDATE 实现乐观锁，避免并发 adopt 导致重复向量化。
+     *
+     * @return 受影响的行数（1=成功抢占，0=条件不满足）
+     */
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE KnowledgeBaseEntity k SET k.vectorStatus = 'ADOPTING', k.vectorError = null " +
+           "WHERE k.id = :id AND k.conflict = true AND k.active = false AND k.vectorStatus = 'CONFLICT'")
+    int tryStartAdopt(@Param("id") Long id);
+
+    /**
      * 获取所有不同的服务标签（非空，按字母排序）
      */
     @Query("SELECT DISTINCT k.service FROM KnowledgeBaseEntity k WHERE k.service IS NOT NULL ORDER BY k.service")

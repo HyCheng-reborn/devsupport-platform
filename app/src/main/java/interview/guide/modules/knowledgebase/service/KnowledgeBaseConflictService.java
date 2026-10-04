@@ -12,8 +12,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
-
 /**
  * 知识库版本冲突解决服务。
  * 当同一 (documentKey, normalizedVersionLabel) 下出现多个 active 行时，
@@ -36,78 +34,99 @@ public class KnowledgeBaseConflictService {
    *
    * <p>流程：
    * <ol>
-   *   <li>校验冲突记录存在且 conflict=true</li>
-   *   <li>幂等判断：已 ADOPTING 直接返回；已 ABANDONED 抛异常</li>
-   *   <li>设置 vectorStatus=ADOPTING（不触碰旧 active 版本）</li>
-   *   <li>从 S3 下载文件并解析内容</li>
+   *   <li>原子 CAS：tryStartAdopt(id) 将 CONFLICT→ADOPTING（条件 UPDATE）</li>
+   *   <li>抢占成功：从 S3 下载文件并解析内容</li>
    *   <li>发送向量化任务到 Redis Stream（携带 adoptMode 标志）</li>
-   *   <li>S3 或 Redis 失败时回滚 vectorStatus=CONFLICT</li>
+   *   <li>S3 或 Redis 失败时回滚 vectorStatus=CONFLICT 并抛出 BusinessException</li>
+   *   <li>抢占失败（affected=0）：根据当前状态判断幂等或抛异常</li>
    * </ol>
    *
    * <p>向量化完成后，由 {@link interview.guide.modules.knowledgebase.listener.VectorizeStreamConsumer}
    * 负责将旧版本置为 active=false，并将本版本提升为 active=true, conflict=false。
    */
   public void adoptVersion(Long conflictKbId) {
-    // 1. 加载冲突记录
-    KnowledgeBaseEntity conflictEntity = repository.findById(conflictKbId)
-      .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "知识库不存在"));
+    // 1. 原子 CAS：CONFLICT → ADOPTING（独立事务）
+    int affected = transactionalExecutor.call(() -> repository.tryStartAdopt(conflictKbId));
 
-    if (!Boolean.TRUE.equals(conflictEntity.getConflict())) {
-      throw new BusinessException(ErrorCode.BAD_REQUEST, "该记录不是冲突状态");
-    }
-
-    // 2. 幂等判断
-    VectorStatus currentStatus = conflictEntity.getVectorStatus();
-    if (currentStatus == VectorStatus.ADOPTING) {
-      log.info("冲突版本已在采纳中，跳过: kbId={}", conflictKbId);
+    if (affected == 1) {
+      // 抢占成功，执行 S3 解析 + Redis 发送
+      doAdoptParseAndSend(conflictKbId);
       return;
     }
-    if (currentStatus == VectorStatus.ABANDONED) {
-      throw new BusinessException(ErrorCode.BAD_REQUEST, "该冲突版本已被放弃，无法采纳");
-    }
 
-    String documentKey = conflictEntity.getDocumentKey();
+    // 2. affected == 0：重新读取实体判断原因
+    KnowledgeBaseEntity entity = repository.findById(conflictKbId)
+      .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "知识库不存在"));
+
+    VectorStatus status = entity.getVectorStatus();
+    if (status == VectorStatus.ADOPTING) {
+      log.info("冲突版本已在采纳中（幂等），跳过: kbId={}", conflictKbId);
+      return;
+    }
+    if (status == VectorStatus.COMPLETED && !Boolean.TRUE.equals(entity.getConflict())) {
+      log.info("冲突版本已完成采纳（幂等），跳过: kbId={}", conflictKbId);
+      return;
+    }
+    // 已放弃的版本无法采纳
+    if (status == VectorStatus.ABANDONED) {
+      throw new BusinessException(ErrorCode.BAD_REQUEST, "版本已放弃，无法采纳");
+    }
+    // 其他非法状态
+    throw new BusinessException(ErrorCode.BAD_REQUEST, "非法状态，无法采用");
+  }
+
+  /**
+   * 执行 S3 解析 + Redis 发送。失败时回滚状态到 CONFLICT 并抛出 BusinessException。
+   */
+  private void doAdoptParseAndSend(Long conflictKbId) {
+    KnowledgeBaseEntity entity = repository.findById(conflictKbId)
+      .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "知识库不存在"));
+    String documentKey = entity.getDocumentKey();
     log.info("开始采纳冲突版本: kbId={}, documentKey={}", conflictKbId, documentKey);
 
-    // 3. 设置 vectorStatus=ADOPTING（不触碰旧 active 版本）
-    transactionalExecutor.run(() -> {
-      conflictEntity.setVectorStatus(VectorStatus.ADOPTING);
-      conflictEntity.setVectorError(null);
-      repository.save(conflictEntity);
-    });
-
-    // 4. 从 S3 下载文件并解析内容
+    // S3 下载并解析
     String content;
     try {
       content = parseService.downloadAndParseContent(
-        conflictEntity.getStorageKey(), conflictEntity.getOriginalFilename());
+        entity.getStorageKey(), entity.getOriginalFilename());
       if (content == null || content.trim().isEmpty()) {
         throw new BusinessException(ErrorCode.INTERNAL_ERROR, "无法从存储中重新解析文件内容");
       }
     } catch (Exception e) {
-      log.error("采纳冲突版本时 S3 下载失败，回滚状态: kbId={}", conflictKbId, e);
-      transactionalExecutor.run(() -> {
-        conflictEntity.setVectorStatus(VectorStatus.CONFLICT);
-        conflictEntity.setVectorError(truncateError("S3 下载失败: " + e.getMessage()));
-        repository.save(conflictEntity);
-      });
-      return;
+      log.error("采纳冲突版本时 S3 下载失败: kbId={}", conflictKbId, e);
+      recoverToConflict(entity, "S3 下载失败: " + e.getMessage());
+      throw new BusinessException(ErrorCode.KNOWLEDGE_BASE_PARSE_FAILED,
+        "S3 下载失败: " + e.getMessage());
     }
 
-    // 5. 发送向量化任务到 Redis Stream（携带 adoptMode 标志）
+    // Redis Stream 发送
     try {
       vectorizeStreamProducer.sendVectorizeTask(conflictKbId, content, true);
     } catch (Exception e) {
-      log.error("采纳冲突版本时 Redis 发送失败，回滚状态: kbId={}", conflictKbId, e);
-      transactionalExecutor.run(() -> {
-        conflictEntity.setVectorStatus(VectorStatus.CONFLICT);
-        conflictEntity.setVectorError(truncateError("Redis 发送失败: " + e.getMessage()));
-        repository.save(conflictEntity);
-      });
-      return;
+      log.error("采纳冲突版本时 Redis 发送失败: kbId={}", conflictKbId, e);
+      recoverToConflict(entity, "Redis 发送失败: " + e.getMessage());
+      throw new BusinessException(ErrorCode.KNOWLEDGE_BASE_VECTORIZATION_FAILED,
+        "Redis 发送失败: " + e.getMessage());
     }
 
     log.info("冲突版本采纳任务已发送: kbId={}, documentKey={}", conflictKbId, documentKey);
+  }
+
+  /**
+   * 回滚状态到 CONFLICT 并设置 vectorError。使用 REQUIRES_NEW 确保独立提交，
+   * 不受外层 BusinessException 传播影响。如果回滚本身失败，仅记录日志。
+   */
+  private void recoverToConflict(KnowledgeBaseEntity entity, String errorMessage) {
+    try {
+      transactionalExecutor.runRequiresNew(() -> {
+        entity.setVectorStatus(VectorStatus.CONFLICT);
+        entity.setVectorError(truncateError(errorMessage));
+        repository.save(entity);
+      });
+    } catch (Exception recoveryEx) {
+      log.error("回滚 CONFLICT 状态失败: kbId={}, 原始错误: {}",
+        entity.getId(), errorMessage, recoveryEx);
+    }
   }
 
   private static String truncateError(String error) {
@@ -118,12 +137,12 @@ public class KnowledgeBaseConflictService {
   }
 
   /**
-   * 放弃冲突版本：设置 ABANDONED 状态，不影响当前 active 版本。
+   * 放弃冲突版本：仅清除冲突标记，不影响当前 active 版本。
    *
    * <p>流程：
    * <ol>
    *   <li>校验冲突记录存在</li>
-   *   <li>幂等判断：已 ABANDONED 直接返回；ADOPTING 中抛异常</li>
+   *   <li>幂等判断：vectorStatus == ABANDONED 直接返回；ADOPTING 中抛异常</li>
    *   <li>设置 active=false, conflict=false, vectorStatus=ABANDONED</li>
    *   <li>不触碰当前 active 版本，不删除 S3 文件（可恢复，非破坏性）</li>
    * </ol>
@@ -133,12 +152,12 @@ public class KnowledgeBaseConflictService {
     KnowledgeBaseEntity conflictEntity = repository.findById(conflictKbId)
       .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "知识库不存在"));
 
-    // 幂等判断
-    VectorStatus currentStatus = conflictEntity.getVectorStatus();
-    if (currentStatus == VectorStatus.ABANDONED) {
+    // 幂等判断：已放弃（vectorStatus=ABANDONED）直接返回
+    if (conflictEntity.getVectorStatus() == VectorStatus.ABANDONED) {
       log.info("冲突版本已放弃，跳过: kbId={}", conflictKbId);
       return;
     }
+    VectorStatus currentStatus = conflictEntity.getVectorStatus();
     if (currentStatus == VectorStatus.ADOPTING) {
       throw new BusinessException(ErrorCode.BAD_REQUEST, "该冲突版本正在采纳中，无法放弃");
     }

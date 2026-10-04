@@ -11,6 +11,7 @@ import interview.guide.modules.knowledgebase.service.KnowledgeBaseUploadService;
 import interview.guide.modules.knowledgebase.service.KnowledgeBaseVectorService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import jakarta.persistence.EntityManager;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.Embedding;
 import org.springframework.ai.embedding.EmbeddingModel;
@@ -154,6 +155,7 @@ class KnowledgeBaseUploadPipelineIntegrationTest {
     @Autowired KnowledgeBaseConflictService conflictService;
     @Autowired FileStorageService storageService;
     @Autowired JdbcTemplate jdbcTemplate;
+    @Autowired EntityManager entityManager;
 
     @SuppressWarnings("unchecked")
     private Long extractId(Map<String, Object> result) {
@@ -354,10 +356,13 @@ class KnowledgeBaseUploadPipelineIntegrationTest {
         // 2. 放弃冲突版本
         conflictService.abandonVersion(id2);
 
-        // 3. 断言 v2 冲突标记清除，active 仍为 false
+        // 3. 断言 v2 放弃语义：conflict=false, active=false, vectorStatus=ABANDONED
         KnowledgeBaseEntity kb2After = knowledgeBaseRepository.findById(id2).orElseThrow();
         assertThat(kb2After.getActive()).as("放弃的版本应保持 active=false").isFalse();
         assertThat(kb2After.getConflict()).as("冲突标记应被清除").isFalse();
+        assertThat(kb2After.getVectorStatus())
+            .as("放弃后 vectorStatus 应设为 ABANDONED")
+            .isEqualTo(VectorStatus.ABANDONED);
 
         // 4. 断言 v1 不受影响
         KnowledgeBaseEntity kb1After = knowledgeBaseRepository.findById(id1).orElseThrow();
@@ -538,8 +543,8 @@ class KnowledgeBaseUploadPipelineIntegrationTest {
     }
 
     @Test
-    @DisplayName("采纳时 S3 下载失败 → 旧版本保持 active，冲突记录回退 CONFLICT")
-    void adoptFailure_s3ParseError_oldVersionStaysActive() throws Exception {
+    @DisplayName("采纳时 S3 下载失败 → 抛出 BusinessException，旧版本保持 active，冲突记录回退 CONFLICT")
+    void adoptFailure_s3ParseError_throwsAndOldVersionStaysActive() throws Exception {
         Long[] ids = createConflictScenario("s3fail");
         Long id1 = ids[0], id2 = ids[1];
 
@@ -549,8 +554,10 @@ class KnowledgeBaseUploadPipelineIntegrationTest {
         kb2.setStorageKey("nonexistent-key-that-will-fail-on-download");
         knowledgeBaseRepository.save(kb2);
 
-        // 执行采纳
-        conflictService.adoptVersion(id2);
+        // 执行采纳 → 现在抛出 BusinessException
+        assertThatThrownBy(() -> conflictService.adoptVersion(id2))
+            .isInstanceOf(interview.guide.common.exception.BusinessException.class)
+            .hasMessageContaining("S3 下载失败");
 
         // 断言：冲突记录回退到 CONFLICT（不是 ADOPTING）
         KnowledgeBaseEntity kb2After = knowledgeBaseRepository.findById(id2).orElseThrow();
@@ -607,7 +614,7 @@ class KnowledgeBaseUploadPipelineIntegrationTest {
     }
 
     @Test
-    @DisplayName("重复采纳同一冲突版本 → 第二次幂等无效果")
+    @DisplayName("重复采纳同一冲突版本 → 第二次幂等无效果（已完成状态）")
     void adoptIdempotent_duplicateClickNoEffect() throws Exception {
         Long[] ids = createConflictScenario("adoptdup");
         Long id2 = ids[1];
@@ -618,14 +625,13 @@ class KnowledgeBaseUploadPipelineIntegrationTest {
         // 等待完成
         awaitStatus(id2, VectorStatus.COMPLETED, 30_000);
 
-        // 第二次采纳：记录已不是 conflict=true，应抛异常
+        // 第二次采纳：记录已完成（COMPLETED + conflict=false），幂等返回
         KnowledgeBaseEntity kb2AfterFirst = knowledgeBaseRepository.findById(id2).orElseThrow();
         assertThat(kb2AfterFirst.getConflict()).isFalse();
         assertThat(kb2AfterFirst.getActive()).isTrue();
 
-        assertThatThrownBy(() -> conflictService.adoptVersion(id2))
-            .isInstanceOf(interview.guide.common.exception.BusinessException.class)
-            .hasMessageContaining("不是冲突状态");
+        // 第二次调用不应抛出异常（幂等）
+        conflictService.adoptVersion(id2);
 
         // 状态不变
         KnowledgeBaseEntity kb2AfterSecond = knowledgeBaseRepository.findById(id2).orElseThrow();
@@ -634,19 +640,20 @@ class KnowledgeBaseUploadPipelineIntegrationTest {
     }
 
     @Test
-    @DisplayName("放弃设置 ABANDONED 状态（不是 FAILED），当前 active 不受影响")
-    void abandonSetsAbandonedStatus_notFailed() throws Exception {
+    @DisplayName("放弃后 conflict=false + active=false，当前 active 不受影响")
+    void abandonClearsConflictAndActive_activeUntouched() throws Exception {
         Long[] ids = createConflictScenario("abnst");
         Long id1 = ids[0], id2 = ids[1];
 
         conflictService.abandonVersion(id2);
 
         KnowledgeBaseEntity kb2 = knowledgeBaseRepository.findById(id2).orElseThrow();
-        assertThat(kb2.getVectorStatus())
-            .as("放弃后应为 ABANDONED（不是 FAILED）")
-            .isEqualTo(VectorStatus.ABANDONED);
+        assertThat(kb2.getConflict())
+            .as("放弃后 conflict 应被清除")
+            .isFalse();
         assertThat(kb2.getActive()).isFalse();
-        assertThat(kb2.getConflict()).isFalse();
+        // vectorStatus 设为 ABANDONED
+        assertThat(kb2.getVectorStatus()).isEqualTo(VectorStatus.ABANDONED);
 
         // 当前 active 版本不受影响
         KnowledgeBaseEntity kb1 = knowledgeBaseRepository.findById(id1).orElseThrow();
@@ -663,6 +670,8 @@ class KnowledgeBaseUploadPipelineIntegrationTest {
         // 第一次放弃
         conflictService.abandonVersion(id2);
         KnowledgeBaseEntity kb2First = knowledgeBaseRepository.findById(id2).orElseThrow();
+        assertThat(kb2First.getConflict()).isFalse();
+        assertThat(kb2First.getActive()).isFalse();
         assertThat(kb2First.getVectorStatus()).isEqualTo(VectorStatus.ABANDONED);
 
         // 第二次放弃：幂等，不抛异常
@@ -670,9 +679,33 @@ class KnowledgeBaseUploadPipelineIntegrationTest {
 
         // 状态不变
         KnowledgeBaseEntity kb2Second = knowledgeBaseRepository.findById(id2).orElseThrow();
-        assertThat(kb2Second.getVectorStatus()).isEqualTo(VectorStatus.ABANDONED);
-        assertThat(kb2Second.getActive()).isFalse();
         assertThat(kb2Second.getConflict()).isFalse();
+        assertThat(kb2Second.getActive()).isFalse();
+        assertThat(kb2Second.getVectorStatus()).isEqualTo(VectorStatus.ABANDONED);
+    }
+
+    @Test
+    @DisplayName("已放弃的版本无法采纳 → 抛出 BusinessException（'版本已放弃'）")
+    void abandonedCannotAdopt() throws Exception {
+        Long[] ids = createConflictScenario("abnadopt");
+        Long id1 = ids[0], id2 = ids[1];
+
+        // 先放弃
+        conflictService.abandonVersion(id2);
+        KnowledgeBaseEntity kb2 = knowledgeBaseRepository.findById(id2).orElseThrow();
+        assertThat(kb2.getConflict()).isFalse();
+        assertThat(kb2.getActive()).isFalse();
+        assertThat(kb2.getVectorStatus()).isEqualTo(VectorStatus.ABANDONED);
+
+        // 尝试采纳已放弃的版本 → 抛 BusinessException
+        assertThatThrownBy(() -> conflictService.adoptVersion(id2))
+            .isInstanceOf(interview.guide.common.exception.BusinessException.class)
+            .hasMessageContaining("已放弃");
+
+        // 原 active 版本不受影响
+        KnowledgeBaseEntity kb1 = knowledgeBaseRepository.findById(id1).orElseThrow();
+        assertThat(kb1.getActive()).isTrue();
+        assertThat(kb1.getVectorStatus()).isEqualTo(VectorStatus.COMPLETED);
     }
 
     @Test
@@ -684,12 +717,63 @@ class KnowledgeBaseUploadPipelineIntegrationTest {
         // 放弃
         conflictService.abandonVersion(id2);
         KnowledgeBaseEntity kb2 = knowledgeBaseRepository.findById(id2).orElseThrow();
+        assertThat(kb2.getConflict()).isFalse();
+        assertThat(kb2.getActive()).isFalse();
         assertThat(kb2.getVectorStatus()).isEqualTo(VectorStatus.ABANDONED);
 
-        // 尝试重新向量化 → 抛异常
+        // 重新向量化应抛出 BusinessException
         assertThatThrownBy(() -> uploadService.revectorize(id2))
             .isInstanceOf(interview.guide.common.exception.BusinessException.class)
             .hasMessageContaining("已放弃");
+    }
+
+    @Test
+    @DisplayName("并发采纳同一冲突记录 → 只有一个线程执行向量化，另一个幂等返回")
+    void concurrentAdopt_sameConflictRecord_onlyOneSucceeds() throws Exception {
+        Long[] ids = createConflictScenario("concadpt");
+        Long id1 = ids[0], id2 = ids[1];
+
+        // 确认冲突状态
+        KnowledgeBaseEntity kb2Before = knowledgeBaseRepository.findById(id2).orElseThrow();
+        assertThat(kb2Before.getConflict()).isTrue();
+        assertThat(kb2Before.getVectorStatus()).isEqualTo(VectorStatus.CONFLICT);
+
+        // 两个线程同时采纳
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch go = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+
+        var futureA = executor.submit(() -> {
+            ready.countDown();
+            try { go.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+            conflictService.adoptVersion(id2);
+        });
+        var futureB = executor.submit(() -> {
+            ready.countDown();
+            try { go.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+            conflictService.adoptVersion(id2);
+        });
+
+        ready.await(5, TimeUnit.SECONDS);
+        go.countDown();
+
+        // 两个线程都应正常完成（一个执行，一个幂等）
+        futureA.get(60, TimeUnit.SECONDS);
+        futureB.get(60, TimeUnit.SECONDS);
+        executor.shutdown();
+
+        // 等待异步向量化完成
+        KnowledgeBaseEntity kb2Done = awaitStatus(id2, VectorStatus.COMPLETED, 30_000);
+        assertThat(kb2Done.getVectorStatus()).isEqualTo(VectorStatus.COMPLETED);
+        assertThat(kb2Done.getActive()).as("冲突版本应被激活").isTrue();
+        assertThat(kb2Done.getConflict()).as("冲突标记应被清除").isFalse();
+
+        // 旧版本被停用
+        KnowledgeBaseEntity kb1After = knowledgeBaseRepository.findById(id1).orElseThrow();
+        assertThat(kb1After.getActive()).as("旧版本应被停用").isFalse();
+
+        // 新版本有向量
+        assertThat(vectorRowCount(id2)).isGreaterThan(0);
     }
 
     @Test
@@ -722,7 +806,8 @@ class KnowledgeBaseUploadPipelineIntegrationTest {
         KnowledgeBaseEntity kbConflict = knowledgeBaseRepository.findById(conflictId).orElseThrow();
         assertThat(kbConflict.getConflict()).isTrue();
         KnowledgeBaseEntity kbAbandoned = knowledgeBaseRepository.findById(abandonedId).orElseThrow();
-        assertThat(kbAbandoned.getVectorStatus()).isEqualTo(VectorStatus.ABANDONED);
+        assertThat(kbAbandoned.getConflict()).isFalse();
+        assertThat(kbAbandoned.getActive()).isFalse();
 
         // resolve-context 只返回 active
         var scope = listService.resolveContext("resolve-svc", "prod", "billing");
