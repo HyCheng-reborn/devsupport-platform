@@ -274,6 +274,116 @@ class KnowledgeBaseListServiceTest {
     }
   }
 
+  @DisplayName("project/docType/version 筛选")
+  @Nested
+  class ProjectDocTypeVersionFiltering {
+
+    private KnowledgeBaseEntity buildKbWithMeta(Long id, String project, String docType, String versionLabel) {
+      KnowledgeBaseEntity kb = buildKb(id, "文档-" + id, null, null);
+      kb.setProject(project);
+      kb.setDocType(docType);
+      kb.setVersionLabel(versionLabel);
+      return kb;
+    }
+
+    @Test
+    @DisplayName("仅按 project 筛选 → 只返回匹配项目")
+    void filterByProjectOnly() {
+      KnowledgeBaseEntity kb1 = buildKbWithMeta(1L, "支付平台", "API文档", "v1.0");
+      KnowledgeBaseEntity kb2 = buildKbWithMeta(2L, "用户中心", "API文档", "v1.0");
+      List<KnowledgeBaseEntity> all = List.of(kb1, kb2);
+      // repository 返回全量，service 层内存过滤后只传 kb1 给 mapper
+      when(knowledgeBaseRepository.findAllByOrderByUploadedAtDesc()).thenReturn(all);
+      List<KnowledgeBaseEntity> filtered = List.of(kb1);
+      when(knowledgeBaseMapper.toListItemDTOList(filtered)).thenReturn(filtered.stream().map(KnowledgeBaseListServiceTest::toDTO).toList());
+
+      List<KnowledgeBaseListItemDTO> result = listService.listKnowledgeBases(null, null, null, null, "支付平台", null, null);
+
+      assertThat(result).hasSize(1);
+      assertThat(result.get(0).project()).isEqualTo("支付平台");
+    }
+
+    @Test
+    @DisplayName("仅按 docType 筛选 → 只返回匹配文档类型")
+    void filterByDocTypeOnly() {
+      KnowledgeBaseEntity kb1 = buildKbWithMeta(1L, "支付平台", "API文档", "v1.0");
+      KnowledgeBaseEntity kb2 = buildKbWithMeta(2L, "支付平台", "运维手册", "v1.0");
+      List<KnowledgeBaseEntity> all = List.of(kb1, kb2);
+      when(knowledgeBaseRepository.findAllByOrderByUploadedAtDesc()).thenReturn(all);
+
+      List<KnowledgeBaseEntity> filtered = List.of(kb1);
+      when(knowledgeBaseMapper.toListItemDTOList(filtered)).thenReturn(filtered.stream().map(KnowledgeBaseListServiceTest::toDTO).toList());
+
+      List<KnowledgeBaseListItemDTO> result = listService.listKnowledgeBases(null, null, null, null, null, "API文档", null);
+      assertThat(result).hasSize(1);
+      assertThat(result.get(0).docType()).isEqualTo("API文档");
+    }
+
+    @Test
+    @DisplayName("同时按 project 和 docType 筛选 → 返回交集")
+    void filterByProjectAndDocType() {
+      KnowledgeBaseEntity kb1 = buildKbWithMeta(1L, "支付平台", "API文档", "v1.0");
+      KnowledgeBaseEntity kb2 = buildKbWithMeta(2L, "支付平台", "运维手册", "v1.0");
+      KnowledgeBaseEntity kb3 = buildKbWithMeta(3L, "用户中心", "API文档", "v1.0");
+      List<KnowledgeBaseEntity> all = List.of(kb1, kb2, kb3);
+      when(knowledgeBaseRepository.findAllByOrderByUploadedAtDesc()).thenReturn(all);
+
+      List<KnowledgeBaseEntity> filtered = List.of(kb1);
+      when(knowledgeBaseMapper.toListItemDTOList(filtered)).thenReturn(filtered.stream().map(KnowledgeBaseListServiceTest::toDTO).toList());
+
+      List<KnowledgeBaseListItemDTO> result = listService.listKnowledgeBases(null, null, null, null, "支付平台", "API文档", null);
+      assertThat(result).hasSize(1);
+      assertThat(result.get(0).project()).isEqualTo("支付平台");
+      assertThat(result.get(0).docType()).isEqualTo("API文档");
+    }
+
+    @Test
+    @DisplayName("按 version 筛选 → 返回匹配版本标签")
+    void filterByVersion() {
+      KnowledgeBaseEntity kb1 = buildKbWithMeta(1L, "支付平台", "API文档", "v1.0");
+      KnowledgeBaseEntity kb2 = buildKbWithMeta(2L, "支付平台", "API文档", "v2.0");
+      List<KnowledgeBaseEntity> all = List.of(kb1, kb2);
+      when(knowledgeBaseRepository.findAllByOrderByUploadedAtDesc()).thenReturn(all);
+
+      List<KnowledgeBaseEntity> filtered = List.of(kb2);
+      when(knowledgeBaseMapper.toListItemDTOList(filtered)).thenReturn(filtered.stream().map(KnowledgeBaseListServiceTest::toDTO).toList());
+
+      List<KnowledgeBaseListItemDTO> result = listService.listKnowledgeBases(null, null, null, null, null, null, "v2.0");
+      assertThat(result).hasSize(1);
+      assertThat(result.get(0).versionLabel()).isEqualTo("v2.0");
+    }
+
+    @Test
+    @DisplayName("无筛选条件 → 返回所有条目")
+    void noFilters_returnsAll() {
+      KnowledgeBaseEntity kb1 = buildKbWithMeta(1L, "支付平台", "API文档", "v1.0");
+      KnowledgeBaseEntity kb2 = buildKbWithMeta(2L, "用户中心", "运维手册", "v2.0");
+      List<KnowledgeBaseEntity> all = List.of(kb1, kb2);
+      when(knowledgeBaseRepository.findAllByOrderByUploadedAtDesc()).thenReturn(all);
+      when(knowledgeBaseMapper.toListItemDTOList(all)).thenReturn(all.stream().map(KnowledgeBaseListServiceTest::toDTO).toList());
+
+      List<KnowledgeBaseListItemDTO> result = listService.listKnowledgeBases(null, null, null, null, null, null, null);
+      assertThat(result).hasSize(2);
+    }
+
+    @Test
+    @DisplayName("大小写不敏感匹配：PROJECT=支付平台 能匹配 project=支付平台")
+    void caseInsensitiveMatching() {
+      KnowledgeBaseEntity kb1 = buildKbWithMeta(1L, "PaymentPlatform", "ApiDoc", "V1.0");
+      KnowledgeBaseEntity kb2 = buildKbWithMeta(2L, "用户中心", "API文档", "v1.0");
+      List<KnowledgeBaseEntity> all = List.of(kb1, kb2);
+      when(knowledgeBaseRepository.findAllByOrderByUploadedAtDesc()).thenReturn(all);
+
+      List<KnowledgeBaseEntity> filtered = List.of(kb1);
+      when(knowledgeBaseMapper.toListItemDTOList(filtered)).thenReturn(filtered.stream().map(KnowledgeBaseListServiceTest::toDTO).toList());
+
+      List<KnowledgeBaseListItemDTO> result = listService.listKnowledgeBases(
+          null, null, null, null, "paymentplatform", "apidoc", "v1.0");
+      assertThat(result).hasSize(1);
+      assertThat(result.get(0).project()).isEqualTo("PaymentPlatform");
+    }
+  }
+
   @DisplayName("版本冲突标记")
   @Nested
   class VersionConflict {

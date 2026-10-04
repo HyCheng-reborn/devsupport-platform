@@ -291,7 +291,10 @@ public class RagChatSessionService {
                 Double score = doc.getScore();
                 String service = kb != null ? kb.getService() : null;
                 String environment = kb != null ? kb.getEnvironment() : null;
-                return new SourceReference(kbId, docName, snippet, score, service, environment);
+                String versionLabel = kb != null ? kb.getVersionLabel() : null;
+                Integer versionNo = kb != null ? kb.getVersionNo() : null;
+                String documentKey = kb != null ? kb.getDocumentKey() : null;
+                return new SourceReference(kbId, docName, snippet, score, service, environment, versionLabel, versionNo, documentKey);
             })
             .toList();
     }

@@ -27,6 +27,9 @@ export interface SourceReference {
   score: number | null;
   service?: string | null;
   environment?: string | null;
+  versionLabel?: string | null;
+  versionNo?: number | null;
+  documentKey?: string | null;
 }
 
 export type { MessageStatus };

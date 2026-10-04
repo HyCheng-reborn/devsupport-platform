@@ -248,6 +248,42 @@ class RagChatSessionServiceTest {
     }
 
     @Test
+    @DisplayName("buildSourceReferences_包含版本字段 versionLabel/versionNo/documentKey")
+    void includesVersionFieldsFromKnowledgeBase() {
+      List<Document> docs = List.of(createDoc("版本相关内容", 10L, 0.88));
+
+      KnowledgeBaseEntity kb = new KnowledgeBaseEntity();
+      kb.setId(10L);
+      kb.setOriginalFilename("支付网关_v2.1.pdf");
+      kb.setVersionLabel("v2.1");
+      kb.setVersionNo(3);
+      kb.setDocumentKey("abc123");
+
+      when(knowledgeBaseRepository.findAllById(anySet())).thenReturn(List.of(kb));
+
+      List<SourceReference> refs = ragChatSessionService.buildSourceReferences(docs);
+
+      assertThat(refs).hasSize(1);
+      assertThat(refs.get(0).versionLabel()).isEqualTo("v2.1");
+      assertThat(refs.get(0).versionNo()).isEqualTo(3);
+      assertThat(refs.get(0).documentKey()).isEqualTo("abc123");
+    }
+
+    @Test
+    @DisplayName("buildSourceReferences_KB不存在时版本字段为null")
+    void versionFieldsNullWhenKbMissing() {
+      List<Document> docs = List.of(createDoc("内容", 99L, 0.5));
+      when(knowledgeBaseRepository.findAllById(anySet())).thenReturn(List.of());
+
+      List<SourceReference> refs = ragChatSessionService.buildSourceReferences(docs);
+
+      assertThat(refs).hasSize(1);
+      assertThat(refs.get(0).versionLabel()).isNull();
+      assertThat(refs.get(0).versionNo()).isNull();
+      assertThat(refs.get(0).documentKey()).isNull();
+    }
+
+    @Test
     @DisplayName("buildSourceReferences_空列表返回空")
     void emptyDocs_returnsEmpty() {
       assertThat(ragChatSessionService.buildSourceReferences(List.of())).isEmpty();

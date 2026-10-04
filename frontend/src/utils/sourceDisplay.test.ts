@@ -81,3 +81,31 @@ test('对来源数组做映射保持顺序与数量不变（对应页面 slice(0
   assert.deepEqual(views.map(v => v.serviceName), [null, 'S2', null]);
   assert.deepEqual(views.map(v => v.environmentName), [null, null, 'E3']);
 });
+
+// ========== 版本标签 ==========
+
+test('versionLabel 存在 → versionTag 等于 versionLabel', () => {
+  const v = toSourceTagView(src({ versionLabel: 'v2.3', versionNo: 5 }));
+  assert.equal(v.versionTag, 'v2.3');
+});
+
+test('只有 versionNo 无 versionLabel → versionTag 为 "v{N}"', () => {
+  const v = toSourceTagView(src({ versionLabel: null, versionNo: 3 }));
+  assert.equal(v.versionTag, 'v3');
+});
+
+test('versionLabel 为空串 + versionNo 存在 → 回退到 "v{N}"', () => {
+  const v = toSourceTagView(src({ versionLabel: '', versionNo: 7 }));
+  assert.equal(v.versionTag, 'v7');
+});
+
+test('versionLabel 和 versionNo 都为 null → versionTag 为 null', () => {
+  const v = toSourceTagView(src({ versionLabel: null, versionNo: null }));
+  assert.equal(v.versionTag, null);
+});
+
+test('旧来源缺 version 字段（undefined）→ versionTag 为 null', () => {
+  const legacy = { kbId: 2, documentName: 'a.md', contentSnippet: 'x', score: 0.5 } as SourceReference;
+  const v = toSourceTagView(legacy);
+  assert.equal(v.versionTag, null);
+});

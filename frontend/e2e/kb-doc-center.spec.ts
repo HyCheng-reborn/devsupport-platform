@@ -120,3 +120,32 @@ test.describe('阶段 2 上传元数据', () => {
     expect(body).toContain('wiki');
   });
 });
+
+// ========== 项目/文档类型筛选控件 ==========
+
+test.describe('阶段 2 文档中心筛选控件', () => {
+  test('项目和文档类型筛选下拉可见且可筛选列表', async ({ page }) => {
+    await mockDocCenterApis(page);
+
+    await page.goto('/docs');
+
+    // 筛选下拉可见
+    const projectSelect = page.locator('select').filter({ hasText: '全部项目' });
+    const docTypeSelect = page.locator('select').filter({ hasText: '全部类型' });
+    await expect(projectSelect).toBeVisible();
+    await expect(docTypeSelect).toBeVisible();
+
+    // 初始状态：4 条文档
+    await expect(page.locator('tr', { hasText: '启用文档A' })).toBeVisible();
+    await expect(page.locator('tr', { hasText: '失败文档B' })).toBeVisible();
+    await expect(page.locator('tr', { hasText: '停用文档C' })).toBeVisible();
+    await expect(page.locator('tr', { hasText: '冲突文档D' })).toBeVisible();
+
+    // 选择 project=billing → 只显示启用文档A (project='billing')
+    await projectSelect.selectOption('val:billing');
+    await expect(page.locator('tr', { hasText: '启用文档A' })).toBeVisible();
+    await expect(page.locator('tr', { hasText: '失败文档B' })).toHaveCount(0);
+    await expect(page.locator('tr', { hasText: '停用文档C' })).toHaveCount(0);
+    await expect(page.locator('tr', { hasText: '冲突文档D' })).toHaveCount(0);
+  });
+});

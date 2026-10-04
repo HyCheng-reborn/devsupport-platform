@@ -128,6 +128,9 @@ class RagChatSseIntegrationTest {
         testKb.setOriginalFilename("i4-test-doc.md");
         testKb.setService("支付网关");
         testKb.setEnvironment("生产");
+        testKb.setVersionLabel("v2.1");
+        testKb.setVersionNo(3);
+        testKb.setDocumentKey("i4-doc-key-001");
         testKb = knowledgeBaseRepository.save(testKb);
 
         testSession = new RagChatSessionEntity();
@@ -217,7 +220,7 @@ class RagChatSseIntegrationTest {
     }
 
     @Test
-    @DisplayName("sources 事件包含正确的 kb_id、service、environment 标签")
+    @DisplayName("sources 事件包含正确的 kb_id、service、environment 标签和版本字段")
     void sourceSnapshotContainsCorrectTags() {
         Document doc = createTestDocument();
         when(vectorService.similaritySearch(anyString(), anyList(), anyInt(), anyDouble()))
@@ -234,7 +237,10 @@ class RagChatSseIntegrationTest {
             .contains("\"kbId\"").contains(String.valueOf(testKb.getId()))
             .contains("\"documentName\"").contains("i4-test-doc.md")
             .contains("\"service\"").contains("支付网关")
-            .contains("\"environment\"").contains("生产");
+            .contains("\"environment\"").contains("生产")
+            .contains("\"versionLabel\"").contains("v2.1")
+            .contains("\"versionNo\"").contains("3")
+            .contains("\"documentKey\"").contains("i4-doc-key-001");
     }
 
     @Test

@@ -1,3 +1,11 @@
+**2026-10-04 -- DevSupport 阶段 2 验收缺口修复：来源快照版本标注 + 文档中心 project/docType 筛选 + 测试补齐**
+- 检索来源标注版本：`SourceReference` 扩展 `versionLabel`/`versionNo`/`documentKey` 字段；前端 `sourceDisplay.ts` 映射来源快照为展示视图，排查会话来源面板展示紫色版本标签；新增 `sourceDisplay.test.ts` 14/14
+- 文档中心支持按 project/docType 筛选：后端列表 API 新增 project/docType 查询参数；前端文档中心新增对应下拉筛选控件；`kbFilter.test.ts` 18/18
+- 测试：后端定点 36/36 全绿；前端 `pnpm run build` exit 0；前端单测 kbFilter 18/18 + sourceDisplay 14/14；E2E kb-doc-center 3/3 + chat-scope 3/3；全量 `./gradlew :app:test` → 601 tests / 588 passed / 10 failed（全为 `VoiceInterviewIntegrationTest` Redis 环境阻塞，非 DevSupport）/ 3 skipped
+- 阶段 2 验收缺口已修复：版本标注 + 筛选链路 + 冲突标识（版本冲突产品语义待决：选项A 标识-only vs 选项B 多版本 active 需用户决策）
+- 边界：真实付费模型端到端、生产部署未验证；未提交、未推送；未改 .env/wrapper/评测工件/Docker 卷
+- 主要文件：`SourceReference.java`、`RagChatSessionService.java`、`KnowledgeBaseController.java`、`KnowledgeBaseListService.java`、`SourceReferenceTest.java`、`RagChatSessionServiceTest.java`、`KnowledgeBaseListServiceTest.java`、`RagChatControllerTest.java`、`RagChatSseIntegrationTest.java`、`sourceDisplay.ts`/`.test.ts`、`kbFilter.ts`/`.test.ts`、`KnowledgeBaseManagePage.tsx`、`KnowledgeBaseQueryPage.tsx`、`ChatSessionDetailPage.tsx`、`knowledgebase.ts`、`ragChat.ts`、`chat-scope.spec.ts`、`kb-doc-center.spec.ts`
+
 **2026-10-04 -- DevSupport 阶段 2 收尾：版本冲突标识 + 真实 S3/Redis Stream 集成 + 前端 E2E**
 - 版本冲突“标识”（路线图仅要求“文档中心标识冲突 + 检索标注版本”，未定义硬拒绝）：`KnowledgeBaseListService` 计算同 documentKey ≥2 个启用且 fileHash 不同 → `KnowledgeBaseListItemDTO.versionConflict`；文档中心“版本冲突”徒章。拒绝策略与“检索答案逐条标注版本”作为最小建议留待 Stage 3，未擅自扩大
 - 真实本地集成 `KnowledgeBaseUploadPipelineIntegrationTest`（Testcontainers pgvector + Redis + **RustFS（生产同款 S3）**，确定性 mock Embedding）：`uploadKnowledgeBase` → 真实对象存储上传 + PG 元数据 + Redis Stream 生产/消费异步 COMPLETED + 向量索引 → 按项目/环境/版本检索命中；新版本替换后旧版本 active=false 且删向量→不再召回；相同内容重试幂等（duplicate=true，无新行）。独立容器 + 独立 bucket，未触碰现有 dev 卷/库

@@ -133,9 +133,11 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
   const [savingCategory, setSavingCategory] = useState(false);
   const categoryInputRef = useRef<HTMLInputElement>(null);
 
-  // 服务/环境标签状态
+  // 服务/环境/项目/文档类型 筛选状态
   const [serviceFilter, setServiceFilter] = useState<FilterState>({ type: 'all' });
   const [environmentFilter, setEnvironmentFilter] = useState<FilterState>({ type: 'all' });
+  const [projectFilter, setProjectFilter] = useState<FilterState>({ type: 'all' });
+  const [docTypeFilter, setDocTypeFilter] = useState<FilterState>({ type: 'all' });
   const [services, setServices] = useState<string[]>([]);
   const [environments, setEnvironments] = useState<string[]>([]);
 
@@ -149,7 +151,24 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
   // 重新向量化状态
   const [revectorizing, setRevectorizing] = useState<number | null>(null);
 
-  // 客户端组合筛选：搜索 + 分类 + service + environment 同时生效
+  // 从已加载数据中提取 distinct project / docType 值
+  const distinctProjects = useMemo(() => {
+    const set = new Set<string>();
+    allKnowledgeBases.forEach(kb => {
+      if (kb.project) set.add(kb.project);
+    });
+    return Array.from(set).sort();
+  }, [allKnowledgeBases]);
+
+  const distinctDocTypes = useMemo(() => {
+    const set = new Set<string>();
+    allKnowledgeBases.forEach(kb => {
+      if (kb.docType) set.add(kb.docType);
+    });
+    return Array.from(set).sort();
+  }, [allKnowledgeBases]);
+
+  // 客户端组合筛选：搜索 + 分类 + service + environment + project + docType 同时生效
   const filteredKnowledgeBases = useMemo(() => {
     let items = allKnowledgeBases;
 
@@ -167,9 +186,9 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
       items = items.filter(kb => kb.category === selectedCategory);
     }
 
-    // service + environment 手动筛选（来自页面内下拉框）
-    return applyFilters(items, serviceFilter, environmentFilter);
-  }, [allKnowledgeBases, searchKeyword, selectedCategory, serviceFilter, environmentFilter]);
+    // service + environment + project + docType 手动筛选
+    return applyFilters(items, serviceFilter, environmentFilter, projectFilter, docTypeFilter);
+  }, [allKnowledgeBases, searchKeyword, selectedCategory, serviceFilter, environmentFilter, projectFilter, docTypeFilter]);
 
   // 排序（在筛选之后）
   const knowledgeBases = useMemo(() => {
@@ -547,6 +566,48 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
               <option value="unclassified">未分类</option>
               {environments.map((env) => (
                 <option key={env} value={`val:${env}`}>{env}</option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+          </div>
+
+          {/* 项目筛选 */}
+          <div className="relative">
+            <select
+              value={projectFilter.type === 'all' ? 'all' : projectFilter.type === 'unclassified' ? 'unclassified' : `val:${projectFilter.value}`}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val === 'all') setProjectFilter({ type: 'all' });
+                else if (val === 'unclassified') setProjectFilter({ type: 'unclassified' });
+                else setProjectFilter({ type: 'value', value: val.slice(4) });
+              }}
+              className="appearance-none pl-4 pr-10 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white cursor-pointer"
+            >
+              <option value="all">全部项目</option>
+              <option value="unclassified">未分类</option>
+              {distinctProjects.map((p) => (
+                <option key={p} value={`val:${p}`}>{p}</option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+          </div>
+
+          {/* 文档类型筛选 */}
+          <div className="relative">
+            <select
+              value={docTypeFilter.type === 'all' ? 'all' : docTypeFilter.type === 'unclassified' ? 'unclassified' : `val:${docTypeFilter.value}`}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val === 'all') setDocTypeFilter({ type: 'all' });
+                else if (val === 'unclassified') setDocTypeFilter({ type: 'unclassified' });
+                else setDocTypeFilter({ type: 'value', value: val.slice(4) });
+              }}
+              className="appearance-none pl-4 pr-10 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white cursor-pointer"
+            >
+              <option value="all">全部类型</option>
+              <option value="unclassified">未分类</option>
+              {distinctDocTypes.map((dt) => (
+                <option key={dt} value={`val:${dt}`}>{dt}</option>
               ))}
             </select>
             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />

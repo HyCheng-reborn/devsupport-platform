@@ -75,7 +75,10 @@ public class KnowledgeBaseController {
             @RequestParam(value = "sortBy", required = false) String sortBy,
             @RequestParam(value = "vectorStatus", required = false) String vectorStatus,
             @RequestParam(value = "service", required = false) String service,
-            @RequestParam(value = "environment", required = false) String environment) {
+            @RequestParam(value = "environment", required = false) String environment,
+            @RequestParam(value = "project", required = false) String project,
+            @RequestParam(value = "docType", required = false) String docType,
+            @RequestParam(value = "version", required = false) String version) {
         
         VectorStatus status = null;
         if (vectorStatus != null && !vectorStatus.isBlank()) {
@@ -86,7 +89,8 @@ public class KnowledgeBaseController {
             }
         }
         
-        return Result.success(listService.listKnowledgeBases(status, sortBy, service, environment));
+        return Result.success(listService.listKnowledgeBases(status, sortBy, service, environment,
+            project, docType, version));
     }
 
     /**

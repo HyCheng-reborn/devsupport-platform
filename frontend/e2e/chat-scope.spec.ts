@@ -116,7 +116,7 @@ test.describe('排查会话检索范围一致性（阶段 1 验收）', () => {
     await page.getByRole('button', { name: '服务', exact: true }).click();
     await page.getByRole('button', { name: 'empty', exact: true }).click();
 
-    // 明确提示空范围；不显示任何“个文档”计数（绝不显示全量 3）
+    // 明确提示空范围；不显示任何"个文档"计数（绝不显示全量 3）
     await expect(page.getByText('所选服务/环境没有匹配的知识库')).toBeVisible();
     await expect(page.getByText(/个文档/)).toHaveCount(0);
 
@@ -125,5 +125,41 @@ test.describe('排查会话检索范围一致性（阶段 1 验收）', () => {
     await expect(page.getByText('所选上下文没有匹配的可检索知识库')).toBeVisible();
     await expect(page.getByRole('checkbox')).toHaveCount(0);
     await expect(page.getByRole('button', { name: /创建会话/ })).toHaveCount(0);
+  });
+});
+
+// ========== 来源面板版本标签 ==========
+
+test.describe('排查会话来源版本标签', () => {
+  test('来源带 versionLabel 时展示紫色版本标签', async ({ page }) => {
+    const sourcesWithVersion = [
+      { kbId: 1, documentName: '支付网关手册', contentSnippet: '端口 8080', score: 0.9,
+        service: 'payment', environment: '生产', versionLabel: 'v2.3', versionNo: 5, documentKey: 'dk1' },
+      { kbId: 2, documentName: '对账文档', contentSnippet: 'T+1 结算', score: 0.7,
+        service: 'payment', environment: '生产', versionLabel: null, versionNo: 3, documentKey: 'dk2' },
+    ];
+
+    const sessionDetail = {
+      id: 999,
+      title: 'e2e-version-test',
+      knowledgeBases: KB_ITEMS.map(kbItem),
+      messages: [
+        { id: 1, type: 'user', content: '测试问题', createdAt: '2026-01-01T00:00:00Z' },
+        { id: 2, type: 'assistant', content: '这是回答内容',
+          sourcesJson: JSON.stringify(sourcesWithVersion),
+          status: 'COMPLETED', createdAt: '2026-01-01T00:00:01Z' },
+      ],
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:01Z',
+    };
+
+    await page.route('**/api/rag-chat/sessions/999', (r) => r.fulfill(ok(sessionDetail)));
+
+    await page.goto('/chat/999');
+
+    // versionLabel 优先展示
+    await expect(page.getByText('v2.3').first()).toBeVisible();
+    // 无 versionLabel 但有 versionNo → 展示 "v3"
+    await expect(page.getByText('v3').first()).toBeVisible();
   });
 });

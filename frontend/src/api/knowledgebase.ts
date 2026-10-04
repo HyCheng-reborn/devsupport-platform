@@ -254,7 +254,7 @@ export const knowledgeBaseApi = {
   /**
    * 获取所有知识库列表
    */
-  async getAllKnowledgeBases(sortBy?: SortOption, vectorStatus?: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED', service?: string, environment?: string, project?: string): Promise<KnowledgeBaseItem[]> {
+  async getAllKnowledgeBases(sortBy?: SortOption, vectorStatus?: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED', service?: string, environment?: string, project?: string, docType?: string, version?: string): Promise<KnowledgeBaseItem[]> {
     const params = new URLSearchParams();
     if (sortBy) {
       params.append('sortBy', sortBy);
@@ -270,6 +270,12 @@ export const knowledgeBaseApi = {
     }
     if (project !== undefined && project !== '') {
       params.append('project', project);
+    }
+    if (docType !== undefined && docType !== '') {
+      params.append('docType', docType);
+    }
+    if (version !== undefined && version !== '') {
+      params.append('version', version);
     }
     const queryString = params.toString();
     return request.get<KnowledgeBaseItem[]>(`/api/knowledgebase/list${queryString ? `?${queryString}` : ''}`);

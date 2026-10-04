@@ -16,7 +16,8 @@
     "test:sse-stream": "node --test src/api/stream.test.ts",
     "test:kb-filter": "node --test src/utils/kbFilter.test.ts",
     "test:chat-scope": "node --test src/utils/chatScope.test.ts",
-    "test:kb-status": "node --test src/utils/kbStatus.test.ts"
+    "test:kb-status": "node --test src/utils/kbStatus.test.ts",
+    "test:source-display": "node --test src/utils/sourceDisplay.test.ts"
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.1.18",

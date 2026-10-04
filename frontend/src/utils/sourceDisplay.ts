@@ -15,6 +15,8 @@ export interface SourceTagView {
   serviceName: string | null;
   /** environment 归一：空串/缺失/null 视为无 → null（不渲染绿色标签） */
   environmentName: string | null;
+  /** 版本标签：优先 versionLabel，其次 "v{versionNo}"，都没有则 null（不渲染紫色标签） */
+  versionTag: string | null;
   /** 两者皆无时展示「无标签」 */
   showNoLabel: boolean;
   /** score 非空时格式化为百分比字符串（保留原有 toFixed(0) 口径），否则 null */
@@ -25,11 +27,21 @@ export function toSourceTagView(src: SourceReference): SourceTagView {
   const serviceName = src.service || null;
   const environmentName = src.environment || null;
   const scoreLabel = src.score != null ? (src.score * 100).toFixed(0) + '%' : null;
+  
+  // 版本标签：优先 versionLabel，其次 versionNo
+  let versionTag: string | null = null;
+  if (src.versionLabel && src.versionLabel.trim().length > 0) {
+    versionTag = src.versionLabel;
+  } else if (src.versionNo != null) {
+    versionTag = `v${src.versionNo}`;
+  }
+  
   return {
     documentName: src.documentName,
     contentSnippet: src.contentSnippet,
     serviceName,
     environmentName,
+    versionTag,
     showNoLabel: !serviceName && !environmentName,
     scoreLabel,
   };

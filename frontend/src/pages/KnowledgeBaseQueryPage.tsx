@@ -635,6 +635,11 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
                                                     {view.environmentName}
                                                   </span>
                                                 )}
+                                                {view.versionTag && (
+                                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300">
+                                                    {view.versionTag}
+                                                  </span>
+                                                )}
                                                 {view.showNoLabel && (
                                                   <span className="text-[10px] text-gray-400 dark:text-slate-500">无标签</span>
                                                 )}

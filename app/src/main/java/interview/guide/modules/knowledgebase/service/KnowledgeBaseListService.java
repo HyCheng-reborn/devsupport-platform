@@ -49,6 +49,25 @@ public class KnowledgeBaseListService {
      */
     public List<KnowledgeBaseListItemDTO> listKnowledgeBases(VectorStatus vectorStatus, String sortBy,
                                                               String service, String environment) {
+        return listKnowledgeBases(vectorStatus, sortBy, service, environment, null, null, null);
+    }
+
+    /**
+     * 获取知识库列表（支持 service/environment/project/docType/version 筛选）
+     *
+     * @param vectorStatus 向量化状态，null 表示不过滤
+     * @param sortBy 排序字段，null 或 "time" 表示按时间排序
+     * @param service 服务标签，null 或空表示不过滤
+     * @param environment 环境标签，null 或空表示不过滤
+     * @param project 项目标签，null 或空表示不过滤
+     * @param docType 文档类型，null 或空表示不过滤
+     * @param version 版本标签，null 或空表示不过滤
+     * @return 知识库列表
+     */
+    public List<KnowledgeBaseListItemDTO> listKnowledgeBases(VectorStatus vectorStatus, String sortBy,
+                                                              String service, String environment,
+                                                              String project, String docType,
+                                                              String version) {
         List<KnowledgeBaseEntity> entities;
         
         boolean hasService = service != null && !service.isBlank();
@@ -70,6 +89,9 @@ public class KnowledgeBaseListService {
         } else {
             entities = knowledgeBaseRepository.findAllByOrderByUploadedAtDesc();
         }
+
+        // 内存中按 project/docType/version 筛选
+        entities = filterByProjectDocTypeVersion(entities, project, docType, version);
         
         // 如果指定了排序字段，在内存中排序
         if (sortBy != null && !sortBy.isBlank() && !sortBy.equalsIgnoreCase("time")) {
@@ -128,17 +150,39 @@ public class KnowledgeBaseListService {
     }
 
     /**
+     * 在内存中按 project/docType/version 过滤实体列表
+     */
+    private List<KnowledgeBaseEntity> filterByProjectDocTypeVersion(List<KnowledgeBaseEntity> entities,
+                                                                     String project, String docType,
+                                                                     String version) {
+        String proj = (project != null && !project.isBlank()) ? project.trim() : null;
+        String doc = (docType != null && !docType.isBlank()) ? docType.trim() : null;
+        String ver = (version != null && !version.isBlank()) ? version.trim() : null;
+        if (proj == null && doc == null && ver == null) {
+            return entities;
+        }
+        return entities.stream()
+            .filter(e -> {
+                if (proj != null && !proj.equalsIgnoreCase(e.getProject())) return false;
+                if (doc != null && !doc.equalsIgnoreCase(e.getDocType())) return false;
+                if (ver != null && !ver.equalsIgnoreCase(e.getVersionLabel())) return false;
+                return true;
+            })
+            .toList();
+    }
+
+    /**
      * 获取所有知识库列表（保持向后兼容）
      */
     public List<KnowledgeBaseListItemDTO> listKnowledgeBases() {
-        return listKnowledgeBases(null, null, null, null);
+        return listKnowledgeBases(null, null, null, null, null, null, null);
     }
 
     /**
      * 按向量化状态获取知识库列表（保持向后兼容）
      */
     public List<KnowledgeBaseListItemDTO> listKnowledgeBasesByStatus(VectorStatus vectorStatus) {
-        return listKnowledgeBases(vectorStatus, null, null, null);
+        return listKnowledgeBases(vectorStatus, null, null, null, null, null, null);
     }
 
     /**
@@ -256,7 +300,7 @@ public class KnowledgeBaseListService {
      * 按指定字段排序获取知识库列表（保持向后兼容）
      */
     public List<KnowledgeBaseListItemDTO> listSorted(String sortBy) {
-        return listKnowledgeBases(null, sortBy, null, null);
+        return listKnowledgeBases(null, sortBy, null, null, null, null, null);
     }
 
     /**

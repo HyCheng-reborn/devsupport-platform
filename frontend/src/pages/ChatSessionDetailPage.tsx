@@ -400,6 +400,11 @@ export default function ChatSessionDetailPage() {
                                             {view.environmentName}
                                           </span>
                                         )}
+                                        {view.versionTag && (
+                                          <span className="px-1 py-0.5 bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded text-[10px]">
+                                            {view.versionTag}
+                                          </span>
+                                        )}
                                         {view.scoreLabel && (
                                           <span className="text-gray-400">({view.scoreLabel})</span>
                                         )}

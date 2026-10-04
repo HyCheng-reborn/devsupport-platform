@@ -11,6 +11,8 @@ export type FilterState =
 export interface FilterableKB {
   service: string | null;
   environment: string | null;
+  project?: string | null;
+  docType?: string | null;
 }
 
 /**
@@ -22,7 +24,9 @@ export interface FilterableKB {
 export function applyFilters<T extends FilterableKB>(
   items: T[],
   serviceFilter: FilterState,
-  environmentFilter: FilterState
+  environmentFilter: FilterState,
+  projectFilter?: FilterState,
+  docTypeFilter?: FilterState
 ): T[] {
   let result = items;
 
@@ -36,6 +40,22 @@ export function applyFilters<T extends FilterableKB>(
     result = result.filter(kb => kb.environment === null || kb.environment === undefined);
   } else if (environmentFilter.type === 'value') {
     result = result.filter(kb => kb.environment === environmentFilter.value);
+  }
+
+  if (projectFilter) {
+    if (projectFilter.type === 'unclassified') {
+      result = result.filter(kb => kb.project === null || kb.project === undefined);
+    } else if (projectFilter.type === 'value') {
+      result = result.filter(kb => kb.project === projectFilter.value);
+    }
+  }
+
+  if (docTypeFilter) {
+    if (docTypeFilter.type === 'unclassified') {
+      result = result.filter(kb => kb.docType === null || kb.docType === undefined);
+    } else if (docTypeFilter.type === 'value') {
+      result = result.filter(kb => kb.docType === docTypeFilter.value);
+    }
   }
 
   return result;

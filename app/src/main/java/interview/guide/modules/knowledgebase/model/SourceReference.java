@@ -11,5 +11,8 @@ public record SourceReference(
     String contentSnippet,
     Double score,
     String service,
-    String environment
+    String environment,
+    String versionLabel,
+    Integer versionNo,
+    String documentKey
 ) {}
