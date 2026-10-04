@@ -164,9 +164,9 @@ class KnowledgeBaseContextResolveTest {
     @Test
     @DisplayName("查询不存在的 environment 返回空列表")
     void shouldReturnEmptyListForNonExistentEnvironment() {
-      // given
-      when(knowledgeBaseRepository.findAllByOrderByUploadedAtDesc())
-          .thenReturn(List.of(buildKb(1L, "文档A", "payment", "生产")));
+      // given：environment 过滤走派生查询 findByEnvironmentOrderByUploadedAtDesc（精确匹配）
+      when(knowledgeBaseRepository.findByEnvironmentOrderByUploadedAtDesc("staging"))
+          .thenReturn(List.of());
 
       // when
       List<ContextKbItem> result = listService.resolveContext(null, "staging");
@@ -200,12 +200,12 @@ class KnowledgeBaseContextResolveTest {
     }
 
     @Test
-    @DisplayName("仅 environment 过滤也能正确工作")
+    @DisplayName("仅 environment 过滤也能正确工作（派生查询精确匹配）")
     void shouldFilterByEnvironmentOnly() {
-      // given
+      // given：environment 过滤下推到 SQL 派生查询 findByEnvironmentOrderByUploadedAtDesc
       KnowledgeBaseEntity kb1 = buildKb(1L, "生产文档A", "payment", "生产");
       KnowledgeBaseEntity kb2 = buildKb(2L, "生产文档B", "auth", "生产");
-      when(knowledgeBaseRepository.findAllByOrderByUploadedAtDesc())
+      when(knowledgeBaseRepository.findByEnvironmentOrderByUploadedAtDesc("生产"))
           .thenReturn(List.of(kb1, kb2));
 
       // when

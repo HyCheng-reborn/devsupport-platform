@@ -54,7 +54,7 @@ Resume、Interview、VoiceInterview、InterviewSchedule 属于原上游项目遗
 | 阶段 | 状态 | 仓库证据 | 限制 |
 |------|------|---------|------|
 | 阶段 0：主线护栏 | 已完成 | 本文件落地 + 4 个 Resume demo 遗留文件已提交（`ea8fc22`）；路线图状态与工作区事实核对一致 | — |
-| 阶段 1：主界面与上下文 | 已完成 | 四导航重建 + 上下文贯通 + 评测结果页 + 代码审查修复（`2aa4e8c`, `5798f62`）；浏览器 E2E 8 项全通过；后端 577 tests / 前端 53 单元测试全通过 | project/version 维度数据模型缺失，UI 已禁用标注 |
+| 阶段 1：主界面与上下文 | 已完成 | 四导航重建 + 上下文贯通 + 评测结果页 + 代码审查修复（`2aa4e8c`, `5798f62`）+ 检索范围一致性复核修正；上下文相关后端单测 + 前端单测/build 通过（修正 2 个与实现漂移的 environment 用例）；浏览器 E2E 为历史轮次通过、本轮未重跑 | project/version 维度数据模型缺失，UI 已禁用；service/environment 为精确匹配（区分大小写）非 `LOWER(...)` |
 | 阶段 2：文档中心 | 未开始 | 知识库模块 17 端点可复用 | 缺 project/docType/version 元数据 |
 | 阶段 3：排查会话闭环 | 未开始 | SSE 契约 + 集成测试 3 用例 | 结构化回答骨架需新建 |
 | 阶段 4：案例库审核发布 | 未开始 | 零既有代码 | — |
@@ -93,15 +93,16 @@ Resume、Interview、VoiceInterview、InterviewSchedule 属于原上游项目遗
 - **⚠️ 冲突提示**：与 `devsupport-phase1-design.md` §3.4 冲突。该设计决策认为 service/environment 只是管理页的组织标签，检索范围由用户显式勾选的 kbIds 决定，**服务端不做强制过滤**。阶段 1 需将其升级为影响查询范围的上下文，属于设计变更，实施前需说明迁移与影响面。
 - **完成记录（2026-10-04）**：
   - **四导航重建**：文档中心 (`/docs`)、排查会话 (`/chat`)、案例库 (`/cases`)、评测结果 (`/eval-results`)，Layout 从旧五入口改为四入口。
-  - **上下文贯通**：新增 `GET /api/knowledgebase/resolve-context` 端点，service/environment 选择后解析为匹配的 KB IDs 传入向量检索；RAG Chat 会话创建支持 service/environment 参数，自动 union 显式 kbIds；旧请求兼容（不传参数时保持全范围检索）。
-  - **ContextSelector 组件**：service + environment 双选择器，实时显示"当前检索范围：N 个文档"；project/version 维度禁用态标注"阶段 2 前置工作"。
+  - **上下文贯通**：新增 `GET /api/knowledgebase/resolve-context` 端点，service/environment 选择后解析为匹配的 KB IDs；RAG Chat 会话创建以 service/environment 为**限制范围**——显式 `knowledgeBaseIds` 只能在范围内缩小（取交集，范围外 ID 被安全排除），范围为空或与显式选择无交集时报错、绝不退回全量检索，后端为最终校验方；未提供 service/environment 时保持旧的显式 `knowledgeBaseIds` 行为。
+  - **ContextSelector 组件**：service + environment 双选择器（首选项标签为"服务"，非"项目/服务"），"当前检索范围：N 个文档"中 N 与最终会话实际使用的 KB 集合一致（随手动勾选缩小而更新）；project/version 禁用态标注"阶段 2 才支持"。该选择器只挂在排查会话页；文档中心改由其自带 service/environment 下拉筛选列表（复核修正：移除原先不影响列表却伪装成检索范围的无效控件）。
   - **评测结果页**：加载 heading-aware-v0/v0.1 和 v0.1 baseline 三套数据集离线评测指标（K=1/3/5/10 指标表）。
   - **来源引用增强**：展示 service（蓝色）和 environment（绿色）标签快照。
   - **案例库占位**：明确标注"待建设"，不做假数据。
   - **设计冲突处理**：service/environment 从纯组织标签升级为影响检索范围的上下文；新增 resolve-context 端点作为桥梁；project/version 因数据模型缺失在 UI 明确禁用。
-  - **代码审查修复**：环境过滤从 in-memory 过滤下推到 SQL `LOWER(environment) = LOWER(:env)`；会话上下文清除联动（切换会话时清除 ContextSelector 状态）。
+  - **代码审查修复**：service/environment 过滤由 in-memory 下推到 JPA 派生查询 `findByServiceOrderByUploadedAtDesc` / `findByEnvironmentOrderByUploadedAtDesc` / `findByServiceAndEnvironmentOrderByUploadedAtDesc`，对入参 `trim()` 后做**精确匹配**（PostgreSQL 默认区分大小写，**未做 `LOWER(...)` 大小写不敏感**；如需不敏感需新增自定义查询 + repository/集成测试）；会话上下文清除联动（切换会话时清除 ContextSelector 状态）。
   - **浏览器验证**：8 项 E2E 全部通过（导航、上下文选择、RAG 问答、来源标签、评测结果展示）。
   - **测试**：后端 577 tests（新增 12+ 上下文解析测试全通过），前端 53 单元测试全通过，`pnpm run build` 通过。
+  - **阶段 1 复核修正（2026-10-04）**：修正排查会话"检索范围一致性"——后端 `createSession` 由"显式 kbIds ∪ 上下文"改为"以上下文为限制范围、显式只在范围内缩小（交集），空范围/无交集报错、绝不退回全量检索"，后端为最终校验方；前端 `ChatSessionsPage` 勾选限制在范围内且显示文档数对应最终会话集合（新增 `utils/chatScope.ts` 及单测）；`ContextSelector` 文案"项目/服务"改为"服务"、project/version 明确"阶段 2 才支持"；移除文档中心无效的 `ContextSelector`；更正本文件与 `CHANGES.md` 关于环境过滤 `LOWER(...)` 的不实描述（实为精确匹配派生查询）；修复 2 个与实现漂移的既有 environment 单测（原"577 全通过"记录不准确）。**本次验证**：后端相关定点单测 + 前端 `pnpm run build` + 前端 `chatScope`/`kbFilter` 单测通过（exit 0）；**未重跑**：全量后端测试、浏览器 E2E、真实 LLM/Embedding 端到端。
 
 ### 阶段 2：文档中心与知识版本生命周期
 

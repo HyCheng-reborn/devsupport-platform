@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
@@ -13,6 +13,7 @@ import { knowledgeBaseApi, type KnowledgeBaseItem } from '../api/knowledgebase';
 import ContextSelector from '../components/ContextSelector';
 import { ROUTES } from '../constants/routes';
 import { formatDateOnly } from '../utils/date';
+import { narrowScope, selectableIds } from '../utils/chatScope';
 
 export default function ChatSessionsPage() {
   const navigate = useNavigate();
@@ -25,6 +26,8 @@ export default function ChatSessionsPage() {
   const [creating, setCreating] = useState(false);
   const [contextService, setContextService] = useState<string>('');
   const [contextEnvironment, setContextEnvironment] = useState<string>('');
+  // service/environment 解析出的限制范围（KB ID 集合）
+  const [contextScopeIds, setContextScopeIds] = useState<Set<number>>(new Set());
 
   const loadSessions = useCallback(async () => {
     setLoadingSessions(true);
@@ -55,6 +58,29 @@ export default function ChatSessionsPage() {
     loadKnowledgeBases();
   }, [loadSessions, loadKnowledgeBases]);
 
+  const contextActive = Boolean(contextService || contextEnvironment);
+
+  // 允许勾选的 KB：已选上下文时限制在范围内（只能缩小），未选上下文时保留全部（旧行为）
+  const pickerKbs = useMemo(() => {
+    const allowed = new Set(
+      selectableIds(knowledgeBases.map((kb) => kb.id), contextScopeIds, contextActive)
+    );
+    return knowledgeBases.filter((kb) => allowed.has(kb.id));
+  }, [knowledgeBases, contextScopeIds, contextActive]);
+
+  // 最终会话使用的 KB 集合：与后端交集校验等价，用于展示数量与提交，确保显示=实际使用
+  const effectiveIds = useMemo(
+    () => narrowScope(Array.from(selectedKbIds), contextScopeIds, contextActive),
+    [selectedKbIds, contextScopeIds, contextActive]
+  );
+
+  const effectiveItems = useMemo(() => {
+    const set = new Set(effectiveIds);
+    return knowledgeBases
+      .filter((kb) => set.has(kb.id))
+      .map((kb) => ({ id: kb.id, name: kb.name }));
+  }, [effectiveIds, knowledgeBases]);
+
   const handleToggleKb = (kbId: number) => {
     setSelectedKbIds((prev) => {
       const next = new Set(prev);
@@ -68,11 +94,12 @@ export default function ChatSessionsPage() {
   };
 
   const handleCreateSession = async () => {
-    if (selectedKbIds.size === 0 || creating) return;
+    // 提交与展示一致的最终集合（范围内缩小后的交集），后端仍会做最终校验
+    if (effectiveIds.length === 0 || creating) return;
     setCreating(true);
     try {
       const session = await ragChatApi.createSession(
-        Array.from(selectedKbIds),
+        effectiveIds,
         undefined,
         contextService || undefined,
         contextEnvironment || undefined
@@ -139,10 +166,18 @@ export default function ChatSessionsPage() {
 
       {/* 上下文范围选择器 */}
       <ContextSelector
+        effectiveItems={effectiveItems}
         onScopeChange={(kbIds, service, environment) => {
           setContextService(service || '');
           setContextEnvironment(environment || '');
-          setSelectedKbIds(new Set(kbIds));
+          const range = new Set(kbIds);
+          setContextScopeIds(range);
+          // 预选：范围内且可检索（COMPLETED）的 KB，用户只能在此基础上缩小
+          const active = Boolean(service || environment);
+          const preselected = active
+            ? knowledgeBases.filter((kb) => range.has(kb.id)).map((kb) => kb.id)
+            : [];
+          setSelectedKbIds(new Set(preselected));
         }}
       />
 
@@ -155,19 +190,26 @@ export default function ChatSessionsPage() {
         >
           <h3 className="text-base font-semibold text-slate-800 dark:text-white mb-4">
             选择关联知识库
+            {effectiveIds.length > 0 && (
+              <span className="ml-2 text-xs font-normal text-slate-500 dark:text-slate-400">
+                已选 {effectiveIds.length} 个文档
+              </span>
+            )}
           </h3>
           {loadingKbs ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="w-6 h-6 text-primary-500 animate-spin" />
             </div>
-          ) : knowledgeBases.length === 0 ? (
+          ) : pickerKbs.length === 0 ? (
             <p className="text-sm text-slate-500 dark:text-slate-400 py-4 text-center">
-              暂无已完成向量化的知识库，请先上传文档。
+              {contextActive
+                ? '所选上下文没有匹配的可检索知识库，请调整服务/环境。'
+                : '暂无已完成向量化的知识库，请先上传文档。'}
             </p>
           ) : (
             <>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-60 overflow-y-auto">
-                {knowledgeBases.map((kb) => (
+                {pickerKbs.map((kb) => (
                   <label
                     key={kb.id}
                     className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all border ${
@@ -206,7 +248,10 @@ export default function ChatSessionsPage() {
                 <button
                   onClick={() => {
                     setShowKbPicker(false);
-                    setSelectedKbIds(new Set());
+                    // 取消回到默认范围选择（范围内全部勾选），不保留中途改动
+                    setSelectedKbIds(
+                      contextActive ? new Set(pickerKbs.map((kb) => kb.id)) : new Set()
+                    );
                   }}
                   className="px-4 py-2 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white transition-colors"
                 >
@@ -214,11 +259,11 @@ export default function ChatSessionsPage() {
                 </button>
                 <button
                   onClick={handleCreateSession}
-                  disabled={selectedKbIds.size === 0 || creating}
+                  disabled={effectiveIds.length === 0 || creating}
                   className="px-4 py-2 text-sm bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
                   {creating && <Loader2 className="w-4 h-4 animate-spin" />}
-                  创建会话
+                  创建会话{effectiveIds.length > 0 ? `（${effectiveIds.length}）` : ''}
                 </button>
               </div>
             </>

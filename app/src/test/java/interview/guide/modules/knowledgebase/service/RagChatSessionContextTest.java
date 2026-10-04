@@ -139,43 +139,42 @@ class RagChatSessionContextTest {
   }
 
   @Nested
-  @DisplayName("与显式 kbIds 合并（并集）")
-  class UnionWithExplicitIds {
+  @DisplayName("service/environment 作为限制范围：显式勾选只能在范围内缩小")
+  class ScopeNarrowing {
 
     @Test
-    @DisplayName("显式 kbIds + service 上下文取并集")
-    void shouldUnionExplicitIdsWithContextResolvedIds() {
-      // given
+    @DisplayName("范围外的显式 KB ID 被安全排除，不扩大范围")
+    void shouldExcludeExplicitIdsOutsideContextScope() {
+      // given：service 上下文只解析到 kbId=2
       List<ContextKbItem> contextItems = List.of(
           new ContextKbItem(2L, "支付文档B", "payment", "生产"));
       when(listService.resolveContext("payment", null)).thenReturn(contextItems);
 
-      KnowledgeBaseEntity kb1 = buildKb(1L, "显式文档");
       KnowledgeBaseEntity kb2 = buildKb(2L, "支付文档B");
-      when(knowledgeBaseRepository.findAllById(anySet())).thenReturn(List.of(kb1, kb2));
+      when(knowledgeBaseRepository.findAllById(anySet())).thenReturn(List.of(kb2));
 
-      RagChatSessionEntity savedSession = buildSession(100L, new HashSet<>(List.of(kb1, kb2)));
+      RagChatSessionEntity savedSession = buildSession(100L, new HashSet<>(List.of(kb2)));
       when(sessionRepository.save(any(RagChatSessionEntity.class))).thenReturn(savedSession);
-      when(ragChatMapper.toSessionDTO(any())).thenReturn(new SessionDTO(100L, "测试会话", List.of(1L, 2L), LocalDateTime.now()));
+      when(ragChatMapper.toSessionDTO(any())).thenReturn(new SessionDTO(100L, "测试会话", List.of(2L), LocalDateTime.now()));
 
-      // 显式指定 kbId=1，同时 service=payment 解析到 kbId=2
-      CreateSessionRequest request = new CreateSessionRequest(List.of(1L), null, "payment", null);
+      // 显式指定 kbId=1（范围外）+ kbId=2（范围内）
+      CreateSessionRequest request = new CreateSessionRequest(List.of(1L, 2L), null, "payment", null);
 
       // when
       SessionDTO result = ragChatSessionService.createSession(request);
 
-      // then
+      // then：范围外的 kbId=1 被排除，实际会话只使用 {2}（不取并集）
       assertThat(result).isNotNull();
-      // 验证 findAllById 被调用时传入了两个 ID（并集）
-      verify(knowledgeBaseRepository).findAllById(Set.of(1L, 2L));
+      verify(knowledgeBaseRepository).findAllById(Set.of(2L));
     }
 
     @Test
-    @DisplayName("显式 kbIds 与上下文解析有重叠时去重")
-    void shouldDeduplicateWhenOverlap() {
-      // given
+    @DisplayName("范围内取消勾选的 KB 不会被后端重新加回")
+    void shouldNotReAddUncheckedKbWithinScope() {
+      // given：service 上下文解析到 kbId=1 和 2，用户只勾选 1（取消 2）
       List<ContextKbItem> contextItems = List.of(
-          new ContextKbItem(1L, "支付文档A", "payment", "生产"));
+          new ContextKbItem(1L, "支付文档A", "payment", "生产"),
+          new ContextKbItem(2L, "支付文档B", "payment", "生产"));
       when(listService.resolveContext("payment", null)).thenReturn(contextItems);
 
       KnowledgeBaseEntity kb1 = buildKb(1L, "支付文档A");
@@ -185,16 +184,49 @@ class RagChatSessionContextTest {
       when(sessionRepository.save(any(RagChatSessionEntity.class))).thenReturn(savedSession);
       when(ragChatMapper.toSessionDTO(any())).thenReturn(new SessionDTO(100L, "测试会话", List.of(1L), LocalDateTime.now()));
 
-      // 显式指定 kbId=1，上下文也解析到 kbId=1
+      // 用户取消 kbId=2，只显式勾选 kbId=1
       CreateSessionRequest request = new CreateSessionRequest(List.of(1L), null, "payment", null);
 
       // when
       SessionDTO result = ragChatSessionService.createSession(request);
 
-      // then
+      // then：只使用 {1}，被取消的 kbId=2 不会被后端 service 解析重新加回
       assertThat(result).isNotNull();
-      // 验证去重后只有一个 ID
       verify(knowledgeBaseRepository).findAllById(Set.of(1L));
+    }
+
+    @Test
+    @DisplayName("显式选择与上下文范围无交集时拒绝创建，不退回全量检索")
+    void shouldRejectWhenExplicitIdsDisjointFromScope() {
+      // given：上下文解析到 kbId=2，显式只选 kbId=1（范围外）
+      List<ContextKbItem> contextItems = List.of(
+          new ContextKbItem(2L, "支付文档B", "payment", "生产"));
+      when(listService.resolveContext("payment", null)).thenReturn(contextItems);
+
+      CreateSessionRequest request = new CreateSessionRequest(List.of(1L), null, "payment", null);
+
+      // when & then
+      assertThatThrownBy(() -> ragChatSessionService.createSession(request))
+          .isInstanceOf(BusinessException.class)
+          .hasMessageContaining("不在所选 service/environment 范围内");
+      verify(sessionRepository, never()).save(any(RagChatSessionEntity.class));
+    }
+
+    @Test
+    @DisplayName("上下文范围为空时即便带显式 kbIds 也报错，不退回全量检索")
+    void shouldNotFallBackToFullRetrievalWhenScopeEmpty() {
+      // given：service 不存在，解析范围为空；显式选了 kbId=1
+      when(listService.resolveContext("nonexistent", null)).thenReturn(List.of());
+
+      CreateSessionRequest request = new CreateSessionRequest(List.of(1L), null, "nonexistent", null);
+
+      // when & then
+      assertThatThrownBy(() -> ragChatSessionService.createSession(request))
+          .isInstanceOf(BusinessException.class)
+          .hasMessageContaining("没有匹配的知识库");
+      // 不得把范围外的显式 kbId 拿去全量检索，也不得落库
+      verify(knowledgeBaseRepository, never()).findAllById(anySet());
+      verify(sessionRepository, never()).save(any(RagChatSessionEntity.class));
     }
   }
 
@@ -237,7 +269,7 @@ class RagChatSessionContextTest {
       // when & then
       assertThatThrownBy(() -> ragChatSessionService.createSession(request))
           .isInstanceOf(BusinessException.class)
-          .hasMessageContaining("至少需要一个知识库");
+          .hasMessageContaining("没有匹配的知识库");
     }
   }
 

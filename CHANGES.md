@@ -1,3 +1,12 @@
+**2026-10-04 -- DevSupport 阶段 1 复核修正：排查会话检索范围一致性 + 上下文文案 + 路线图口径**
+- 后端 `RagChatSessionService.createSession` 语义由"显式 kbIds ∪ service/environment 解析"改为"以 service/environment 为限制范围、显式只在范围内缩小（取交集）"：范围外显式 ID 被安全排除、范围内取消勾选的不会被后端加回、上下文范围为空或与显式选择无交集时报错（BAD_REQUEST），绝不退回全量检索；未提供 service/environment 时保持旧的显式 `knowledgeBaseIds` 行为。后端为最终校验方，不只靠前端隐藏选项
+- 前端 `ChatSessionsPage`：KB 勾选限制在解析范围内（只能缩小）；"当前检索范围：N 个文档"的 N 与最终会话实际使用的 KB 集合一致；新增 `utils/chatScope.ts`（`selectableIds`/`narrowScope` 纯函数，与后端交集语义一致）及 8 条 `node:test` 单测
+- `ContextSelector`：首选项标签由"项目/服务"改为"服务"；project/version 禁用态文案改为"项目/版本维度：阶段 2 才支持"；空范围显示明确提示
+- 文档中心（`DocsCenterPage`/`KnowledgeBaseManagePage`）：移除挂载但不影响文档列表、也不传到会话的无效 `ContextSelector`；文档列表仍由页面自带 service/environment 下拉筛选（真实行为）
+- 测试：`RagChatSessionContextTest` 由并集断言改为限制范围/缩小/无交集/空范围 4 类用例；修复 2 个与实现漂移的既有 environment 单测（`KnowledgeBaseContextResolveTest` 之前 stub `findAllByOrderByUploadedAtDesc` 但实现已改用 `findByEnvironmentOrderByUploadedAtDesc`）
+- 文档口径修正：`DEVSUPPORT_ROADMAP.md` 阶段 1 关于环境过滤下推 `LOWER(environment)=LOWER(:env)` 改为真实实现（派生查询 `trim()` 后精确匹配、区分大小写，非大小写不敏感）；本文件下方 2026-10-04 阶段 1 完成条目为历史快照，以本条为准
+- 验证：后端相关定点单测 exit 0；`pnpm run build` exit 0；`chatScope`/`kbFilter` 前端单测 exit 0。未重跑：全量后端测试、浏览器 E2E、真实 LLM/Embedding。未推送远程；未触碰 `.env`/`.env.eval`、`gradle-wrapper.properties`、Docker 卷
+
 **2026-10-04 -- DevSupport 阶段 1 完成：主壳交付与上下文贯通**
 - 四导航重建：文档中心 (`/docs`)、排查会话 (`/chat`)、案例库 (`/cases`)、评测结果 (`/eval-results`)，Layout 从旧五入口改为四入口
 - 后端新增 `GET /api/knowledgebase/resolve-context` 端点，service/environment 解析为匹配的 KB IDs 传入向量检索

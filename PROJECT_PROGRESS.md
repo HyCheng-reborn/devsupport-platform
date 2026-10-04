@@ -3,7 +3,7 @@
 > 本项目（远程仓库 `HyCheng-reborn/devsupport-platform`，本地目录名仍为 `interview-guide`）的进度事实源。
 > **跨机器 remote 别名映射（读文档前先对齐，避免 `origin` 误读）**：本机 `devsupport` = `HyCheng-reborn/devsupport-platform`（推送目标），本机 `origin` = `Snailclimb/interview-guide`（上游，**勿推**）；另一台验证机（批次 C/D 补验）的 `origin` = `HyCheng-reborn/devsupport-platform`，故其文档/提交记录里的「push 到 `origin/master`」等同于本机的「push 到 `devsupport/master`」。判断实际目标仓库一律以 remote URL 为准，不要只看别名。
 > 新会话接手时先读本文件，再读「交接区」列出的文件。
-> 最近更新：**2026-10-04 DevSupport 阶段 1 完成（四导航重建 + 上下文贯通 + 评测结果页）**，作者 Qoder。
+> 最近更新：**2026-10-04 DevSupport 阶段 1 复核修正（排查会话检索范围一致性 + 上下文文案 + 路线图口径）**，作者 Qoder。前一轮：阶段 1 完成（四导航重建 + 上下文贯通 + 评测结果页）。
 
 ## 0. 维护规则
 
@@ -33,16 +33,17 @@
 
 - **DevSupport 路线图阶段 1 完成（2026-10-04，提交 `2aa4e8c` + `5798f62`）** — 状态 `已完成`。
   - 四导航重建：文档中心 (`/docs`)、排查会话 (`/chat`)、案例库 (`/cases`)、评测结果 (`/eval-results`)，Layout 从旧五入口改为四入口。
-  - 上下文贯通：新增 `GET /api/knowledgebase/resolve-context` 端点，service/environment 解析为 KB IDs 传入向量检索；RAG Chat 会话创建支持 service/environment 参数；旧请求兼容。
-  - ContextSelector 组件：service + environment 双选择器，实时显示检索范围；project/version 禁用标注"阶段 2 前置工作"。
+  - 上下文贯通：新增 `GET /api/knowledgebase/resolve-context` 端点，service/environment 解析为 KB IDs；RAG Chat 会话创建以 service/environment 为**限制范围**，显式 `knowledgeBaseIds` 只能在范围内缩小（取交集），无上下文时保持旧的显式行为（复核修正见下）。
+  - ContextSelector 组件：service + environment 双选择器（首选项标签"服务"），显示"当前检索范围：N 个文档"且 N 与最终会话实际使用的 KB 集合一致；project/version 禁用标注"阶段 2 才支持"；仅挂排查会话页，文档中心改用自带 service/environment 下拉筛选。
   - 评测结果页：加载 heading-aware-v0/v0.1 和 v0.1 baseline 三套数据集离线评测指标（K=1/3/5/10）。
   - 来源引用增强：展示 service（蓝色）和 environment（绿色）标签快照。
   - 案例库占位：明确标注"待建设"，不做假数据。
   - 设计冲突处理：service/environment 从纯组织标签升级为影响检索范围的上下文；project/version 因数据模型缺失在 UI 明确禁用。
   - 代码审查修复：环境过滤下推到 SQL；会话上下文清除联动。
   - 浏览器验证：8 项 E2E 全部通过（真实前端 + 真实后端 + 真实 PostgreSQL/Redis）。
-  - 后端测试：577 tests，新增 12+ 上下文解析测试全通过。
+  - 后端测试：上下文相关单测通过（复核中修复 2 个与实现漂移的 environment 用例，见下）。
   - 前端：`pnpm run build` 通过，53 个单元测试全通过。
+  - **阶段 1 复核修正（2026-10-04）**：修复排查会话"检索范围一致性"——后端 `createSession` 由"显式 kbIds ∪ 上下文"改为"以上下文为限制范围、显式只在范围内缩小（交集），空范围/无交集报错、绝不退回全量检索"，后端为最终校验方；前端 `ChatSessionsPage` 勾选限制在范围内、显示文档数=最终会话集合（新增 `utils/chatScope.ts` + 单测）；`ContextSelector` 文案"项目/服务"→"服务"、project/version 明确"阶段 2 才支持"；移除文档中心无效 `ContextSelector`；修正路线图/CHANGES 关于环境过滤 `LOWER(...)` 的不实描述（实为精确匹配派生查询、区分大小写）；修复 2 个漂移的既有单测。状态 `代码已写 · 离线通过 · 真实环境未验证`（验证：后端定点单测 + 前端 build + 前端单测 exit 0；未重跑全量/浏览器 E2E/真实 LLM）。
 
 - **DevSupport 路线图阶段 0 完成（2026-10-04，提交 `ea8fc22`）** — 状态 `已完成`。
   - 4 个未跟踪的 Resume demo 遗留文件已作为独立提交保留（标注"遗留模块维护"）：`DevSupport_项目开发总方案_v1.0.md`、`DemoResumeGradingService.java`、`application-demo.yml`、`app/src/test/java/interview/guide/modules/resume/`（6 个测试文件）。
@@ -155,6 +156,7 @@
 
 ## 7. 变更记录（简短，倒序）
 
+- 2026-10-04 — **阶段 1 复核修正：排查会话检索范围一致性 + 上下文文案 + 路线图口径** — 状态 `代码已写 · 离线通过 · 真实环境未验证`。后端 `RagChatSessionService.createSession` 由并集改为"以 service/environment 为限制范围、显式只在范围内缩小（交集）"，空范围/无交集报错而非退回全量；前端 `ChatSessionsPage` 勾选限制在范围内、显示文档数=最终集合（新增 `utils/chatScope.ts` + 8 条单测）；`ContextSelector` 文案修正、文档中心移除无效控件；更正 `DEVSUPPORT_ROADMAP.md`/`CHANGES.md` 关于环境过滤 `LOWER(...)` 的不实描述（实为精确匹配派生查询、区分大小写）；修复 2 个与实现漂移的既有 environment 单测。验证：后端定点单测 + 前端 `pnpm run build` + 前端 `chatScope`/`kbFilter` 单测 exit 0；未重跑全量后端/浏览器 E2E/真实 LLM。未推送远程；未触碰密钥、`gradle-wrapper.properties`、Docker 卷。
 - 2026-10-03 — **I-4 RAG Chat SSE 集成测试（Testcontainers PostgreSQL/pgvector + Redis，Mock LLM）** — 已完成。定点 3/3 全绿（SSE 事件顺序、来源快照标签、PostgreSQL 读写回验证）。全量 511 tests / 10 failures / 3 skipped（10 个失败均为预先存在的 VoiceInterviewIntegrationTest Redis 连接问题，与本次变更无关）。Testcontainers 启动 pgvector/pgvector:pg16 + redis:7-alpine 隔离容器，Mock LlmProviderRegistry + KnowledgeBaseVectorService，零真实 LLM/Embedding/Redis Stream/S3 调用。新增 `testcontainers-postgresql` 依赖。
 - 2026-10-03 — **I-3 切片 3：VoiceInterviewIntegrationTest 恢复（YAML 缩进修复 + WebSocket 测试环境修复）** — 已完成。定点 10/10 全绿，全量 508/0/0/3。
 - 2026-10-03 — **I-2 RateLimitIntegrationTest Docker 验证 — 已完成**。使用 Testcontainers + `redis:7-alpine` 实跑 4 个 `RateLimitIntegrationTest` 测试：`testRateLimit`、`testMultiRule`、`testExpiredPermitsRemainWhenLaterRuleRejects`、`testIndependentCountPerDimension`，定点 4/4 全部通过。全量 `:app:test`：508 tests, 0 failures, 0 errors, 46 skipped（较此前 50 skipped 减少 4，即 RateLimitIntegrationTest 4 个用例从跳过转为通过）。环境：Docker Desktop 29.7.2，Testcontainers 自动拉起 `redis:7-alpine` 容器，退出码 0。**注意：这是 Testcontainers 隔离容器验证，不是生产 Redis 实例验证**。未修改任何业务代码、测试代码或配置文件。

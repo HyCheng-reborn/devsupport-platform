@@ -17,5 +17,5 @@ export default function DocsCenterPage() {
     navigate(ROUTES.chatSessions);
   };
 
-  return <KnowledgeBaseManagePage onUpload={handleUpload} onChat={handleChat} showContextSelector />;
+  return <KnowledgeBaseManagePage onUpload={handleUpload} onChat={handleChat} />;
 }

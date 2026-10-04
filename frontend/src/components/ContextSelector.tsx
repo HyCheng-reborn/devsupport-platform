@@ -14,9 +14,14 @@ import { knowledgeBaseApi, type ContextKbItem } from '../api/knowledgebase';
 
 export interface ContextSelectorProps {
   onScopeChange?: (kbIds: number[], service?: string, environment?: string) => void;
+  /**
+   * 实际生效的文档集合（由父组件根据用户勾选计算）。提供时用于展示“当前检索范围”，
+   * 确保显示数量与最终会话实际使用的 KB 集合一致；未提供时回退展示解析到的范围项。
+   */
+  effectiveItems?: { id: number; name: string }[];
 }
 
-export default function ContextSelector({ onScopeChange }: ContextSelectorProps) {
+export default function ContextSelector({ onScopeChange, effectiveItems }: ContextSelectorProps) {
   const [services, setServices] = useState<string[]>([]);
   const [environments, setEnvironments] = useState<string[]>([]);
   const [selectedService, setSelectedService] = useState<string>('');
@@ -84,9 +89,11 @@ export default function ContextSelector({ onScopeChange }: ContextSelectorProps)
   };
 
   const hasContext = selectedService || selectedEnvironment;
+  // 显示数量优先使用父组件传入的“实际生效集合”，与最终会话使用的 KB 保持一致
+  const displayItems = effectiveItems ?? resolvedItems;
   const maxVisibleNames = 5;
-  const visibleNames = resolvedItems.slice(0, maxVisibleNames);
-  const remainingCount = resolvedItems.length - maxVisibleNames;
+  const visibleNames = displayItems.slice(0, maxVisibleNames);
+  const remainingCount = displayItems.length - maxVisibleNames;
 
   return (
     <div className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm border border-slate-100 dark:border-slate-700 mb-6">
@@ -120,7 +127,7 @@ export default function ContextSelector({ onScopeChange }: ContextSelectorProps)
             } focus:outline-none focus:ring-2 focus:ring-primary-500`}
           >
             <Server className="w-3.5 h-3.5" />
-            {selectedService || '项目/服务'}
+            {selectedService || '服务'}
             <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
           </button>
           <AnimatePresence>
@@ -213,7 +220,7 @@ export default function ContextSelector({ onScopeChange }: ContextSelectorProps)
             项目
           </button>
           <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-slate-800 dark:bg-slate-600 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity">
-            阶段 2 前置工作
+            项目维度：阶段 2 才支持
           </div>
         </div>
         <div className="relative group disabled:cursor-not-allowed">
@@ -225,7 +232,7 @@ export default function ContextSelector({ onScopeChange }: ContextSelectorProps)
             版本
           </button>
           <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-slate-800 dark:bg-slate-600 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity">
-            阶段 2 前置工作
+            版本维度：阶段 2 才支持
           </div>
         </div>
       </div>
@@ -239,29 +246,37 @@ export default function ContextSelector({ onScopeChange }: ContextSelectorProps)
           </div>
         ) : hasContext ? (
           <div>
-            <p className="text-sm text-slate-600 dark:text-slate-300">
-              当前检索范围：
-              <span className="font-semibold text-primary-600 dark:text-primary-400">
-                {resolvedItems.length} 个文档
-              </span>
-            </p>
-            {resolvedItems.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mt-2">
-                {visibleNames.map((item) => (
-                  <span
-                    key={item.id}
-                    className="px-2 py-0.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs rounded truncate max-w-[160px]"
-                    title={item.name}
-                  >
-                    {item.name}
+            {resolvedItems.length === 0 ? (
+              <p className="text-sm text-amber-600 dark:text-amber-400">
+                所选服务/环境没有匹配的知识库（不会退回全范围检索）
+              </p>
+            ) : (
+              <>
+                <p className="text-sm text-slate-600 dark:text-slate-300">
+                  当前检索范围：
+                  <span className="font-semibold text-primary-600 dark:text-primary-400">
+                    {displayItems.length} 个文档
                   </span>
-                ))}
-                {remainingCount > 0 && (
-                  <span className="px-2 py-0.5 text-slate-400 dark:text-slate-500 text-xs">
-                    +{remainingCount} 更多
-                  </span>
+                </p>
+                {displayItems.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {visibleNames.map((item) => (
+                      <span
+                        key={item.id}
+                        className="px-2 py-0.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs rounded truncate max-w-[160px]"
+                        title={item.name}
+                      >
+                        {item.name}
+                      </span>
+                    ))}
+                    {remainingCount > 0 && (
+                      <span className="px-2 py-0.5 text-slate-400 dark:text-slate-500 text-xs">
+                        +{remainingCount} 更多
+                      </span>
+                    )}
+                  </div>
                 )}
-              </div>
+              </>
             )}
           </div>
         ) : (

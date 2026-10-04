@@ -55,45 +55,71 @@ public class RagChatSessionService {
     private final KnowledgeBaseQueryProperties queryProperties;
 
     /**
-     * 创建新会话
+     * 创建新会话。
+     * <p>检索范围语义：service/environment 解析出的 KB 集合是「限制范围」，实际会话 KB
+     * 必须落在该范围内；显式 knowledgeBaseIds 只能在范围内缩小选择（取交集，范围外的 ID
+     * 被安全排除），不能扩大范围。范围为空、或与显式选择无交集时直接报错，绝不退回全量检索。
+     * 未提供 service/environment 时保持旧的显式 knowledgeBaseIds 行为。后端是该约束的最终校验方。
      */
     @Transactional
     public SessionDTO createSession(CreateSessionRequest request) {
-        // 解析上下文匹配的 KB IDs
-        Set<Long> resolvedKbIds = new HashSet<>();
-
-        // 1. 显式指定的 knowledgeBaseIds
         List<Long> explicitIds = request.knowledgeBaseIds();
-        if (explicitIds != null && !explicitIds.isEmpty()) {
-            resolvedKbIds.addAll(explicitIds);
-        }
+        boolean hasExplicit = explicitIds != null && !explicitIds.isEmpty();
 
-        // 2. 通过 service/environment 上下文解析
         String service = request.service();
         String environment = request.environment();
         boolean hasService = service != null && !service.isBlank();
         boolean hasEnvironment = environment != null && !environment.isBlank();
+        boolean hasContext = hasService || hasEnvironment;
 
-        if (hasService || hasEnvironment) {
+        Set<Long> finalKbIds;
+
+        if (hasContext) {
+            // service/environment 是限制范围：解析出允许的 KB ID 集合
             List<ContextKbItem> contextItems = listService.resolveContext(
                 hasService ? service : null,
                 hasEnvironment ? environment : null);
-            for (ContextKbItem item : contextItems) {
-                resolvedKbIds.add(item.id());
-            }
-        }
+            Set<Long> scope = contextItems.stream()
+                .map(ContextKbItem::id)
+                .collect(Collectors.toSet());
 
-        // 3. 校验：至少需要有一个知识库
-        if (resolvedKbIds.isEmpty()) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST,
-                "至少需要一个知识库：请指定 knowledgeBaseIds 或提供 service/environment 上下文");
+            // 范围为空：明确报错，不退回全量检索
+            if (scope.isEmpty()) {
+                throw new BusinessException(ErrorCode.BAD_REQUEST,
+                    "所选 service/environment 没有匹配的知识库，无法创建会话");
+            }
+
+            if (hasExplicit) {
+                // 显式选择只能在范围内缩小：取交集，范围外的 ID 被安全排除
+                finalKbIds = new HashSet<>();
+                for (Long id : explicitIds) {
+                    if (scope.contains(id)) {
+                        finalKbIds.add(id);
+                    }
+                }
+                // 与范围无交集：明确报错，不退回全量检索
+                if (finalKbIds.isEmpty()) {
+                    throw new BusinessException(ErrorCode.BAD_REQUEST,
+                        "显式选择的知识库不在所选 service/environment 范围内，无法创建会话");
+                }
+            } else {
+                // 未手动缩小：使用整个上下文范围
+                finalKbIds = scope;
+            }
+        } else {
+            // 无上下文：保持旧的显式 knowledgeBaseIds 行为
+            if (!hasExplicit) {
+                throw new BusinessException(ErrorCode.BAD_REQUEST,
+                    "至少需要一个知识库：请指定 knowledgeBaseIds 或提供 service/environment 上下文");
+            }
+            finalKbIds = new HashSet<>(explicitIds);
         }
 
         // 验证知识库存在
         List<KnowledgeBaseEntity> knowledgeBases = knowledgeBaseRepository
-            .findAllById(resolvedKbIds);
+            .findAllById(finalKbIds);
 
-        if (knowledgeBases.size() != resolvedKbIds.size()) {
+        if (knowledgeBases.size() != finalKbIds.size()) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "部分知识库不存在");
         }
 
@@ -106,8 +132,8 @@ public class RagChatSessionService {
 
         session = sessionRepository.save(session);
 
-        log.info("创建 RAG 聊天会话: id={}, title={}, resolvedKbIds={}",
-            session.getId(), session.getTitle(), resolvedKbIds);
+        log.info("创建 RAG 聊天会话: id={}, title={}, finalKbIds={}, hasContext={}",
+            session.getId(), session.getTitle(), finalKbIds, hasContext);
 
         return ragChatMapper.toSessionDTO(session);
     }
