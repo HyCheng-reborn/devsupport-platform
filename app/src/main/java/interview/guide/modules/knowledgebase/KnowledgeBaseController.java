@@ -8,6 +8,7 @@ import interview.guide.modules.knowledgebase.model.KnowledgeBaseStatsDTO;
 import interview.guide.modules.knowledgebase.model.QueryRequest;
 import interview.guide.modules.knowledgebase.model.QueryResponse;
 import interview.guide.modules.knowledgebase.model.VectorStatus;
+import interview.guide.modules.knowledgebase.service.KnowledgeBaseConflictService;
 import interview.guide.modules.knowledgebase.service.KnowledgeBaseDeleteService;
 import interview.guide.modules.knowledgebase.service.KnowledgeBaseListService;
 import interview.guide.modules.knowledgebase.service.KnowledgeBaseQueryService;
@@ -55,6 +56,7 @@ public class KnowledgeBaseController {
     private final KnowledgeBaseQueryService queryService;
     private final KnowledgeBaseListService listService;
     private final KnowledgeBaseDeleteService deleteService;
+    private final KnowledgeBaseConflictService conflictService;
 
     /**
      * 根据 service/environment 上下文解析匹配的知识库
@@ -321,6 +323,26 @@ public class KnowledgeBaseController {
     @PutMapping("/api/knowledgebase/{id}/retire")
     public Result<Void> retire(@PathVariable Long id) {
         uploadService.retire(id);
+        return Result.success(null);
+    }
+
+    // ========== 版本冲突解决 API ==========
+
+    /**
+     * 采纳冲突版本：停用当前 active 版本，激活冲突版本并重新向量化。
+     */
+    @PostMapping("/api/knowledgebase/{id}/adopt")
+    public Result<Void> adoptConflictVersion(@PathVariable Long id) {
+        conflictService.adoptVersion(id);
+        return Result.success(null);
+    }
+
+    /**
+     * 放弃冲突版本：清除冲突标记，保持 active=false，不影响当前 active 版本。
+     */
+    @PostMapping("/api/knowledgebase/{id}/abandon")
+    public Result<Void> abandonConflictVersion(@PathVariable Long id) {
+        conflictService.abandonVersion(id);
         return Result.success(null);
     }
 

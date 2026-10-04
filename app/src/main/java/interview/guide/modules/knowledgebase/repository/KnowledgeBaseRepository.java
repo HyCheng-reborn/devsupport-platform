@@ -152,6 +152,17 @@ public interface KnowledgeBaseRepository extends JpaRepository<KnowledgeBaseEnti
     List<KnowledgeBaseEntity> findByDocumentKeyAndActiveTrueOrderByVersionNoDesc(String documentKey);
 
     /**
+     * 同一 (documentKey, normalizedVersionLabel) 下所有启用的行（用于冲突检测）。
+     */
+    List<KnowledgeBaseEntity> findByDocumentKeyAndNormalizedVersionLabelAndActiveTrue(
+        String documentKey, String normalizedVersionLabel);
+
+    /**
+     * 同一 documentKey 下所有标记为冲突的行。
+     */
+    List<KnowledgeBaseEntity> findByDocumentKeyAndConflictTrue(String documentKey);
+
+    /**
      * 获取所有不同的服务标签（非空，按字母排序）
      */
     @Query("SELECT DISTINCT k.service FROM KnowledgeBaseEntity k WHERE k.service IS NOT NULL ORDER BY k.service")

@@ -102,11 +102,18 @@ public class KnowledgeBaseListService {
     }
 
     /**
-     * 计算并标记版本冲突（阶段 2）：同一 documentKey 下存在 ≥2 个启用版本且内容(fileHash)不同。
-     * 对应路线图“当同一主题存在不同版本且内容冲突时，文档中心应标识冲突”。
+     * 计算并标记版本冲突（阶段 2）：优先使用数据库 conflict 列，回退到内存中计算。
+     *
+     * <p>新流程：上传阶段已设置 conflict 列，直接读取即可。
+     * 回退逻辑：同一 documentKey 下存在 ≥2 个启用版本且内容(fileHash)不同。
      */
     private List<KnowledgeBaseListItemDTO> markVersionConflicts(
             List<KnowledgeBaseEntity> entities, List<KnowledgeBaseListItemDTO> dtos) {
+        // 1. 优先使用数据库 conflict 列
+        boolean hasDbConflict = entities.stream()
+            .anyMatch(e -> Boolean.TRUE.equals(e.getConflict()));
+
+        // 2. 回退：内存中计算版本冲突（兼容旧数据）
         Map<String, Set<String>> hashesByDoc = new HashMap<>();
         for (KnowledgeBaseEntity e : entities) {
             if (e.getDocumentKey() == null || Boolean.FALSE.equals(e.getActive())) {
@@ -121,12 +128,22 @@ public class KnowledgeBaseListService {
                 conflictDocs.add(doc);
             }
         });
-        if (conflictDocs.isEmpty()) {
+
+        // 3. 如果既没有 DB 冲突标记，也没有内存计算的冲突，直接返回
+        if (!hasDbConflict && conflictDocs.isEmpty()) {
             return dtos;
         }
+
+        // 4. 合并两种冲突源：DB 列优先，内存计算作为补充
         return dtos.stream()
-            .map(d -> d.documentKey() != null && conflictDocs.contains(d.documentKey())
-                ? d.withVersionConflict(true) : d)
+            .map(d -> {
+                boolean dbConflict = Boolean.TRUE.equals(d.conflict());
+                boolean computedConflict = d.documentKey() != null && conflictDocs.contains(d.documentKey());
+                if (dbConflict || computedConflict) {
+                    return d.withVersionConflict(true);
+                }
+                return d;
+            })
             .toList();
     }
 

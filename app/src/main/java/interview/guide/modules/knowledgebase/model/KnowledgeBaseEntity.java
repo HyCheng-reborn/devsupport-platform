@@ -140,6 +140,14 @@ public class KnowledgeBaseEntity {
     // 生命周期：true=启用可检索，false=已停用/被新版本取代（退出检索）
     @Column(nullable = false)
     private Boolean active = true;
+
+    // 版本冲突标记：同一 (documentKey, normalizedVersionLabel) 下出现多个 active 行时置为 true
+    @Column(nullable = false)
+    private Boolean conflict = false;
+
+    // 归一化版本标签（如 "v1.0"、"v2.0"），用于冲突分组
+    @Column(name = "normalized_version_label", length = 50)
+    private String normalizedVersionLabel;
     
     @PrePersist
     protected void onCreate() {
@@ -421,5 +429,21 @@ public class KnowledgeBaseEntity {
 
     public void setActive(Boolean active) {
         this.active = active;
+    }
+
+    public Boolean getConflict() {
+        return conflict;
+    }
+
+    public void setConflict(Boolean conflict) {
+        this.conflict = conflict;
+    }
+
+    public String getNormalizedVersionLabel() {
+        return normalizedVersionLabel;
+    }
+
+    public void setNormalizedVersionLabel(String normalizedVersionLabel) {
+        this.normalizedVersionLabel = normalizedVersionLabel;
     }
 }

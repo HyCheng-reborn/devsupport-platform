@@ -20,6 +20,7 @@ import {
   Trash2,
   Upload,
   X,
+  XCircle,
 } from 'lucide-react';
 import {knowledgeBaseApi, KnowledgeBaseItem, KnowledgeBaseStats, SortOption, VectorStatus,} from '../api/knowledgebase';
 import DeleteConfirmDialog from '../components/DeleteConfirmDialog';
@@ -152,6 +153,12 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
   // 重新向量化状态
   const [revectorizing, setRevectorizing] = useState<number | null>(null);
 
+  // 冲突筛选状态
+  const [conflictFilter, setConflictFilter] = useState<'all' | 'conflict'>('all');
+
+  // 冲突操作状态
+  const [conflictActionLoading, setConflictActionLoading] = useState<number | null>(null);
+
   // 从已加载数据中提取 distinct project / docType 值
   const distinctProjects = useMemo(() => {
     const set = new Set<string>();
@@ -196,9 +203,9 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
       items = items.filter(kb => kb.category === selectedCategory);
     }
 
-    // service + environment + project + docType + version 手动筛选
-    return applyFilters(items, serviceFilter, environmentFilter, projectFilter, docTypeFilter, versionFilter);
-  }, [allKnowledgeBases, searchKeyword, selectedCategory, serviceFilter, environmentFilter, projectFilter, docTypeFilter, versionFilter]);
+    // service + environment + project + docType + version + conflict 手动筛选
+    return applyFilters(items, serviceFilter, environmentFilter, projectFilter, docTypeFilter, versionFilter, conflictFilter);
+  }, [allKnowledgeBases, searchKeyword, selectedCategory, serviceFilter, environmentFilter, projectFilter, docTypeFilter, versionFilter, conflictFilter]);
 
   // 排序（在筛选之后）
   const knowledgeBases = useMemo(() => {
@@ -300,6 +307,34 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
       await loadData();
     } catch (error) {
       console.error('停用失败:', error);
+    }
+  };
+
+  // 采用冲突版本
+  const handleAdoptConflict = async (id: number) => {
+    if (!window.confirm('确定要采用此版本吗？其他冲突版本将被放弃。')) return;
+    try {
+      setConflictActionLoading(id);
+      await knowledgeBaseApi.adoptConflictVersion(id);
+      await loadData();
+    } catch (error) {
+      console.error('采用失败:', error);
+    } finally {
+      setConflictActionLoading(null);
+    }
+  };
+
+  // 放弃冲突版本
+  const handleAbandonConflict = async (id: number) => {
+    if (!window.confirm('确定要放弃此版本吗？')) return;
+    try {
+      setConflictActionLoading(id);
+      await knowledgeBaseApi.abandonConflictVersion(id);
+      await loadData();
+    } catch (error) {
+      console.error('放弃失败:', error);
+    } finally {
+      setConflictActionLoading(null);
     }
   };
 
@@ -643,6 +678,17 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
             </select>
             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
           </div>
+
+          {/* 冲突筛选 */}
+          <label className="flex items-center gap-2 px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+            <input
+              type="checkbox"
+              checked={conflictFilter === 'conflict'}
+              onChange={(e) => setConflictFilter(e.target.checked ? 'conflict' : 'all')}
+              className="w-4 h-4 text-red-500 border-slate-300 dark:border-slate-600 rounded focus:ring-red-500"
+            />
+            <span className="text-sm text-slate-700 dark:text-slate-300">仅显示冲突</span>
+          </label>
         </div>
       </div>
 
@@ -927,13 +973,16 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
                     <div className="flex items-center gap-2">
                       <span className="px-2 py-1 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded text-sm">v{kb.versionNo ?? 1}</span>
                       {kb.versionLabel && <span className="text-xs text-slate-400 dark:text-slate-500">{kb.versionLabel}</span>}
-                      {deriveStatus(kb.vectorStatus, kb.active) === 'retired' && (
+                      {deriveStatus(kb.vectorStatus, kb.active, kb.conflict) === 'retired' && (
                         <span className="px-2 py-0.5 bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 rounded text-xs">已停用</span>
                       )}
-                      {kb.versionConflict && (
+                      {(kb.versionConflict || kb.conflict) && (
                         <span className="px-2 py-0.5 bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 rounded text-xs">版本冲突</span>
                       )}
                     </div>
+                    {(kb.conflict || kb.versionConflict) && kb.conflictReason && (
+                      <p className="text-xs text-red-500 dark:text-red-400 mt-1">{kb.conflictReason}</p>
+                    )}
                   </td>
                     <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-300">
                     {formatFileSize(kb.fileSize)}
@@ -974,7 +1023,7 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
                         </button>
                       )}
                       {/* 停用按钮（仅启用中的文档） */}
-                      {deriveStatus(kb.vectorStatus, kb.active) !== 'retired' && (
+                      {deriveStatus(kb.vectorStatus, kb.active, kb.conflict) !== 'retired' && (
                         <button
                           onClick={() => handleRetire(kb.id)}
                           className="p-2 text-slate-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/30 rounded-lg transition-colors"
@@ -982,6 +1031,35 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
                         >
                           <Ban className="w-4 h-4" />
                         </button>
+                      )}
+                      {/* 冲突操作按钮 */}
+                      {(kb.conflict || kb.versionConflict) && (
+                        <>
+                          <button
+                            onClick={() => handleAdoptConflict(kb.id)}
+                            disabled={conflictActionLoading === kb.id}
+                            className="p-2 text-slate-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/30 rounded-lg transition-colors disabled:opacity-50"
+                            title="采用此版本"
+                          >
+                            {conflictActionLoading === kb.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <CheckCircle className="w-4 h-4" />
+                            )}
+                          </button>
+                          <button
+                            onClick={() => handleAbandonConflict(kb.id)}
+                            disabled={conflictActionLoading === kb.id}
+                            className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors disabled:opacity-50"
+                            title="放弃此版本"
+                          >
+                            {conflictActionLoading === kb.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <XCircle className="w-4 h-4" />
+                            )}
+                          </button>
+                        </>
                       )}
                       {/* 删除按钮 */}
                       <button

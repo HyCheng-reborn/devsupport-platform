@@ -20,6 +20,8 @@ export interface KnowledgeBaseItem {
   versionNo?: number;
   active?: boolean;
   versionConflict?: boolean;
+  conflict?: boolean;
+  conflictReason?: string | null;
   originalFilename: string;
   fileSize: number;
   contentType: string;
@@ -384,6 +386,20 @@ export const knowledgeBaseApi = {
    */
   async retire(id: number): Promise<void> {
     return request.put(`/api/knowledgebase/${id}/retire`);
+  },
+
+  /**
+   * 采用冲突版本
+   */
+  async adoptConflictVersion(id: number): Promise<void> {
+    return request.post(`/api/knowledgebase/${id}/adopt`);
+  },
+
+  /**
+   * 放弃冲突版本
+   */
+  async abandonConflictVersion(id: number): Promise<void> {
+    return request.post(`/api/knowledgebase/${id}/abandon`);
   },
 
   // ========== 知识库面试题库 ==========

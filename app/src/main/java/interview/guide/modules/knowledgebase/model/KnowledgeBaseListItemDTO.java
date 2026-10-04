@@ -31,7 +31,9 @@ public record KnowledgeBaseListItemDTO(
     Integer chunkCount,
     QuestionGenStatus questionGenStatus,
     String questionGenError,
-    Boolean versionConflict
+    Boolean versionConflict,
+    Boolean conflict,
+    String conflictReason
 ) {
     /**
      * 返回带版本冲突标记的副本（版本冲突由服务层按 documentKey 下启用版本的 distinct fileHash 数计算）。
@@ -41,7 +43,8 @@ public record KnowledgeBaseListItemDTO(
             id, name, category, service, environment, project, docType, source,
             versionLabel, documentKey, versionNo, active, originalFilename, fileSize,
             contentType, uploadedAt, lastAccessedAt, accessCount, questionCount,
-            vectorStatus, vectorError, chunkCount, questionGenStatus, questionGenError, conflict);
+            vectorStatus, vectorError, chunkCount, questionGenStatus, questionGenError,
+            conflict, this.conflict, this.conflictReason);
     }
 }
 

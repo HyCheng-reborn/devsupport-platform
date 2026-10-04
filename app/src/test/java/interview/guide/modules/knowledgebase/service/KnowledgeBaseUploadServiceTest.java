@@ -5,6 +5,7 @@ import interview.guide.infrastructure.file.FileHashService;
 import interview.guide.infrastructure.file.FileStorageService;
 import interview.guide.infrastructure.file.FileValidationService;
 import interview.guide.modules.knowledgebase.listener.VectorizeStreamProducer;
+import interview.guide.modules.knowledgebase.model.KbUploadMetadata;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseEntity;
 import interview.guide.modules.knowledgebase.repository.KnowledgeBaseRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -136,13 +137,13 @@ class KnowledgeBaseUploadServiceTest {
     void nullExtraMetadataUploads() {
       MockMultipartFile file = dummyFile();
       stubHappyPath("somehash");
-      when(persistenceService.saveKnowledgeBase(any(), any(), any(), any(), any(), anyInt(), any(), any(), any()))
+      when(persistenceService.saveKnowledgeBase(any(), any(), any(), any(KbUploadMetadata.class), any(), anyInt(), any(), any(), any(), any(), any(Boolean.class)))
           .thenReturn(createTestEntity());
 
       Map<String, Object> result =
           uploadService.uploadKnowledgeBase(file, "name", "cat", null, null, null, null, null, null, null);
 
-      verify(persistenceService).saveKnowledgeBase(any(), any(), any(), any(), any(), anyInt(), any(), any(), any());
+      verify(persistenceService).saveKnowledgeBase(any(), any(), any(), any(KbUploadMetadata.class), any(), anyInt(), any(), any(), any(), any(), any(Boolean.class));
       assertThat(result.get("duplicate")).isEqualTo(false);
     }
   }
@@ -166,7 +167,7 @@ class KnowledgeBaseUploadServiceTest {
           uploadService.uploadKnowledgeBase(file, "name", "cat", "S", "E", null, null, null, null, null);
 
       assertThat(result.get("duplicate")).isEqualTo(true);
-      verify(persistenceService, never()).saveKnowledgeBase(any(), any(), any(), any(), any(), anyInt(), any(), any(), any());
+      verify(persistenceService, never()).saveKnowledgeBase(any(), any(), any(), any(KbUploadMetadata.class), any(), anyInt(), any(), any(), any(), any(), any(Boolean.class));
       verifyNoInteractions(vectorizeStreamProducer);
       verifyNoInteractions(versionService);
     }
@@ -182,13 +183,13 @@ class KnowledgeBaseUploadServiceTest {
       prev.setActive(true);
       when(knowledgeBaseRepository.findByDocumentKeyOrderByVersionNoDesc(anyString()))
           .thenReturn(List.of(prev));
-      when(persistenceService.saveKnowledgeBase(any(), any(), any(), any(), any(), eq(4), any(), any(), any()))
+      when(persistenceService.saveKnowledgeBase(any(), any(), any(), any(KbUploadMetadata.class), any(), eq(4), any(), any(), any(), any(), any(Boolean.class)))
           .thenReturn(createTestEntity());
 
       uploadService.uploadKnowledgeBase(file, "name", "cat", "S", "E", "P", "D", "wiki", "v1", null);
 
       // versionNo = 现有最大值 3 + 1 = 4
-      verify(persistenceService).saveKnowledgeBase(any(), any(), any(), any(), any(), eq(4), any(), any(), any());
+      verify(persistenceService).saveKnowledgeBase(any(), any(), any(), any(KbUploadMetadata.class), any(), eq(4), any(), any(), any(), any(), any(Boolean.class));
       // 保存新版本后停用同 documentKey 旧版本（id=1 为新行）
       verify(versionService).retireSupersededVersions(anyString(), eq(1L));
       verify(vectorizeStreamProducer).sendVectorizeTask(eq(1L), any());
@@ -201,12 +202,12 @@ class KnowledgeBaseUploadServiceTest {
       stubHappyPath("explicit-hash");
       when(knowledgeBaseRepository.findByDocumentKeyOrderByVersionNoDesc("given-key"))
           .thenReturn(List.of());
-      when(persistenceService.saveKnowledgeBase(any(), any(), any(), any(), eq("given-key"), eq(1), any(), any(), any()))
+      when(persistenceService.saveKnowledgeBase(any(), any(), any(), any(KbUploadMetadata.class), eq("given-key"), eq(1), any(), any(), any(), any(), any(Boolean.class)))
           .thenReturn(createTestEntity());
 
       uploadService.uploadKnowledgeBase(file, "name", "cat", "S", "E", "P", "D", null, null, "given-key");
 
-      verify(persistenceService).saveKnowledgeBase(any(), any(), any(), any(), eq("given-key"), eq(1), any(), any(), any());
+      verify(persistenceService).saveKnowledgeBase(any(), any(), any(), any(KbUploadMetadata.class), eq("given-key"), eq(1), any(), any(), any(), any(), any(Boolean.class));
       verify(versionService).retireSupersededVersions("given-key", 1L);
     }
   }

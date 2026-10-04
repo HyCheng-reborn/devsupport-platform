@@ -4,6 +4,7 @@ import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
 import interview.guide.modules.knowledgebase.model.QueryRequest;
 import interview.guide.modules.knowledgebase.model.RetrievalResult;
+import interview.guide.modules.knowledgebase.service.KnowledgeBaseConflictService;
 import interview.guide.modules.knowledgebase.service.KnowledgeBaseDeleteService;
 import interview.guide.modules.knowledgebase.service.KnowledgeBaseListService;
 import interview.guide.modules.knowledgebase.service.KnowledgeBaseQueryService;
@@ -43,6 +44,8 @@ class KnowledgeBaseControllerStreamTest {
   private KnowledgeBaseListService listService;
   @Mock
   private KnowledgeBaseDeleteService deleteService;
+  @Mock
+  private KnowledgeBaseConflictService conflictService;
 
   private KnowledgeBaseController controller;
 
@@ -52,7 +55,7 @@ class KnowledgeBaseControllerStreamTest {
   @BeforeEach
   void setUp() {
     controller = new KnowledgeBaseController(
-        uploadService, queryService, listService, deleteService);
+        uploadService, queryService, listService, deleteService, conflictService);
   }
 
   private QueryRequest request() {

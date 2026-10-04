@@ -14,6 +14,8 @@ export interface FilterableKB {
   project?: string | null;
   docType?: string | null;
   versionLabel?: string | null;
+  conflict?: boolean;
+  versionConflict?: boolean;
 }
 
 /**
@@ -28,7 +30,8 @@ export function applyFilters<T extends FilterableKB>(
   environmentFilter: FilterState,
   projectFilter?: FilterState,
   docTypeFilter?: FilterState,
-  versionFilter?: FilterState
+  versionFilter?: FilterState,
+  conflictFilter?: 'all' | 'conflict'
 ): T[] {
   let result = items;
 
@@ -66,6 +69,10 @@ export function applyFilters<T extends FilterableKB>(
     } else if (versionFilter.type === 'value') {
       result = result.filter(kb => kb.versionLabel?.toLowerCase() === versionFilter.value.toLowerCase());
     }
+  }
+
+  if (conflictFilter === 'conflict') {
+    result = result.filter(kb => kb.conflict === true || kb.versionConflict === true);
   }
 
   return result;

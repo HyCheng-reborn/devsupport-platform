@@ -62,35 +62,62 @@ public class KnowledgeBasePersistenceService {
     @Transactional(rollbackFor = Exception.class)
     public KnowledgeBaseEntity saveKnowledgeBase(MultipartFile file, String name, String category,
                                                   KbUploadMetadata meta, String documentKey, int versionNo,
-                                                  String storageKey, String storageUrl, String fileHash) {
-        try {
-            KnowledgeBaseEntity kb = new KnowledgeBaseEntity();
-            kb.setFileHash(fileHash);
-            kb.setName(name != null && !name.trim().isEmpty() ? name : extractNameFromFilename(file.getOriginalFilename()));
-            kb.setCategory(trimToNull(category));
-            kb.setService(meta != null ? trimToNull(meta.service()) : null);
-            kb.setEnvironment(meta != null ? trimToNull(meta.environment()) : null);
-            kb.setProject(meta != null ? trimToNull(meta.project()) : null);
-            kb.setDocType(meta != null ? trimToNull(meta.docType()) : null);
-            kb.setSource(meta != null ? trimToNull(meta.source()) : null);
-            kb.setVersionLabel(meta != null ? trimToNull(meta.versionLabel()) : null);
-            kb.setDocumentKey(trimToNull(documentKey));
-            kb.setVersionNo(versionNo);
-            kb.setActive(true);
-            kb.setOriginalFilename(file.getOriginalFilename());
-            kb.setFileSize(file.getSize());
-            kb.setContentType(file.getContentType());
-            kb.setStorageKey(storageKey);
-            kb.setStorageUrl(storageUrl);
+                                                  String storageKey, String storageUrl, String fileHash,
+                                                  String normalizedVersionLabel) {
+        return saveKnowledgeBase(file, name, category, meta, documentKey, versionNo, storageKey, storageUrl, fileHash, normalizedVersionLabel, false);
+    }
 
-            KnowledgeBaseEntity saved = knowledgeBaseRepository.save(kb);
-            log.info("知识库已保存: id={}, name={}, documentKey={}, versionNo={}, hash={}",
-                saved.getId(), saved.getName(), saved.getDocumentKey(), versionNo, fileHash);
-            return saved;
-        } catch (Exception e) {
-            log.error("保存知识库失败: {}", e.getMessage(), e);
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "保存知识库失败");
+    /**
+     * 保存新知识库元数据到数据库（支持冲突标记）
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public KnowledgeBaseEntity saveKnowledgeBase(MultipartFile file, String name, String category,
+                                                  KbUploadMetadata meta, String documentKey, int versionNo,
+                                                  String storageKey, String storageUrl, String fileHash,
+                                                  String normalizedVersionLabel, boolean isConflict) {
+        KnowledgeBaseEntity kb = new KnowledgeBaseEntity();
+        kb.setFileHash(fileHash);
+        kb.setName(name != null && !name.trim().isEmpty() ? name : extractNameFromFilename(file.getOriginalFilename()));
+        kb.setCategory(trimToNull(category));
+        kb.setService(meta != null ? trimToNull(meta.service()) : null);
+        kb.setEnvironment(meta != null ? trimToNull(meta.environment()) : null);
+        kb.setProject(meta != null ? trimToNull(meta.project()) : null);
+        kb.setDocType(meta != null ? trimToNull(meta.docType()) : null);
+        kb.setSource(meta != null ? trimToNull(meta.source()) : null);
+        kb.setVersionLabel(meta != null ? trimToNull(meta.versionLabel()) : null);
+        kb.setNormalizedVersionLabel(normalizedVersionLabel);
+        kb.setDocumentKey(trimToNull(documentKey));
+        kb.setVersionNo(versionNo);
+        // 如果是冲突版本，设置 active=false 和 conflict=true，避免触发唯一索引
+        kb.setActive(!isConflict);
+        kb.setConflict(isConflict);
+        if (isConflict) {
+            kb.setVectorStatus(VectorStatus.CONFLICT);
         }
+        kb.setOriginalFilename(file.getOriginalFilename());
+        kb.setFileSize(file.getSize());
+        kb.setContentType(file.getContentType());
+        kb.setStorageKey(storageKey);
+        kb.setStorageUrl(storageUrl);
+
+        KnowledgeBaseEntity saved = knowledgeBaseRepository.save(kb);
+        log.info("知识库已保存: id={}, name={}, documentKey={}, versionNo={}, hash={}, conflict={}",
+            saved.getId(), saved.getName(), saved.getDocumentKey(), versionNo, fileHash, isConflict);
+        return saved;
+    }
+
+    /**
+     * 标记知识库为版本冲突状态（active=false, conflict=true, vectorStatus=CONFLICT）。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void markAsConflict(Long kbId) {
+        KnowledgeBaseEntity kb = knowledgeBaseRepository.findById(kbId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "知识库不存在"));
+        kb.setActive(false);
+        kb.setConflict(true);
+        kb.setVectorStatus(VectorStatus.CONFLICT);
+        knowledgeBaseRepository.save(kb);
+        log.info("知识库已标记为冲突: kbId={}, documentKey={}", kbId, kb.getDocumentKey());
     }
 
     /**

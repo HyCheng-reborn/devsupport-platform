@@ -5,6 +5,7 @@ import interview.guide.infrastructure.file.FileStorageService;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseEntity;
 import interview.guide.modules.knowledgebase.model.VectorStatus;
 import interview.guide.modules.knowledgebase.repository.KnowledgeBaseRepository;
+import interview.guide.modules.knowledgebase.service.KnowledgeBaseConflictService;
 import interview.guide.modules.knowledgebase.service.KnowledgeBaseListService;
 import interview.guide.modules.knowledgebase.service.KnowledgeBaseUploadService;
 import interview.guide.modules.knowledgebase.service.KnowledgeBaseVectorService;
@@ -23,6 +24,8 @@ import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.annotation.DirtiesContext.ClassMode;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -52,6 +55,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
 @Import(KnowledgeBaseUploadPipelineIntegrationTest.DeterministicEmbeddingConfig.class)
+@DirtiesContext(classMode = ClassMode.AFTER_EACH_TEST_METHOD)
 class KnowledgeBaseUploadPipelineIntegrationTest {
 
     @Container
@@ -142,12 +146,18 @@ class KnowledgeBaseUploadPipelineIntegrationTest {
     @Autowired KnowledgeBaseRepository knowledgeBaseRepository;
     @Autowired KnowledgeBaseVectorService vectorService;
     @Autowired KnowledgeBaseListService listService;
+    @Autowired KnowledgeBaseConflictService conflictService;
     @Autowired FileStorageService storageService;
     @Autowired JdbcTemplate jdbcTemplate;
 
     @SuppressWarnings("unchecked")
     private Long extractId(Map<String, Object> result) {
         return ((Number) ((Map<String, Object>) result.get("knowledgeBase")).get("id")).longValue();
+    }
+
+    @SuppressWarnings("unchecked")
+    private boolean isConflict(Map<String, Object> result) {
+        return Boolean.TRUE.equals(result.get("conflict"));
     }
 
     private KnowledgeBaseEntity awaitStatus(Long id, VectorStatus expected, long timeoutMs) throws InterruptedException {
@@ -244,5 +254,166 @@ class KnowledgeBaseUploadPipelineIntegrationTest {
         List<Document> hits = vectorService.similaritySearch("端口配置", List.of(id1, id2), 5, 0.0);
         assertThat(hits).allSatisfy(doc ->
             assertThat(String.valueOf(doc.getMetadata().get("kb_id"))).isEqualTo(String.valueOf(id2)));
+    }
+
+    @Test
+    @DisplayName("同 documentKey + 同 normalizedVersionLabel + 不同 fileHash → 冲突标记")
+    void sameKeySameLabelDifferentHash_producesConflict() throws Exception {
+        // 1. 上传 v1，versionLabel="v1.0"
+        MockMultipartFile v1 = mdFile("conflict-doc-v1.md", "支付网关 生产环境 端口配置 8080 超时排查");
+        Long id1 = extractId(uploadService.uploadKnowledgeBase(
+            v1, "冲突测试文档", null, "conflict-svc", "prod", "billing", "runbook", "wiki", "v1.0", null));
+        KnowledgeBaseEntity kb1 = awaitStatus(id1, VectorStatus.COMPLETED, 30_000);
+        assertThat(kb1.getActive()).isTrue();
+        assertThat(kb1.getConflict()).isFalse();
+
+        // 2. 上传 v2，相同 versionLabel="v1.0" 但不同内容 → 冲突
+        MockMultipartFile v2 = mdFile("conflict-doc-v2.md", "支付网关 生产环境 端口配置 9090 完全不同的内容");
+        Map<String, Object> result2 = uploadService.uploadKnowledgeBase(
+            v2, "冲突测试文档", null, "conflict-svc", "prod", "billing", "runbook", "wiki", "v1.0", null);
+        Long id2 = extractId(result2);
+
+        // 3. 断言 v2 被标记为冲突
+        assertThat(isConflict(result2)).as("上传结果应标记 conflict=true").isTrue();
+        KnowledgeBaseEntity kb2 = knowledgeBaseRepository.findById(id2).orElseThrow();
+        assertThat(kb2.getActive()).as("冲突版本应 active=false").isFalse();
+        assertThat(kb2.getConflict()).as("冲突版本应 conflict=true").isTrue();
+        assertThat(kb2.getVectorStatus()).as("冲突版本应 vectorStatus=CONFLICT").isEqualTo(VectorStatus.CONFLICT);
+
+        // 4. 断言 v1 仍然正常
+        KnowledgeBaseEntity refreshedKb1 = knowledgeBaseRepository.findById(id1).orElseThrow();
+        assertThat(refreshedKb1.getActive()).isTrue();
+        assertThat(refreshedKb1.getConflict()).isFalse();
+
+        // 5. resolve-context 只包含 v1（不包含冲突的 v2）
+        var scope = listService.resolveContext("conflict-svc", "prod", "billing");
+        assertThat(scope).extracting(item -> item.id()).contains(id1).doesNotContain(id2);
+
+        // 6. v2 没有向量行
+        assertThat(vectorRowCount(id2)).as("冲突版本不应有向量").isZero();
+    }
+
+    @Test
+    @DisplayName("采纳冲突版本：激活新版本并停用旧版本")
+    void adoptConflictVersion_activatesNewAndRetiresOld() throws Exception {
+        // 1. 设置冲突场景
+        MockMultipartFile v1 = mdFile("adopt-doc-v1.md", "采纳测试 支付网关 生产环境 端口配置 8080 超时排查");
+        Long id1 = extractId(uploadService.uploadKnowledgeBase(
+            v1, "采纳测试文档", null, "adopt-svc", "prod", "billing", "runbook", "wiki", "v1.0", null));
+        awaitStatus(id1, VectorStatus.COMPLETED, 30_000);
+
+        MockMultipartFile v2 = mdFile("adopt-doc-v2.md", "支付网关 生产环境 端口配置 9090 不同内容");
+        Long id2 = extractId(uploadService.uploadKnowledgeBase(
+            v2, "采纳测试文档", null, "adopt-svc", "prod", "billing", "runbook", "wiki", "v1.0", null));
+
+        KnowledgeBaseEntity kb2Before = knowledgeBaseRepository.findById(id2).orElseThrow();
+        assertThat(kb2Before.getConflict()).isTrue();
+
+        // 2. 采纳冲突版本
+        conflictService.adoptVersion(id2);
+
+        // 3. 断言 v1 被停用
+        KnowledgeBaseEntity kb1After = knowledgeBaseRepository.findById(id1).orElseThrow();
+        assertThat(kb1After.getActive()).as("旧版本应被停用").isFalse();
+
+        // 4. 断言 v2 被激活且冲突标记清除
+        KnowledgeBaseEntity kb2After = knowledgeBaseRepository.findById(id2).orElseThrow();
+        assertThat(kb2After.getActive()).as("冲突版本应被激活").isTrue();
+        assertThat(kb2After.getConflict()).as("冲突标记应被清除").isFalse();
+
+        // 5. 等待向量化完成
+        KnowledgeBaseEntity kb2Done = awaitStatus(id2, VectorStatus.COMPLETED, 30_000);
+        assertThat(kb2Done.getVectorStatus()).isEqualTo(VectorStatus.COMPLETED);
+        assertThat(vectorRowCount(id2)).as("采纳后应向量化").isGreaterThan(0);
+
+        // 6. resolve-context 包含 v2 不包含 v1
+        var scope = listService.resolveContext("adopt-svc", "prod", "billing");
+        assertThat(scope).extracting(item -> item.id()).contains(id2).doesNotContain(id1);
+    }
+
+    @Test
+    @DisplayName("放弃冲突版本：保持原 active 版本不受影响")
+    void abandonConflictVersion_keepsActiveUntouched() throws Exception {
+        // 1. 设置冲突场景
+        MockMultipartFile v1 = mdFile("abandon-doc-v1.md", "放弃测试 支付网关 生产环境 端口配置 8080 连接池");
+        Long id1 = extractId(uploadService.uploadKnowledgeBase(
+            v1, "放弃测试文档", null, "abandon-svc", "prod", "billing", "runbook", "wiki", "v1.0", null));
+        awaitStatus(id1, VectorStatus.COMPLETED, 30_000);
+
+        MockMultipartFile v2 = mdFile("abandon-doc-v2.md", "放弃测试 支付网关 生产环境 端口配置 9090 新版本内容");
+        Long id2 = extractId(uploadService.uploadKnowledgeBase(
+            v2, "放弃测试文档", null, "abandon-svc", "prod", "billing", "runbook", "wiki", "v1.0", null));
+
+        KnowledgeBaseEntity kb2Before = knowledgeBaseRepository.findById(id2).orElseThrow();
+        assertThat(kb2Before.getConflict()).isTrue();
+
+        // 2. 放弃冲突版本
+        conflictService.abandonVersion(id2);
+
+        // 3. 断言 v2 冲突标记清除，active 仍为 false
+        KnowledgeBaseEntity kb2After = knowledgeBaseRepository.findById(id2).orElseThrow();
+        assertThat(kb2After.getActive()).as("放弃的版本应保持 active=false").isFalse();
+        assertThat(kb2After.getConflict()).as("冲突标记应被清除").isFalse();
+
+        // 4. 断言 v1 不受影响
+        KnowledgeBaseEntity kb1After = knowledgeBaseRepository.findById(id1).orElseThrow();
+        assertThat(kb1After.getActive()).as("原 active 版本应不受影响").isTrue();
+        assertThat(kb1After.getConflict()).isFalse();
+
+        // 5. resolve-context 仍包含 v1
+        var scope = listService.resolveContext("abandon-svc", "prod", "billing");
+        assertThat(scope).extracting(item -> item.id()).contains(id1).doesNotContain(id2);
+    }
+
+    @Test
+    @DisplayName("相同内容重复上传 → 幂等去重，不新增版本")
+    void sameHash_idempotent_noNewVersion() throws Exception {
+        MockMultipartFile file = mdFile("idempotent-doc.md", "幂等性测试 独特内容 abcdef123456 端口配置 8080");
+        Long id1 = extractId(uploadService.uploadKnowledgeBase(
+            file, "幂等测试文档", null, "idempotent-svc", "prod", "billing", "runbook", "wiki", "v1.0", null));
+        awaitStatus(id1, VectorStatus.COMPLETED, 30_000);
+
+        // 重复上传相同内容
+        Map<String, Object> dup = uploadService.uploadKnowledgeBase(
+            mdFile("idempotent-doc.md", "幂等性测试 独特内容 abcdef123456 端口配置 8080"),
+            "幂等测试文档", null, "idempotent-svc", "prod", "billing", "runbook", "wiki", "v1.0", null);
+        assertThat(dup.get("duplicate")).isEqualTo(true);
+
+        // 确认没有新增行
+        long count = knowledgeBaseRepository.findAllByOrderByUploadedAtDesc().stream()
+            .filter(kb -> "idempotent-svc".equals(kb.getService()))
+            .count();
+        assertThat(count).as("重复上传不应新增行").isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("不同 versionLabel + 不同内容 → 正常版本升级，非冲突")
+    void differentLabelDifferentHash_normalUpgrade() throws Exception {
+        // 1. 上传 v1.0
+        MockMultipartFile v1 = mdFile("upgrade-doc-v1.md", "升级测试 支付网关 生产环境 端口配置 8080 线程池");
+        Long id1 = extractId(uploadService.uploadKnowledgeBase(
+            v1, "升级测试文档", null, "upgrade-svc", "prod", "billing", "runbook", "wiki", "v1.0", null));
+        awaitStatus(id1, VectorStatus.COMPLETED, 30_000);
+
+        // 2. 上传 v2.0（不同 label，不同内容）
+        MockMultipartFile v2 = mdFile("upgrade-doc-v2.md", "支付网关 生产环境 端口配置 9090 新内容");
+        Map<String, Object> result2 = uploadService.uploadKnowledgeBase(
+            v2, "升级测试文档", null, "upgrade-svc", "prod", "billing", "runbook", "wiki", "v2.0", null);
+        Long id2 = extractId(result2);
+
+        // 3. 断言：正常升级，非冲突
+        assertThat(isConflict(result2)).as("正常升级不应标记冲突").isFalse();
+        KnowledgeBaseEntity kb2 = awaitStatus(id2, VectorStatus.COMPLETED, 30_000);
+        assertThat(kb2.getActive()).as("新版本应 active=true").isTrue();
+        assertThat(kb2.getConflict()).as("新版本应 conflict=false").isFalse();
+
+        // 4. 旧版本被正常停用
+        KnowledgeBaseEntity kb1 = knowledgeBaseRepository.findById(id1).orElseThrow();
+        assertThat(kb1.getActive()).as("旧版本应被正常停用").isFalse();
+        assertThat(kb1.getConflict()).isFalse();
+
+        // 5. resolve-context 只包含 v2
+        var scope = listService.resolveContext("upgrade-svc", "prod", "billing");
+        assertThat(scope).extracting(item -> item.id()).contains(id2).doesNotContain(id1);
     }
 }

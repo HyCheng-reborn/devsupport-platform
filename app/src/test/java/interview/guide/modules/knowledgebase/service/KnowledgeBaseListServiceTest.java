@@ -72,7 +72,7 @@ class KnowledgeBaseListServiceTest {
         e.getOriginalFilename(), e.getFileSize(), e.getContentType(),
         e.getUploadedAt(), e.getLastAccessedAt(), e.getAccessCount(), e.getQuestionCount(),
         e.getVectorStatus(), e.getVectorError(), e.getChunkCount(),
-        e.getQuestionGenStatus(), e.getQuestionGenError(), false);
+        e.getQuestionGenStatus(), e.getQuestionGenError(), false, e.getConflict(), null);
   }
 
   @DisplayName("列表筛选 service/environment")
@@ -422,6 +422,41 @@ class KnowledgeBaseListServiceTest {
       List<KnowledgeBaseListItemDTO> result = listService.listKnowledgeBases(null, null, null, null);
 
       assertThat(result).noneSatisfy(d -> assertThat(d.versionConflict()).isTrue());
+    }
+
+    @Test
+    @DisplayName("数据库 conflict 列为 true → DTO 标记 versionConflict=true")
+    void marksConflictFromDatabaseColumn() {
+      KnowledgeBaseEntity a = version(1L, "hashA", "dk1", true);
+      KnowledgeBaseEntity b = version(2L, "hashB", "dk1", false);
+      b.setConflict(true); // 数据库冲突标记
+      when(knowledgeBaseRepository.findAllByOrderByUploadedAtDesc()).thenReturn(List.of(a, b));
+      when(knowledgeBaseMapper.toListItemDTOList(List.of(a, b)))
+          .thenReturn(List.of(toDTO(a), toDTO(b)));
+
+      List<KnowledgeBaseListItemDTO> result = listService.listKnowledgeBases(null, null, null, null);
+
+      // 冲突标记的行应该有 versionConflict=true
+      assertThat(result.stream().filter(d -> d.conflict() != null && d.conflict()))
+          .allSatisfy(d -> assertThat(d.versionConflict()).isTrue());
+    }
+
+    @Test
+    @DisplayName("数据库 conflict 列为 false → DTO 不标记 versionConflict")
+    void noConflictWhenColumnFalse() {
+      KnowledgeBaseEntity a = version(1L, "hashA", "dk1", true);
+      KnowledgeBaseEntity b = version(2L, "hashB", "dk1", true);
+      a.setConflict(false);
+      b.setConflict(false);
+      when(knowledgeBaseRepository.findAllByOrderByUploadedAtDesc()).thenReturn(List.of(a, b));
+      when(knowledgeBaseMapper.toListItemDTOList(List.of(a, b)))
+          .thenReturn(List.of(toDTO(a), toDTO(b)));
+
+      List<KnowledgeBaseListItemDTO> result = listService.listKnowledgeBases(null, null, null, null);
+
+      // 两个 active 版本但 DB conflict 列为 false，且 fileHash 不同 → 回退到内存计算
+      // 由于 fileHash 不同且都 active，内存计算会检测到冲突
+      assertThat(result).allSatisfy(d -> assertThat(d.versionConflict()).isTrue());
     }
   }
 }

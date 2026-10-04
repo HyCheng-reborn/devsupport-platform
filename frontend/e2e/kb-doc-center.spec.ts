@@ -33,7 +33,7 @@ async function mockDocCenterApis(page: Page) {
       kbItem({ id: 10, name: '启用文档A', project: 'billing', versionNo: 2, versionLabel: 'v2' }),
       kbItem({ id: 11, name: '失败文档B', vectorStatus: 'FAILED', vectorError: '向量化失败: 解析超时' }),
       kbItem({ id: 12, name: '停用文档C', active: false, documentKey: 'dkC', versionNo: 1 }),
-      kbItem({ id: 13, name: '冲突文档D', active: true, documentKey: 'dkD', versionNo: 2, versionConflict: true }),
+      kbItem({ id: 13, name: '冲突文档D', active: true, documentKey: 'dkD', versionNo: 2, versionConflict: true, conflictReason: 'SAME_VERSION_DIFFERENT_CONTENT' }),
     ])));
 }
 
@@ -177,5 +177,87 @@ test.describe('阶段 2 文档中心筛选控件', () => {
     await expect(page.locator('tr', { hasText: '失败文档B' })).toBeVisible();
     await expect(page.locator('tr', { hasText: '停用文档C' })).toBeVisible();
     await expect(page.locator('tr', { hasText: '冲突文档D' })).toBeVisible();
+  });
+});
+
+// ========== 冲突筛选与操作按钮 ==========
+
+test.describe('阶段 2 文档中心冲突操作', () => {
+  test('冲突筛选复选框：勾选后仅显示冲突文档', async ({ page }) => {
+    await mockDocCenterApis(page);
+    await page.goto('/docs');
+
+    // 初始状态：4 条文档均可见
+    await expect(page.locator('tr', { hasText: '启用文档A' })).toBeVisible();
+    await expect(page.locator('tr', { hasText: '失败文档B' })).toBeVisible();
+    await expect(page.locator('tr', { hasText: '停用文档C' })).toBeVisible();
+    await expect(page.locator('tr', { hasText: '冲突文档D' })).toBeVisible();
+
+    // 勾选“仅显示冲突”
+    const conflictCheckbox = page.locator('input[type="checkbox"]');
+    await conflictCheckbox.check();
+
+    // 只有冲突文档D可见
+    await expect(page.locator('tr', { hasText: '启用文档A' })).toHaveCount(0);
+    await expect(page.locator('tr', { hasText: '失败文档B' })).toHaveCount(0);
+    await expect(page.locator('tr', { hasText: '停用文档C' })).toHaveCount(0);
+    await expect(page.locator('tr', { hasText: '冲突文档D' })).toBeVisible();
+
+    // 取消勾选 → 恢复全部
+    await conflictCheckbox.uncheck();
+    await expect(page.locator('tr', { hasText: '启用文档A' })).toBeVisible();
+    await expect(page.locator('tr', { hasText: '冲突文档D' })).toBeVisible();
+  });
+
+  test('冲突文档行显示“采用此版本”和“放弃”按钮，点击触发确认对话框并调用 API', async ({ page }) => {
+    await mockDocCenterApis(page);
+
+    const adoptReq = page.waitForRequest(
+      (r) => r.method() === 'POST' && /\/api\/knowledgebase\/\d+\/adopt/.test(r.url()));
+    await page.route('**/api/knowledgebase/*/adopt', (r) => r.fulfill(ok(null)));
+    await page.route('**/api/knowledgebase/*/abandon', (r) => r.fulfill(ok(null)));
+
+    await page.goto('/docs');
+
+    const conflictRow = page.locator('tr', { hasText: '冲突文档D' });
+
+    // “采用此版本”按钮可见
+    const adoptBtn = conflictRow.getByTitle('采用此版本');
+    await expect(adoptBtn).toBeVisible();
+
+    // “放弃此版本”按钮可见
+    const abandonBtn = conflictRow.getByTitle('放弃此版本');
+    await expect(abandonBtn).toBeVisible();
+
+    // 点击“采用此版本” → 弹出确认对话框 → 接受 → POST adopt
+    page.once('dialog', (dialog) => {
+      expect(dialog.message()).toContain('采用此版本');
+      dialog.accept();
+    });
+    await adoptBtn.click();
+    const adopt = await adoptReq;
+    expect(adopt.url()).toContain('/api/knowledgebase/13/adopt');
+  });
+
+  test('点击“放弃”按钮触发确认对话框并调用 abandon API', async ({ page }) => {
+    await mockDocCenterApis(page);
+
+    const abandonReq = page.waitForRequest(
+      (r) => r.method() === 'POST' && /\/api\/knowledgebase\/\d+\/abandon/.test(r.url()));
+    await page.route('**/api/knowledgebase/*/abandon', (r) => r.fulfill(ok(null)));
+
+    await page.goto('/docs');
+
+    const conflictRow = page.locator('tr', { hasText: '冲突文档D' });
+    const abandonBtn = conflictRow.getByTitle('放弃此版本');
+
+    // 点击“放弃此版本” → 弹出确认对话框 → 接受 → POST abandon
+    page.once('dialog', (dialog) => {
+      expect(dialog.message()).toContain('放弃此版本');
+      dialog.accept();
+    });
+    await abandonBtn.click();
+    const abandon = await abandonReq;
+    expect(abandon.url()).toContain('/api/knowledgebase/13/abandon');
   });
 });

@@ -1,3 +1,12 @@
+**2026-10-05 -- DevSupport 版本冲突治理：DB 迁移 + 上传冲突检测 + adopt/abandon API + 前端冲突展示和操作**
+- 数据模型：`V20261006` 迁移新增 `conflict` 列 + `normalized_version_label` + 部分唯一索引 `uq_kb_active_version`（同 documentKey+normalizedVersionLabel 只允许一个 active 行）
+- 上传流程：同 documentKey + 同规范化 versionLabel + 不同 fileHash → 标记 `VERSION_CONFLICT`，不投递向量化
+- 冲突解决：`POST /{id}/adopt` 采用冲突版本（停旧+激活+重新向量化）；`POST /{id}/abandon` 放弃冲突版本
+- 前端：冲突筛选复选框 + 采用/放弃按钮（确认弹窗+loading+反馈）
+- 测试：后端 **614 tests**（601 passed, 10 Voice Redis 遗留失败, 3 skipped），DevSupport 全绿；前端单测 **43/43**，E2E **10/10**
+- 阶段 2 验收通过：冲突可触发、可展示、可处理、不污染检索。源码实现+自动化验证已完成，真实付费模型端到端未验证
+- 主要文件：`V20261006__add_conflict_columns.sql`、`KnowledgeBaseEntity.java`、`KnowledgeBaseRepository.java`、`KnowledgeBaseUploadService.java`、`KnowledgeBaseVersionService.java`、`KnowledgeBaseController.java`、`KnowledgeBaseConflictService.java`、`KnowledgeBaseManagePage.tsx`、`knowledgebase.ts`
+
 **2026-10-04 -- DevSupport 版本筛选链路补全：KnowledgeBaseManagePage 新增版本下拉、kbFilter 新增 versionFilter 维度、测试补齐**
 - 版本筛选链路补全：`KnowledgeBaseManagePage` 新增版本下拉筛选控件；`kbFilter.ts` 新增 `versionFilter` 维度，前端采用 client-side 过滤（在已加载数据上按版本号过滤；后端 API 亦支持 version 参数但前端当前走客户端路径）
 - 测试补齐：`kbFilter.test.ts` 26/26（新增 versionFilter 维度用例）；E2E `kb-doc-center.spec.ts` 4/4（新增版本筛选下拉可见且可筛选列表用例）

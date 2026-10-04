@@ -15,6 +15,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import org.springframework.dao.DataIntegrityViolationException;
+
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -102,20 +104,58 @@ public class KnowledgeBaseUploadService {
             : deriveDocumentKey(meta, name, fileName);
         int versionNo = nextVersionNo(documentKey);
 
-        // 7. 保存知识库元数据到数据库（状态 PENDING，active=true）
-        KnowledgeBaseEntity savedKb = persistenceService.saveKnowledgeBase(
-            file, name, category, meta, documentKey, versionNo, fileKey, fileUrl, fileHash);
+        // 6.5 计算归一化版本标签并检测冲突
+        String normalizedVersionLabel = (versionLabel != null && !versionLabel.isBlank())
+            ? versionLabel.trim().toLowerCase() : null;
 
-        // 8. 停用并清理同 documentKey 的旧版本（旧版本退出检索）
+        boolean hasVersionConflict = false;
+        if (normalizedVersionLabel != null && documentKey != null) {
+            List<KnowledgeBaseEntity> existingActive = knowledgeBaseRepository
+                .findByDocumentKeyAndNormalizedVersionLabelAndActiveTrue(documentKey, normalizedVersionLabel);
+            hasVersionConflict = existingActive.stream()
+                .anyMatch(e -> !e.getFileHash().equals(fileHash));
+        }
+
+        // 7. 保存知识库元数据到数据库
+        KnowledgeBaseEntity savedKb;
+        try {
+            savedKb = persistenceService.saveKnowledgeBase(
+                file, name, category, meta, documentKey, versionNo, fileKey, fileUrl, fileHash,
+                normalizedVersionLabel, hasVersionConflict);
+        } catch (DataIntegrityViolationException dive) {
+            // 并发安全网：partial unique index 被违反，说明另一个事务已插入同 (documentKey, normalizedVersionLabel)
+            log.warn("并发冲突检测到唯一索引违反: documentKey={}, normalizedVersionLabel={}", documentKey, normalizedVersionLabel, dive);
+            // 重新加载已存在的实体并标记为冲突
+            List<KnowledgeBaseEntity> conflicters = knowledgeBaseRepository
+                .findByDocumentKeyAndNormalizedVersionLabelAndActiveTrue(documentKey, normalizedVersionLabel);
+            if (!conflicters.isEmpty()) {
+                KnowledgeBaseEntity conflictEntity = conflicters.stream()
+                    .filter(e -> !e.getFileHash().equals(fileHash))
+                    .findFirst()
+                    .orElse(conflicters.get(0));
+                persistenceService.markAsConflict(conflictEntity.getId());
+                return buildConflictResult(conflictEntity, content.length());
+            }
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "版本冲突检测失败");
+        }
+
+        // 8. 如果检测到版本冲突，返回冲突结果（已在保存时标记）
+        if (hasVersionConflict) {
+            log.info("检测到版本冲突，已标记: kbId={}, documentKey={}, normalizedVersionLabel={}",
+                savedKb.getId(), documentKey, normalizedVersionLabel);
+            return buildConflictResult(savedKb, content.length());
+        }
+
+        // 9. 停用并清理同 documentKey 的旧版本（旧版本退出检索）
         versionService.retireSupersededVersions(documentKey, savedKb.getId());
 
-        // 9. 发送向量化任务到 Redis Stream（异步处理）
+        // 10. 发送向量化任务到 Redis Stream（异步处理）
         vectorizeStreamProducer.sendVectorizeTask(savedKb.getId(), content);
 
         log.info("知识库上传完成，向量化任务已入队: {}, kbId={}, documentKey={}, versionNo={}",
             fileName, savedKb.getId(), documentKey, versionNo);
 
-        // 10. 返回结果（状态 PENDING，前端可轮询获取最新状态）
+        // 11. 返回结果（状态 PENDING，前端可轮询获取最新状态）
         Map<String, Object> kb = new HashMap<>();
         kb.put("id", savedKb.getId());
         kb.put("name", savedKb.getName());
@@ -139,7 +179,40 @@ public class KnowledgeBaseUploadService {
                 "fileKey", fileKey,
                 "fileUrl", fileUrl
             ),
-            "duplicate", false
+            "duplicate", false,
+            "conflict", false
+        );
+    }
+
+    /**
+     * 构建版本冲突的返回结果。
+     */
+    private Map<String, Object> buildConflictResult(KnowledgeBaseEntity kb, int contentLength) {
+        Map<String, Object> kbMap = new HashMap<>();
+        kbMap.put("id", kb.getId());
+        kbMap.put("name", kb.getName());
+        kbMap.put("category", kb.getCategory() != null ? kb.getCategory() : "");
+        kbMap.put("service", kb.getService() != null ? kb.getService() : "");
+        kbMap.put("environment", kb.getEnvironment() != null ? kb.getEnvironment() : "");
+        kbMap.put("project", kb.getProject() != null ? kb.getProject() : "");
+        kbMap.put("docType", kb.getDocType() != null ? kb.getDocType() : "");
+        kbMap.put("source", kb.getSource() != null ? kb.getSource() : "");
+        kbMap.put("versionLabel", kb.getVersionLabel() != null ? kb.getVersionLabel() : "");
+        kbMap.put("documentKey", kb.getDocumentKey() != null ? kb.getDocumentKey() : "");
+        kbMap.put("versionNo", kb.getVersionNo());
+        kbMap.put("active", false);
+        kbMap.put("fileSize", kb.getFileSize());
+        kbMap.put("contentLength", contentLength);
+        kbMap.put("vectorStatus", VectorStatus.CONFLICT.name());
+
+        return Map.of(
+            "knowledgeBase", kbMap,
+            "storage", Map.of(
+                "fileKey", kb.getStorageKey() != null ? kb.getStorageKey() : "",
+                "fileUrl", kb.getStorageUrl() != null ? kb.getStorageUrl() : ""
+            ),
+            "duplicate", false,
+            "conflict", true
         );
     }
 
