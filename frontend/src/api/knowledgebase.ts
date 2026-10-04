@@ -12,6 +12,14 @@ export interface KnowledgeBaseItem {
   category: string | null;
   service: string | null;
   environment: string | null;
+  project?: string | null;
+  docType?: string | null;
+  source?: string | null;
+  versionLabel?: string | null;
+  documentKey?: string | null;
+  versionNo?: number;
+  active?: boolean;
+  versionConflict?: boolean;
   originalFilename: string;
   fileSize: number;
   contentType: string;
@@ -40,6 +48,10 @@ export interface ContextKbItem {
   name: string;
   service: string | null;
   environment: string | null;
+  project?: string | null;
+  versionNo?: number;
+  documentKey?: string | null;
+  active?: boolean;
 }
 
 export type SortOption = 'time' | 'size' | 'access' | 'question';
@@ -51,6 +63,13 @@ export interface UploadKnowledgeBaseResponse {
     category: string;
     service?: string;
     environment?: string;
+    project?: string;
+    docType?: string;
+    source?: string;
+    versionLabel?: string;
+    documentKey?: string;
+    versionNo?: number;
+    active?: boolean;
     fileSize: number;
     contentLength: number;
   };
@@ -194,7 +213,8 @@ export const knowledgeBaseApi = {
   /**
    * 上传知识库文件
    */
-  async uploadKnowledgeBase(file: File, name?: string, category?: string, service?: string, environment?: string): Promise<UploadKnowledgeBaseResponse> {
+  async uploadKnowledgeBase(file: File, name?: string, category?: string, service?: string, environment?: string,
+    project?: string, docType?: string, source?: string, versionLabel?: string): Promise<UploadKnowledgeBaseResponse> {
     const formData = new FormData();
     formData.append('file', file);
     if (name) {
@@ -209,6 +229,18 @@ export const knowledgeBaseApi = {
     if (environment) {
       formData.append('environment', environment);
     }
+    if (project) {
+      formData.append('project', project);
+    }
+    if (docType) {
+      formData.append('docType', docType);
+    }
+    if (source) {
+      formData.append('source', source);
+    }
+    if (versionLabel) {
+      formData.append('versionLabel', versionLabel);
+    }
     return request.upload<UploadKnowledgeBaseResponse>('/api/knowledgebase/upload', formData);
   },
 
@@ -222,7 +254,7 @@ export const knowledgeBaseApi = {
   /**
    * 获取所有知识库列表
    */
-  async getAllKnowledgeBases(sortBy?: SortOption, vectorStatus?: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED', service?: string, environment?: string): Promise<KnowledgeBaseItem[]> {
+  async getAllKnowledgeBases(sortBy?: SortOption, vectorStatus?: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED', service?: string, environment?: string, project?: string): Promise<KnowledgeBaseItem[]> {
     const params = new URLSearchParams();
     if (sortBy) {
       params.append('sortBy', sortBy);
@@ -235,6 +267,9 @@ export const knowledgeBaseApi = {
     }
     if (environment !== undefined && environment !== '') {
       params.append('environment', environment);
+    }
+    if (project !== undefined && project !== '') {
+      params.append('project', project);
     }
     const queryString = params.toString();
     return request.get<KnowledgeBaseItem[]>(`/api/knowledgebase/list${queryString ? `?${queryString}` : ''}`);
@@ -336,6 +371,13 @@ export const knowledgeBaseApi = {
    */
   async revectorize(id: number): Promise<void> {
     return request.post(`/api/knowledgebase/${id}/revectorize`);
+  },
+
+  /**
+   * 停用知识库（阶段 2）：置为不可检索并删除其向量
+   */
+  async retire(id: number): Promise<void> {
+    return request.put(`/api/knowledgebase/${id}/retire`);
   },
 
   // ========== 知识库面试题库 ==========
@@ -462,10 +504,11 @@ export const knowledgeBaseApi = {
   /**
    * 解析上下文：根据 service/environment 返回匹配的知识库条目
    */
-  async resolveContext(service?: string, environment?: string): Promise<ContextKbItem[]> {
+  async resolveContext(service?: string, environment?: string, project?: string): Promise<ContextKbItem[]> {
     const params = new URLSearchParams();
     if (service) params.append('service', service);
     if (environment) params.append('environment', environment);
+    if (project) params.append('project', project);
     const queryString = params.toString();
     return request.get<ContextKbItem[]>(`/api/knowledgebase/resolve-context${queryString ? `?${queryString}` : ''}`);
   },

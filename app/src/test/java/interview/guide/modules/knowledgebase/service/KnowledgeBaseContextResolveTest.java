@@ -216,4 +216,41 @@ class KnowledgeBaseContextResolveTest {
       assertThat(result).extracting(ContextKbItem::environment).containsOnly("生产");
     }
   }
+
+  @DisplayName("阶段 2：active 过滤与 project 过滤")
+  @Nested
+  class ActiveAndProjectFiltering {
+
+    @Test
+    @DisplayName("停用/被取代的版本不进入解析结果")
+    void shouldExcludeInactive() {
+      KnowledgeBaseEntity activeKb = buildKb(1L, "支付文档A", "payment", "生产");
+      activeKb.setActive(true);
+      KnowledgeBaseEntity retiredKb = buildKb(2L, "旧版支付文档", "payment", "生产");
+      retiredKb.setActive(false);
+      when(knowledgeBaseRepository.findByServiceOrderByUploadedAtDesc("payment"))
+          .thenReturn(List.of(activeKb, retiredKb));
+
+      List<ContextKbItem> result = listService.resolveContext("payment", null);
+
+      assertThat(result).extracting(ContextKbItem::id).containsExactly(1L);
+    }
+
+    @Test
+    @DisplayName("project 过滤只返回匹配项目的 active 知识库")
+    void shouldFilterByProject() {
+      KnowledgeBaseEntity p1 = buildKb(1L, "文档A", "payment", "生产");
+      p1.setProject("P1");
+      p1.setActive(true);
+      KnowledgeBaseEntity p2 = buildKb(2L, "文档B", "payment", "生产");
+      p2.setProject("P2");
+      p2.setActive(true);
+      when(knowledgeBaseRepository.findByServiceOrderByUploadedAtDesc("payment"))
+          .thenReturn(List.of(p1, p2));
+
+      List<ContextKbItem> result = listService.resolveContext("payment", null, "P1");
+
+      assertThat(result).extracting(ContextKbItem::id).containsExactly(1L);
+    }
+  }
 }

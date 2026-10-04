@@ -12,7 +12,10 @@ import java.time.LocalDateTime;
     @Index(name = "idx_kb_hash", columnList = "fileHash", unique = true),
     @Index(name = "idx_kb_category", columnList = "category"),
     @Index(name = "idx_kb_service", columnList = "service"),
-    @Index(name = "idx_kb_environment", columnList = "environment")
+    @Index(name = "idx_kb_environment", columnList = "environment"),
+    @Index(name = "idx_kb_project", columnList = "project"),
+    @Index(name = "idx_kb_document_key", columnList = "documentKey"),
+    @Index(name = "idx_kb_active", columnList = "active")
 })
 public class KnowledgeBaseEntity {
 
@@ -109,6 +112,34 @@ public class KnowledgeBaseEntity {
     // 环境标签（如"生产"、"预发"、"测试"）
     @Column(length = 50)
     private String environment;
+
+    // 项目（DevSupport 资料归属的项目/系统，阶段 2 新增；可空表示未分类）
+    @Column(length = 100)
+    private String project;
+
+    // 文档类型（如 runbook/部署手册/错误码/配置说明，阶段 2 新增）
+    @Column(name = "doc_type", length = 50)
+    private String docType;
+
+    // 来源（如 wiki/仓库/工单，阶段 2 新增）
+    @Column(length = 50)
+    private String source;
+
+    // 适用版本标签（用户可读，如 "v2.3"，阶段 2 新增）
+    @Column(name = "version_label", length = 50)
+    private String versionLabel;
+
+    // 逻辑文档标识：同一 documentKey 的多行为同一文档的不同版本（阶段 2 版本分组）
+    @Column(name = "document_key", length = 64)
+    private String documentKey;
+
+    // 版本号：同一 documentKey 内递增，越大越新
+    @Column(name = "version_no", nullable = false)
+    private Integer versionNo = 1;
+
+    // 生命周期：true=启用可检索，false=已停用/被新版本取代（退出检索）
+    @Column(nullable = false)
+    private Boolean active = true;
     
     @PrePersist
     protected void onCreate() {
@@ -334,5 +365,61 @@ public class KnowledgeBaseEntity {
 
     public void setEnvironment(String environment) {
         this.environment = environment;
+    }
+
+    public String getProject() {
+        return project;
+    }
+
+    public void setProject(String project) {
+        this.project = project;
+    }
+
+    public String getDocType() {
+        return docType;
+    }
+
+    public void setDocType(String docType) {
+        this.docType = docType;
+    }
+
+    public String getSource() {
+        return source;
+    }
+
+    public void setSource(String source) {
+        this.source = source;
+    }
+
+    public String getVersionLabel() {
+        return versionLabel;
+    }
+
+    public void setVersionLabel(String versionLabel) {
+        this.versionLabel = versionLabel;
+    }
+
+    public String getDocumentKey() {
+        return documentKey;
+    }
+
+    public void setDocumentKey(String documentKey) {
+        this.documentKey = documentKey;
+    }
+
+    public Integer getVersionNo() {
+        return versionNo;
+    }
+
+    public void setVersionNo(Integer versionNo) {
+        this.versionNo = versionNo;
+    }
+
+    public Boolean getActive() {
+        return active;
+    }
+
+    public void setActive(Boolean active) {
+        this.active = active;
     }
 }

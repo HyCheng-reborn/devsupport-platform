@@ -62,8 +62,9 @@ public class KnowledgeBaseController {
     @GetMapping("/api/knowledgebase/resolve-context")
     public Result<List<ContextKbItem>> resolveContext(
             @RequestParam(value = "service", required = false) String service,
-            @RequestParam(value = "environment", required = false) String environment) {
-        return Result.success(listService.resolveContext(service, environment));
+            @RequestParam(value = "environment", required = false) String environment,
+            @RequestParam(value = "project", required = false) String project) {
+        return Result.success(listService.resolveContext(service, environment, project));
     }
 
     /**
@@ -245,8 +246,14 @@ public class KnowledgeBaseController {
             @RequestParam(value = "name", required = false) String name,
             @RequestParam(value = "category", required = false) String category,
             @RequestParam(value = "service", required = false) String service,
-            @RequestParam(value = "environment", required = false) String environment) {
-        return Result.success(uploadService.uploadKnowledgeBase(file, name, category, service, environment));
+            @RequestParam(value = "environment", required = false) String environment,
+            @RequestParam(value = "project", required = false) String project,
+            @RequestParam(value = "docType", required = false) String docType,
+            @RequestParam(value = "source", required = false) String source,
+            @RequestParam(value = "versionLabel", required = false) String versionLabel,
+            @RequestParam(value = "documentKey", required = false) String documentKey) {
+        return Result.success(uploadService.uploadKnowledgeBase(file, name, category, service, environment,
+            project, docType, source, versionLabel, documentKey));
     }
 
     /**
@@ -301,6 +308,15 @@ public class KnowledgeBaseController {
     @RateLimit(dimension = RateLimit.Dimension.IP, count = 2)
     public Result<Void> revectorize(@PathVariable Long id) {
         uploadService.revectorize(id);
+        return Result.success(null);
+    }
+
+    /**
+     * 停用知识库（阶段 2）：置为不可检索并删除其向量。
+     */
+    @PutMapping("/api/knowledgebase/{id}/retire")
+    public Result<Void> retire(@PathVariable Long id) {
+        uploadService.retire(id);
         return Result.success(null);
     }
 

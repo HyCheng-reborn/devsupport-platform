@@ -2,6 +2,7 @@ package interview.guide.modules.knowledgebase.service;
 
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
+import interview.guide.modules.knowledgebase.model.KbUploadMetadata;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseEntity;
 import interview.guide.modules.knowledgebase.model.VectorStatus;
 import interview.guide.modules.knowledgebase.repository.KnowledgeBaseRepository;
@@ -11,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -55,19 +57,26 @@ public class KnowledgeBasePersistenceService {
     }
 
     /**
-     * 保存新知识库元数据到数据库
+     * 保存新知识库元数据到数据库（阶段 2：含 project/docType/source/version 元数据与版本分组）
      */
     @Transactional(rollbackFor = Exception.class)
     public KnowledgeBaseEntity saveKnowledgeBase(MultipartFile file, String name, String category,
-                                                  String service, String environment,
+                                                  KbUploadMetadata meta, String documentKey, int versionNo,
                                                   String storageKey, String storageUrl, String fileHash) {
         try {
             KnowledgeBaseEntity kb = new KnowledgeBaseEntity();
             kb.setFileHash(fileHash);
             kb.setName(name != null && !name.trim().isEmpty() ? name : extractNameFromFilename(file.getOriginalFilename()));
-            kb.setCategory(category != null && !category.trim().isEmpty() ? category.trim() : null);
-            kb.setService(service != null && !service.trim().isEmpty() ? service.trim() : null);
-            kb.setEnvironment(environment != null && !environment.trim().isEmpty() ? environment.trim() : null);
+            kb.setCategory(trimToNull(category));
+            kb.setService(meta != null ? trimToNull(meta.service()) : null);
+            kb.setEnvironment(meta != null ? trimToNull(meta.environment()) : null);
+            kb.setProject(meta != null ? trimToNull(meta.project()) : null);
+            kb.setDocType(meta != null ? trimToNull(meta.docType()) : null);
+            kb.setSource(meta != null ? trimToNull(meta.source()) : null);
+            kb.setVersionLabel(meta != null ? trimToNull(meta.versionLabel()) : null);
+            kb.setDocumentKey(trimToNull(documentKey));
+            kb.setVersionNo(versionNo);
+            kb.setActive(true);
             kb.setOriginalFilename(file.getOriginalFilename());
             kb.setFileSize(file.getSize());
             kb.setContentType(file.getContentType());
@@ -75,12 +84,49 @@ public class KnowledgeBasePersistenceService {
             kb.setStorageUrl(storageUrl);
 
             KnowledgeBaseEntity saved = knowledgeBaseRepository.save(kb);
-            log.info("知识库已保存: id={}, name={}, category={}, hash={}", saved.getId(), saved.getName(), saved.getCategory(), fileHash);
+            log.info("知识库已保存: id={}, name={}, documentKey={}, versionNo={}, hash={}",
+                saved.getId(), saved.getName(), saved.getDocumentKey(), versionNo, fileHash);
             return saved;
         } catch (Exception e) {
             log.error("保存知识库失败: {}", e.getMessage(), e);
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "保存知识库失败");
         }
+    }
+
+    /**
+     * 停用同一逻辑文档中除 keepId 外的其它启用版本（仅 DB 事务；向量删除由调用方在事务外执行）。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void retireOtherVersions(String documentKey, Long keepId) {
+        if (documentKey == null || documentKey.isBlank()) {
+            return;
+        }
+        List<KnowledgeBaseEntity> others = knowledgeBaseRepository
+            .findByDocumentKeyOrderByVersionNoDesc(documentKey).stream()
+            .filter(kb -> !kb.getId().equals(keepId))
+            .filter(kb -> !Boolean.FALSE.equals(kb.getActive()))
+            .toList();
+        for (KnowledgeBaseEntity kb : others) {
+            kb.setActive(false);
+        }
+        knowledgeBaseRepository.saveAll(others);
+        log.info("已停用同文档旧版本: documentKey={}, keepId={}, retired={}", documentKey, keepId, others.size());
+    }
+
+    /**
+     * 停用单个知识库（置 active=false）。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void retire(Long kbId) {
+        KnowledgeBaseEntity kb = knowledgeBaseRepository.findById(kbId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "知识库不存在"));
+        kb.setActive(false);
+        knowledgeBaseRepository.save(kb);
+        log.info("知识库已停用: kbId={}", kbId);
+    }
+
+    private static String trimToNull(String v) {
+        return v == null || v.trim().isEmpty() ? null : v.trim();
     }
 
     /**

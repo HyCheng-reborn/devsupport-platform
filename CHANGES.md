@@ -1,3 +1,34 @@
+**2026-10-04 -- DevSupport 阶段 2 收尾：版本冲突标识 + 真实 S3/Redis Stream 集成 + 前端 E2E**
+- 版本冲突“标识”（路线图仅要求“文档中心标识冲突 + 检索标注版本”，未定义硬拒绝）：`KnowledgeBaseListService` 计算同 documentKey ≥2 个启用且 fileHash 不同 → `KnowledgeBaseListItemDTO.versionConflict`；文档中心“版本冲突”徒章。拒绝策略与“检索答案逐条标注版本”作为最小建议留待 Stage 3，未擅自扩大
+- 真实本地集成 `KnowledgeBaseUploadPipelineIntegrationTest`（Testcontainers pgvector + Redis + **RustFS（生产同款 S3）**，确定性 mock Embedding）：`uploadKnowledgeBase` → 真实对象存储上传 + PG 元数据 + Redis Stream 生产/消费异步 COMPLETED + 向量索引 → 按项目/环境/版本检索命中；新版本替换后旧版本 active=false 且删向量→不再召回；相同内容重试幂等（duplicate=true，无新行）。独立容器 + 独立 bucket，未触碰现有 dev 卷/库
+- 前端 Playwright E2E `kb-doc-center.spec.ts`（`page.route` mock，无后端）：状态徒标 失败/已停用/版本冲突、失败重试（POST revectorize）、停用（PUT retire）、上传元数据随 multipart 提交
+- 测试：新增 `KnowledgeBaseUploadPipelineIntegrationTest`(2/0)、`KnowledgeBaseListServiceTest$VersionConflict`(2/0)；全量 `./gradlew :app:test --rerun` → 593 tests / 10 failed / 0 errors / 3 skipped（BUILD FAILED，10 全为 `VoiceInterviewIntegrationTest` 本机无 Redis 环境阻塞，非主线，不修无关 Voice）；前端 `pnpm run build` exit 0、kb-status 8/0、kb-filter 9/0、chat-scope 8/0、kb-doc-center E2E 2/2
+- 边界：真实付费模型端到端、生产部署、检索答案逐条版本标注未做；未提交、未推送；未改 .env/wrapper/评测工件/Docker 卷；未开始 Stage 3
+
+**2026-10-04 -- DevSupport 阶段 2：文档中心与知识版本生命周期（代码完成 · 本地集成通过）**
+- 迁移 `V20261005`：`knowledge_bases` 仅 ADD 可空列 project/doc_type/source/version_label/document_key + version_no(默认1) + active(默认true) + 3 个索引；不改 file_hash 全局唯一（内容去重不变）。同一文件跨项目独立归属仍不支持（已知边界）
+- 元数据贯通 UI→API→DB→异步→检索过滤：上传接收并持久化 project/docType/source/versionLabel；`resolve-context` 新增 project 且仅返回 active=true；ContextKbItem/ListItemDTO 补字段
+- 版本生命周期：`KnowledgeBaseVersionService` 在新版本落库后停用同 documentKey 旧版本(active=false)+删除其向量(`VectorRepository.deleteByKnowledgeBaseId`)，双保险保证旧版退出检索；`PUT /api/knowledgebase/{id}/retire` 手动停用
+- 文档中心：展示 处理中/待处理/可检索/失败/已停用 + 项目/版本列 + 停用操作（`kbStatus.deriveStatus` 纯函数 + 8 单测）；上传页新增资料元数据面板
+- 测试：KnowledgeBaseVersionServiceTest(4)、KnowledgeBaseUploadServiceTest（去重/versionNo 递增/显式 documentKey）、KnowledgeBaseContextResolveTest（active+project 2）、Testcontainers 真实 PG/pgvector 的 KnowledgeBaseLifecycleIntegrationTest(2/0，确定性 mock Embedding) 全绿；DevSupport 知识库包整包 :app:test 通过 exit 0
+- 全量后端：589 tests / 10 failed / 0 errors / 3 skipped（BUILD FAILED，10 全为 VoiceInterviewIntegrationTest 因本机无 Redis:6379 环境阻塞，非 DevSupport 主线）；不写成全量通过
+- 边界：真实模型(Embedding/LLM) 端到端、真实 RustFS/S3 + 浏览器手工演示未做（禁用付费 API/不启停无关服务）；未提交、未推送；未改 .env/wrapper/评测工件/Docker 卷；未开始阶段3
+
+**2026-10-04 -- DevSupport 阶段 1 口径修正 + 修复 KnowledgeBaseListServiceTest 2 个测试桩漂移（不改生产语义）**
+- 更正上一轮验收口径：此前把 12 个后端失败笼统记为“与本修正无关”不完整——其中 2 个 `KnowledgeBaseListServiceTest$ListFiltering`（`environmentFilterOnly`、`nullRowsExcludedWhenEnvironmentFilter`）是 **DevSupport 知识库列表筛选的既有测试桩漂移**（自 `5798f62` 实现改走 `findByEnvironmentOrderByUploadedAtDesc` 后测试仍 stub `findAllByOrderByUploadedAtDesc`），属主线，不能表述为“无主线相关失败”
+- 仅调整这两个用例的 stubbing/验证，改 stub 派生查询 `findByEnvironmentOrderByUploadedAtDesc` 返回精确匹配行；**不改** `KnowledgeBaseListService` 生产筛选语义、不动 Context 范围修正、不处理 `VoiceInterviewIntegrationTest`、不启停 Docker 卷
+- 定点 `./gradlew :app:test --rerun --tests KnowledgeBaseListServiceTest + KnowledgeBaseContextResolveTest + RagChatSessionContextTest + RagChatSessionServiceTest + SourceReferenceSnapshotTest + RagChatControllerTest` → BUILD SUCCESSFUL（exit 0），`ListFiltering` 6/0
+- 全量重跑 `./gradlew :app:test --rerun` → 579 tests / 10 failed / 0 errors / 3 skipped（BUILD FAILED，exit≠0）；剩余 10 个全部为 `VoiceInterviewIntegrationTest` 因本机无 Redis:6379 的环境阻塞（非 DevSupport 主线）。修正后：DevSupport 主线相关全绿，但全量后端仍非全绿，不写成全量通过
+- 未提交、未推送；`.env`/`gradle-wrapper.properties`/评测工件/Docker 卷未改
+
+**2026-10-04 -- DevSupport 阶段 1 最终验收：全量后端 + mock 浏览器 E2E + 检索范围/来源一致性核对**
+- 后端全量 `./gradlew :app:test --rerun --no-daemon`：579 tests / 12 failed / 0 errors / 3 skipped，BUILD FAILED（exit≠0）
+- DevSupport 主线相关全绿：RagChatSessionContextTest（ScopeNarrowing/EmptyContextError/ContextResolution/BackwardCompatibility）、KnowledgeBaseContextResolveTest、RagChatSessionServiceTest、SourceReferenceSnapshotTest、RagChatControllerTest；经 Testcontainers 真实 PostgreSQL 的 RagChatSseIntegrationTest(3/0)、KnowledgeBaseRepositoryIntegrationTest(5/0)、RateLimitIntegrationTest(4/0) 通过（Docker 可用）
+- 12 个失败均非本次范围修正引入：10 个 VoiceInterviewIntegrationTest（RedisConnectionException，遗留模块需本机 Redis:6379 未启动，环境阻塞）+ 2 个 KnowledgeBaseListServiceTest$ListFiltering（PotentialStubbingProblem：environmentFilterOnly / nullRowsExcludedWhenEnvironmentFilter 仍 stub findAllByOrderByUploadedAtDesc，实现自 5798f62 起改调 findByEnvironmentOrderByUploadedAtDesc；该测试文件未被 createSession 修正提交改动，属既有漂移）。3 个 skipped 为遗留 Voice 单测
+- 新增 mock 浏览器 E2E frontend/e2e/chat-scope.spec.ts：Playwright 1.62.1 + Chromium（npx playwright install chromium 补 v1234），page.route 全量 mock /api（无后端、无付费 LLM/Embedding）。2 用例通过：选 service 后展示“2 个文档”→缩小为“已选 1 个文档”→POST /api/rag-chat/sessions 请求体 knowledgeBaseIds=[1] 且 service=payment，范围外 auth 文档不在弹窗；空范围明确提示、无计数、无创建按钮、无勾选框
+- 一致性核对：createSession 持久化的最终集合 = 前端提交集合（ScopeNarrowing 交集断言 + E2E 请求体双重证明）；getStreamAnswer 以 session.getKnowledgeBaseIds() 为检索范围，来源快照 service/environment 由该集合的 KB 实体映射（carriesTagsAndNullTags、SourceReferenceSnapshotTest、RagChatSseIntegrationTest）
+- 停在问题上不扩大修复：ListFiltering 2 个漂移测试本轮未改；未提交、未推送；未改 .env/wrapper/评测工件/Docker 卷
+
 **2026-10-04 -- DevSupport 阶段 1 复核修正：排查会话检索范围一致性 + 上下文文案 + 路线图口径**
 - 后端 `RagChatSessionService.createSession` 语义由"显式 kbIds ∪ service/environment 解析"改为"以 service/environment 为限制范围、显式只在范围内缩小（取交集）"：范围外显式 ID 被安全排除、范围内取消勾选的不会被后端加回、上下文范围为空或与显式选择无交集时报错（BAD_REQUEST），绝不退回全量检索；未提供 service/environment 时保持旧的显式 `knowledgeBaseIds` 行为。后端为最终校验方，不只靠前端隐藏选项
 - 前端 `ChatSessionsPage`：KB 勾选限制在解析范围内（只能缩小）；"当前检索范围：N 个文档"的 N 与最终会话实际使用的 KB 集合一致；新增 `utils/chatScope.ts`（`selectableIds`/`narrowScope` 纯函数，与后端交集语义一致）及 8 条 `node:test` 单测

@@ -139,6 +139,18 @@ public interface KnowledgeBaseRepository extends JpaRepository<KnowledgeBaseEnti
      */
     List<KnowledgeBaseEntity> findByServiceAndEnvironmentOrderByUploadedAtDesc(String service, String environment);
 
+    // ==================== 阶段 2：版本分组与生命周期 ====================
+
+    /**
+     * 同一逻辑文档（documentKey）的所有版本，按版本号降序（首个为最新版本）。
+     */
+    List<KnowledgeBaseEntity> findByDocumentKeyOrderByVersionNoDesc(String documentKey);
+
+    /**
+     * 同一逻辑文档中仍处于启用状态的版本（按版本号降序）。
+     */
+    List<KnowledgeBaseEntity> findByDocumentKeyAndActiveTrueOrderByVersionNoDesc(String documentKey);
+
     /**
      * 获取所有不同的服务标签（非空，按字母排序）
      */

@@ -16,6 +16,11 @@ export default function KnowledgeBaseUploadPage({ onUploadComplete, onBack }: Kn
   const [duplicateInfo, setDuplicateInfo] = useState<UploadKnowledgeBaseResponse | null>(null);
   const [services, setServices] = useState<string[]>([]);
   const [environments, setEnvironments] = useState<string[]>([]);
+  // 阶段 2 资料元数据（页面级输入，随上传提交）
+  const [project, setProject] = useState('');
+  const [docType, setDocType] = useState('');
+  const [source, setSource] = useState('');
+  const [versionLabel, setVersionLabel] = useState('');
 
   useEffect(() => {
     const loadSuggestions = async () => {
@@ -39,7 +44,11 @@ export default function KnowledgeBaseUploadPage({ onUploadComplete, onBack }: Kn
     setDuplicateInfo(null);
 
     try {
-      const data = await knowledgeBaseApi.uploadKnowledgeBase(file, name, undefined, service, environment);
+      const data = await knowledgeBaseApi.uploadKnowledgeBase(
+        file, name, undefined, service, environment,
+        project.trim() || undefined, docType.trim() || undefined,
+        source.trim() || undefined, versionLabel.trim() || undefined
+      );
       if (data.duplicate) {
         setDuplicateInfo(data);
       } else {
@@ -128,24 +137,68 @@ export default function KnowledgeBaseUploadPage({ onUploadComplete, onBack }: Kn
   }
 
   return (
-    <FileUploadCard
-      title="上传知识库"
-      subtitle="上传文档，AI 将基于知识库内容回答您的问题"
-      accept=".pdf,.doc,.docx,.txt,.md"
-      formatHint="支持 PDF、DOCX、DOC、TXT、MD"
-      maxSizeHint="最大 50MB"
-      uploading={uploading}
-      uploadButtonText="开始上传"
-      selectButtonText="选择文件"
-      showNameInput={true}
-      nameLabel="知识库名称（可选）"
-      namePlaceholder="留空则使用文件名"
-      showLabelInputs={true}
-      serviceSuggestions={services}
-      environmentSuggestions={environments}
-      error={error}
-      onUpload={handleUpload}
-      onBack={onBack}
-    />
+    <>
+      <div className="max-w-3xl mx-auto pt-8">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-lg dark:shadow-slate-900/50">
+          <h2 className="text-base font-semibold text-slate-800 dark:text-white mb-4">资料元数据（阶段 2）</h2>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">项目（可选）</label>
+              <input
+                type="text" value={project} onChange={(e) => setProject(e.target.value)}
+                maxLength={100} placeholder="如：billing、order-center" disabled={uploading}
+                className="w-full px-4 py-3 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">文档类型（可选）</label>
+              <input
+                type="text" value={docType} onChange={(e) => setDocType(e.target.value)}
+                maxLength={50} placeholder="如：runbook、部署手册、错误码" disabled={uploading}
+                className="w-full px-4 py-3 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">适用版本（可选）</label>
+              <input
+                type="text" value={versionLabel} onChange={(e) => setVersionLabel(e.target.value)}
+                maxLength={50} placeholder="如：v2.3" disabled={uploading}
+                className="w-full px-4 py-3 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">来源（可选）</label>
+              <input
+                type="text" value={source} onChange={(e) => setSource(e.target.value)}
+                maxLength={50} placeholder="如：wiki、git、工单" disabled={uploading}
+                className="w-full px-4 py-3 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+              />
+            </div>
+          </div>
+          <p className="text-xs text-slate-400 dark:text-slate-500 mt-3">
+            相同 项目+服务+环境+文档类型+名称 的资料再次上传将作为新版本，旧版本自动停用并退出检索。
+          </p>
+        </div>
+      </div>
+      <FileUploadCard
+        title="上传知识库"
+        subtitle="上传文档，AI 将基于知识库内容回答您的问题"
+        accept=".pdf,.doc,.docx,.txt,.md"
+        formatHint="支持 PDF、DOCX、DOC、TXT、MD"
+        maxSizeHint="最大 50MB"
+        uploading={uploading}
+        uploadButtonText="开始上传"
+        selectButtonText="选择文件"
+        showNameInput={true}
+        nameLabel="知识库名称（可选）"
+        namePlaceholder="留空则使用文件名"
+        showLabelInputs={true}
+        serviceSuggestions={services}
+        environmentSuggestions={environments}
+        error={error}
+        onUpload={handleUpload}
+        onBack={onBack}
+      />
+    </>
   );
 }

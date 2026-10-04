@@ -17,8 +17,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * 知识库查询服务
@@ -71,8 +75,37 @@ public class KnowledgeBaseListService {
         if (sortBy != null && !sortBy.isBlank() && !sortBy.equalsIgnoreCase("time")) {
             entities = sortEntities(entities, sortBy);
         }
-        
-        return knowledgeBaseMapper.toListItemDTOList(entities);
+
+        return markVersionConflicts(entities, knowledgeBaseMapper.toListItemDTOList(entities));
+    }
+
+    /**
+     * 计算并标记版本冲突（阶段 2）：同一 documentKey 下存在 ≥2 个启用版本且内容(fileHash)不同。
+     * 对应路线图“当同一主题存在不同版本且内容冲突时，文档中心应标识冲突”。
+     */
+    private List<KnowledgeBaseListItemDTO> markVersionConflicts(
+            List<KnowledgeBaseEntity> entities, List<KnowledgeBaseListItemDTO> dtos) {
+        Map<String, Set<String>> hashesByDoc = new HashMap<>();
+        for (KnowledgeBaseEntity e : entities) {
+            if (e.getDocumentKey() == null || Boolean.FALSE.equals(e.getActive())) {
+                continue;
+            }
+            hashesByDoc.computeIfAbsent(e.getDocumentKey(), k -> new HashSet<>())
+                .add(e.getFileHash());
+        }
+        Set<String> conflictDocs = new HashSet<>();
+        hashesByDoc.forEach((doc, hashes) -> {
+            if (hashes.size() >= 2) {
+                conflictDocs.add(doc);
+            }
+        });
+        if (conflictDocs.isEmpty()) {
+            return dtos;
+        }
+        return dtos.stream()
+            .map(d -> d.documentKey() != null && conflictDocs.contains(d.documentKey())
+                ? d.withVersionConflict(true) : d)
+            .toList();
     }
 
     /**
@@ -292,6 +325,14 @@ public class KnowledgeBaseListService {
      * @return 匹配的知识库摘要列表
      */
     public List<ContextKbItem> resolveContext(String service, String environment) {
+        return resolveContext(service, environment, null);
+    }
+
+    /**
+     * 解析检索范围（阶段 2）：仅返回处于启用状态、匹配 service/environment/project 的知识库。
+     * 停用或被新版本取代的资料（active=false）不进入解析结果，因此不会进入后续检索。
+     */
+    public List<ContextKbItem> resolveContext(String service, String environment, String project) {
         boolean hasService = service != null && !service.isBlank();
         boolean hasEnvironment = environment != null && !environment.isBlank();
 
@@ -307,8 +348,13 @@ public class KnowledgeBaseListService {
             entities = knowledgeBaseRepository.findAllByOrderByUploadedAtDesc();
         }
 
+        String projectFilter = project != null && !project.isBlank() ? project.trim() : null;
         return entities.stream()
-            .map(e -> new ContextKbItem(e.getId(), e.getName(), e.getService(), e.getEnvironment()))
+            .filter(e -> !Boolean.FALSE.equals(e.getActive()))
+            .filter(e -> projectFilter == null || projectFilter.equalsIgnoreCase(e.getProject()))
+            .map(e -> new ContextKbItem(e.getId(), e.getName(), e.getService(), e.getEnvironment(),
+                e.getProject(), e.getVersionNo(), e.getDocumentKey(),
+                !Boolean.FALSE.equals(e.getActive())))
             .toList();
     }
 

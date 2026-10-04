@@ -67,10 +67,12 @@ class KnowledgeBaseListServiceTest {
   private static KnowledgeBaseListItemDTO toDTO(KnowledgeBaseEntity e) {
     return new KnowledgeBaseListItemDTO(
         e.getId(), e.getName(), e.getCategory(), e.getService(), e.getEnvironment(),
+        e.getProject(), e.getDocType(), e.getSource(), e.getVersionLabel(), e.getDocumentKey(),
+        e.getVersionNo(), e.getActive(),
         e.getOriginalFilename(), e.getFileSize(), e.getContentType(),
         e.getUploadedAt(), e.getLastAccessedAt(), e.getAccessCount(), e.getQuestionCount(),
         e.getVectorStatus(), e.getVectorError(), e.getChunkCount(),
-        e.getQuestionGenStatus(), e.getQuestionGenError());
+        e.getQuestionGenStatus(), e.getQuestionGenError(), false);
   }
 
   @DisplayName("列表筛选 service/environment")
@@ -109,15 +111,14 @@ class KnowledgeBaseListServiceTest {
     @Test
     @DisplayName("仅 environment 筛选时只返回匹配 KB")
     void environmentFilterOnly() {
-      KnowledgeBaseEntity kb1 = buildKb(1L, "A", "支付", "生产");
       KnowledgeBaseEntity kb2 = buildKb(2L, "B", null, "测试");
-      KnowledgeBaseEntity kb3 = buildKb(3L, "C", null, null);
-      List<KnowledgeBaseEntity> all = List.of(kb1, kb2, kb3);
-      when(knowledgeBaseRepository.findAllByOrderByUploadedAtDesc()).thenReturn(all);
-      List<KnowledgeBaseEntity> filtered = all.stream()
-          .filter(e -> "测试".equals(e.getEnvironment())).toList();
-      when(knowledgeBaseMapper.toListItemDTOList(filtered))
-          .thenReturn(filtered.stream().map(KnowledgeBaseListServiceTest::toDTO).toList());
+      // 生产实现走派生查询 findByEnvironmentOrderByUploadedAtDesc（trim 后精确匹配），
+      // 只返回 environment=测试 的行，不再 findAll + in-memory 过滤。
+      List<KnowledgeBaseEntity> matched = List.of(kb2);
+      when(knowledgeBaseRepository.findByEnvironmentOrderByUploadedAtDesc("测试"))
+          .thenReturn(matched);
+      when(knowledgeBaseMapper.toListItemDTOList(matched))
+          .thenReturn(matched.stream().map(KnowledgeBaseListServiceTest::toDTO).toList());
 
       List<KnowledgeBaseListItemDTO> result = listService.listKnowledgeBases(null, null, null, "测试");
 
@@ -161,13 +162,12 @@ class KnowledgeBaseListServiceTest {
     @DisplayName("NULL 行在有 environment 筛选时不出现")
     void nullRowsExcludedWhenEnvironmentFilter() {
       KnowledgeBaseEntity kb1 = buildKb(1L, "A", "支付", "生产");
-      KnowledgeBaseEntity kb2 = buildKb(2L, "B", null, null);
-      List<KnowledgeBaseEntity> all = List.of(kb1, kb2);
-      when(knowledgeBaseRepository.findAllByOrderByUploadedAtDesc()).thenReturn(all);
-      List<KnowledgeBaseEntity> filtered = all.stream()
-          .filter(e -> "生产".equals(e.getEnvironment())).toList();
-      when(knowledgeBaseMapper.toListItemDTOList(filtered))
-          .thenReturn(filtered.stream().map(KnowledgeBaseListServiceTest::toDTO).toList());
+      // 派生查询只返回 environment=生产 的行；environment 为 NULL 的行由 SQL 谓词天然排除。
+      List<KnowledgeBaseEntity> matched = List.of(kb1);
+      when(knowledgeBaseRepository.findByEnvironmentOrderByUploadedAtDesc("生产"))
+          .thenReturn(matched);
+      when(knowledgeBaseMapper.toListItemDTOList(matched))
+          .thenReturn(matched.stream().map(KnowledgeBaseListServiceTest::toDTO).toList());
 
       List<KnowledgeBaseListItemDTO> result = listService.listKnowledgeBases(null, null, null, "生产");
 
@@ -271,6 +271,47 @@ class KnowledgeBaseListServiceTest {
       assertThatThrownBy(() -> listService.updateLabels(1L, "支付", longEnv))
           .isInstanceOf(BusinessException.class)
           .hasMessageContaining("50");
+    }
+  }
+
+  @DisplayName("版本冲突标记")
+  @Nested
+  class VersionConflict {
+
+    private KnowledgeBaseEntity version(long id, String hash, String docKey, boolean active) {
+      KnowledgeBaseEntity e = buildKb(id, "文档-" + hash, "支付", "生产");
+      e.setFileHash(hash);
+      e.setDocumentKey(docKey);
+      e.setActive(active);
+      return e;
+    }
+
+    @Test
+    @DisplayName("同一 documentKey 有 ≥2 个启用版本且内容不同 → 标记冲突")
+    void marksConflictWhenMultipleActiveVersions() {
+      KnowledgeBaseEntity a = version(1L, "hashA", "dk1", true);
+      KnowledgeBaseEntity b = version(2L, "hashB", "dk1", true);
+      when(knowledgeBaseRepository.findAllByOrderByUploadedAtDesc()).thenReturn(List.of(a, b));
+      when(knowledgeBaseMapper.toListItemDTOList(List.of(a, b)))
+          .thenReturn(List.of(toDTO(a), toDTO(b)));
+
+      List<KnowledgeBaseListItemDTO> result = listService.listKnowledgeBases(null, null, null, null);
+
+      assertThat(result).allSatisfy(d -> assertThat(d.versionConflict()).isTrue());
+    }
+
+    @Test
+    @DisplayName("旧版本已停用（仅 1 个启用）→ 不标记冲突")
+    void noConflictWhenSingleActive() {
+      KnowledgeBaseEntity a = version(1L, "hashA", "dk1", true);
+      KnowledgeBaseEntity b = version(2L, "hashB", "dk1", false);
+      when(knowledgeBaseRepository.findAllByOrderByUploadedAtDesc()).thenReturn(List.of(a, b));
+      when(knowledgeBaseMapper.toListItemDTOList(List.of(a, b)))
+          .thenReturn(List.of(toDTO(a), toDTO(b)));
+
+      List<KnowledgeBaseListItemDTO> result = listService.listKnowledgeBases(null, null, null, null);
+
+      assertThat(result).noneSatisfy(d -> assertThat(d.versionConflict()).isTrue());
     }
   }
 }

@@ -2,6 +2,7 @@ import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {AnimatePresence, motion} from 'framer-motion';
 import {
   AlertCircle,
+  Ban,
   Check,
   CheckCircle,
   ChevronDown,
@@ -23,6 +24,7 @@ import {
 import {knowledgeBaseApi, KnowledgeBaseItem, KnowledgeBaseStats, SortOption, VectorStatus,} from '../api/knowledgebase';
 import DeleteConfirmDialog from '../components/DeleteConfirmDialog';
 import { applyFilters, type FilterState } from '../utils/kbFilter';
+import { deriveStatus } from '../utils/kbStatus';
 
 interface KnowledgeBaseManagePageProps {
   onUpload: () => void;
@@ -259,6 +261,16 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
       console.error('重新向量化失败:', error);
     } finally {
       setRevectorizing(null);
+    }
+  };
+
+  // 停用知识库（阶段 2）：置为不可检索并删除其向量
+  const handleRetire = async (id: number) => {
+    try {
+      await knowledgeBaseApi.retire(id);
+      await loadData();
+    } catch (error) {
+      console.error('停用失败:', error);
     }
   };
 
@@ -577,6 +589,12 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
                   环境
                 </th>
                   <th className="text-left px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300">
+                  项目
+                </th>
+                  <th className="text-left px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300">
+                  版本
+                </th>
+                  <th className="text-left px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300">
                   大小
                 </th>
                   <th className="text-left px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300">
@@ -806,6 +824,25 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
                       )}
                     </AnimatePresence>
                   </td>
+                  <td className="px-6 py-4">
+                    {kb.project ? (
+                      <span className="px-2 py-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded text-sm">{kb.project}</span>
+                    ) : (
+                      <span className="text-slate-400 dark:text-slate-500 text-sm">未分类</span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-1 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded text-sm">v{kb.versionNo ?? 1}</span>
+                      {kb.versionLabel && <span className="text-xs text-slate-400 dark:text-slate-500">{kb.versionLabel}</span>}
+                      {deriveStatus(kb.vectorStatus, kb.active) === 'retired' && (
+                        <span className="px-2 py-0.5 bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 rounded text-xs">已停用</span>
+                      )}
+                      {kb.versionConflict && (
+                        <span className="px-2 py-0.5 bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 rounded text-xs">版本冲突</span>
+                      )}
+                    </div>
+                  </td>
                     <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-300">
                     {formatFileSize(kb.fileSize)}
                   </td>
@@ -842,6 +879,16 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
                           title="重新向量化"
                         >
                           <RefreshCw className={`w-4 h-4 ${revectorizing === kb.id ? 'animate-spin' : ''}`} />
+                        </button>
+                      )}
+                      {/* 停用按钮（仅启用中的文档） */}
+                      {deriveStatus(kb.vectorStatus, kb.active) !== 'retired' && (
+                        <button
+                          onClick={() => handleRetire(kb.id)}
+                          className="p-2 text-slate-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/30 rounded-lg transition-colors"
+                          title="停用（退出检索）"
+                        >
+                          <Ban className="w-4 h-4" />
                         </button>
                       )}
                       {/* 删除按钮 */}
