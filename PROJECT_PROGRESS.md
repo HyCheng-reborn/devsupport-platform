@@ -3,7 +3,7 @@
 > 本项目（远程仓库 `HyCheng-reborn/devsupport-platform`，本地目录名仍为 `interview-guide`）的进度事实源。
 > **跨机器 remote 别名映射（读文档前先对齐，避免 `origin` 误读）**：本机 `devsupport` = `HyCheng-reborn/devsupport-platform`（推送目标），本机 `origin` = `Snailclimb/interview-guide`（上游，**勿推**）；另一台验证机（批次 C/D 补验）的 `origin` = `HyCheng-reborn/devsupport-platform`，故其文档/提交记录里的「push 到 `origin/master`」等同于本机的「push 到 `devsupport/master`」。判断实际目标仓库一律以 remote URL 为准，不要只看别名。
 > 新会话接手时先读本文件，再读「交接区」列出的文件。
-> 最近更新：**2026-10-05 状态一致性修复（并发冲突归属 + adopt 异步状态机 ADOPTING→promote→COMPLETED + ABANDONED 状态替代 FAILED + 迁移 V20261007；后端 626 tests/613 passed，前端单测 49/49，E2E 14/14）**。前一轮：版本冲突治理（DB 迁移 V20261006 + 上传冲突检测 + adopt/abandon API + 前端冲突展示和操作）。
+> 最近更新：**2026-10-05 adopt/abandon 并发竞态修复 + Redis Stream 消息数断言（tryStartAbandon 原子 CAS + CountDownLatch XOR 测试 + Consumer promote 保护 + 并发 adopt 仅投递一次；后端 targeted KB tests 18/18，前端单测 99/99，E2E 14/17（3 voice 遗留））**。前一轮：状态一致性修复（并发冲突归属 + adopt 异步状态机 ADOPTING→promote→COMPLETED + ABANDONED 状态替代 FAILED + 迁移 V20261007；后端 626 tests/613 passed，前端单测 49/49，E2E 14/14）。
 
 ## 0. 维护规则
 

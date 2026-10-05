@@ -1,7 +1,9 @@
 package interview.guide.modules.knowledgebase;
 
 import interview.guide.common.ai.LlmProviderRegistry;
+import interview.guide.common.constant.AsyncTaskStreamConstants;
 import interview.guide.infrastructure.file.FileStorageService;
+import interview.guide.infrastructure.redis.RedisService;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseEntity;
 import interview.guide.modules.knowledgebase.model.VectorStatus;
 import interview.guide.modules.knowledgebase.repository.KnowledgeBaseRepository;
@@ -44,7 +46,9 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -147,13 +151,13 @@ class KnowledgeBaseUploadPipelineIntegrationTest {
 
     @MockitoBean
     LlmProviderRegistry llmProviderRegistry;
-
     @Autowired KnowledgeBaseUploadService uploadService;
     @Autowired KnowledgeBaseRepository knowledgeBaseRepository;
     @Autowired KnowledgeBaseVectorService vectorService;
     @Autowired KnowledgeBaseListService listService;
     @Autowired KnowledgeBaseConflictService conflictService;
     @Autowired FileStorageService storageService;
+    @Autowired RedisService redisService;
     @Autowired JdbcTemplate jdbcTemplate;
     @Autowired EntityManager entityManager;
 
@@ -738,6 +742,10 @@ class KnowledgeBaseUploadPipelineIntegrationTest {
         assertThat(kb2Before.getConflict()).isTrue();
         assertThat(kb2Before.getVectorStatus()).isEqualTo(VectorStatus.CONFLICT);
 
+        // 记录并发 adopt 前 Redis Stream 的消息数
+        String streamKey = AsyncTaskStreamConstants.KB_VECTORIZE_STREAM_KEY;
+        long streamSizeBefore = redisService.streamLen(streamKey);
+
         // 两个线程同时采纳
         CountDownLatch ready = new CountDownLatch(2);
         CountDownLatch go = new CountDownLatch(1);
@@ -762,6 +770,13 @@ class KnowledgeBaseUploadPipelineIntegrationTest {
         futureB.get(60, TimeUnit.SECONDS);
         executor.shutdown();
 
+        // 断言：并发 adopt 只向 Redis Stream 投递了恰好 1 条消息
+        long streamSizeAfter = redisService.streamLen(streamKey);
+        long newMessages = streamSizeAfter - streamSizeBefore;
+        assertThat(newMessages)
+            .as("并发 adopt 应只向 Redis Stream 投递恰好 1 条消息，实际新增 %d 条", newMessages)
+            .isEqualTo(1);
+
         // 等待异步向量化完成
         KnowledgeBaseEntity kb2Done = awaitStatus(id2, VectorStatus.COMPLETED, 30_000);
         assertThat(kb2Done.getVectorStatus()).isEqualTo(VectorStatus.COMPLETED);
@@ -774,6 +789,102 @@ class KnowledgeBaseUploadPipelineIntegrationTest {
 
         // 新版本有向量
         assertThat(vectorRowCount(id2)).isGreaterThan(0);
+    }
+
+    @Test
+    @DisplayName("并发 adopt vs abandon：恰好一个操作成功，状态一致")
+    void concurrentAdoptAndAbandon_onlyOneWins() throws Exception {
+        Long[] ids = createConflictScenario("conadoptabn");
+        Long id1 = ids[0], id2 = ids[1];
+
+        // 确认冲突状态
+        KnowledgeBaseEntity kb2Before = knowledgeBaseRepository.findById(id2).orElseThrow();
+        assertThat(kb2Before.getConflict()).isTrue();
+        assertThat(kb2Before.getVectorStatus()).isEqualTo(VectorStatus.CONFLICT);
+
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch go = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        AtomicReference<Throwable> adoptError = new AtomicReference<>();
+        AtomicReference<Throwable> abandonError = new AtomicReference<>();
+
+        // Thread 1: adopt
+        Future<?> adoptFuture = executor.submit(() -> {
+            ready.countDown();
+            try { go.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+            try {
+                conflictService.adoptVersion(id2);
+            } catch (Throwable t) {
+                adoptError.set(t);
+            }
+        });
+
+        // Thread 2: abandon
+        Future<?> abandonFuture = executor.submit(() -> {
+            ready.countDown();
+            try { go.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+            try {
+                conflictService.abandonVersion(id2);
+            } catch (Throwable t) {
+                abandonError.set(t);
+            }
+        });
+
+        ready.await(5, TimeUnit.SECONDS);
+        go.countDown(); // 同时释放
+
+        adoptFuture.get(60, TimeUnit.SECONDS);
+        abandonFuture.get(60, TimeUnit.SECONDS);
+        executor.shutdown();
+
+        // 恰好一个操作成功：另一个应抛异常
+        Throwable adoptEx = adoptError.get();
+        Throwable abandonEx = abandonError.get();
+
+        // 两种情况：
+        // 1. adopt 成功（adoptEx==null），abandon 抛异常（abandonEx!=null）
+        // 2. abandon 成功（abandonEx==null），adopt 抛异常（adoptEx!=null）
+        boolean adoptWon = (adoptEx == null);
+        boolean abandonWon = (abandonEx == null);
+
+        // 不能两个都成功或都失败
+        assertThat(adoptWon ^ abandonWon)
+            .as("恰好一个操作成功（XOR）").isTrue();
+
+        // 等待异步处理稳定
+        Thread.sleep(2000);
+
+        KnowledgeBaseEntity kb2Final = knowledgeBaseRepository.findById(id2).orElseThrow();
+        KnowledgeBaseEntity kb1Final = knowledgeBaseRepository.findById(id1).orElseThrow();
+
+        if (adoptWon) {
+            // adopt 赢了：最终状态应是 ADOPTING 或 COMPLETED（异步完成后）
+            assertThat(kb2Final.getVectorStatus())
+                .as("adopt 赢时最终状态应为 ADOPTING 或 COMPLETED")
+                .isIn(VectorStatus.ADOPTING, VectorStatus.PROCESSING, VectorStatus.COMPLETED);
+            // abandon 应抛异常
+            assertThat(abandonEx).isNotNull();
+            // 旧版本可能最终被停用（如果 adopt 异步完成）
+            // 但不能被 ABANDONED 状态的新版本替换
+        } else {
+            // abandon 赢了：最终状态应是 ABANDONED
+            assertThat(kb2Final.getVectorStatus())
+                .as("abandon 赢时最终状态应为 ABANDONED")
+                .isEqualTo(VectorStatus.ABANDONED);
+            assertThat(kb2Final.getActive()).isFalse();
+            assertThat(kb2Final.getConflict()).isFalse();
+            // adopt 应抛异常
+            assertThat(adoptEx).isNotNull();
+            // 旧版本应保持 active
+            assertThat(kb1Final.getActive())
+                .as("abandon 赢时旧版本应保持 active").isTrue();
+        }
+
+        // 无论谁赢，不能出现：ABANDONED + active=true（放弃的版本被激活）
+        if (kb2Final.getVectorStatus() == VectorStatus.ABANDONED) {
+            assertThat(kb2Final.getActive())
+                .as("ABANDONED 版本不能是 active").isFalse();
+        }
     }
 
     @Test

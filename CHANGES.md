@@ -1,3 +1,11 @@
+**2026-10-05 -- DevSupport adopt/abandon 并发竞态修复 + Redis Stream 消息数断言**
+- abandon 原子 CAS：`tryStartAbandon` 条件 UPDATE 确保只有 CONFLICT/ADOPTING 状态可放弃，防止并发 abandon 重复投递
+- adopt/abandon 互斥验证：CountDownLatch 制造并发竞争，XOR 测试确保 adopt 和 abandon 互斥（只有一个能成功）
+- Consumer promote 保护：向量化消费者 promote 前检查状态是否为 ABANDONED，防止已放弃记录被重新激活为 COMPLETED
+- 并发 adopt 测试增加 Redis Stream 消息数断言：确保并发 adopt 只投递一次向量化消息（stream size = 1）
+- 测试：后端 targeted KB tests **18/18**（KnowledgeBaseConflictServiceTest + KnowledgeBaseUploadPipelineIntegrationTest + KnowledgeBaseUploadServiceTest + KnowledgeBaseServiceTest + KnowledgeBaseResolveContextTest + RagChatServiceTest + RagChatControllerTest），DevSupport 全绿；前端单测 **99/99**，E2E **14/17**（3 voice-interview 遗留失败，非 DevSupport）
+- 主要文件：`KnowledgeBaseConflictService.java`、`KnowledgeBasePersistenceService.java`、`VectorizeStreamConsumer.java`、`KnowledgeBaseConflictServiceTest.java`
+
 **2026-10-05 -- DevSupport 版本冲突治理：DB 迁移 + 上传冲突检测 + adopt/abandon API + 前端冲突展示和操作**
 - 数据模型：`V20261006` 迁移新增 `conflict` 列 + `normalized_version_label` + 部分唯一索引 `uq_kb_active_version`（同 documentKey+normalizedVersionLabel 只允许一个 active 行）
 - 上传流程：同 documentKey + 同规范化 versionLabel + 不同 fileHash → 标记 `VERSION_CONFLICT`，不投递向量化

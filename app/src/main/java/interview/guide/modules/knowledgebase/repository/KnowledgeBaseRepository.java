@@ -174,6 +174,17 @@ public interface KnowledgeBaseRepository extends JpaRepository<KnowledgeBaseEnti
     int tryStartAdopt(@Param("id") Long id);
 
     /**
+     * 原子性放弃冲突记录：CONFLICT → ABANDONED。
+     * 利用条件 UPDATE 实现乐观锁，与 tryStartAdopt 互斥。
+     *
+     * @return 受影响的行数（1=成功，0=条件不满足）
+     */
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE KnowledgeBaseEntity k SET k.vectorStatus = 'ABANDONED', k.conflict = false, k.active = false, k.vectorError = null " +
+           "WHERE k.id = :id AND k.conflict = true AND k.active = false AND k.vectorStatus = 'CONFLICT'")
+    int tryStartAbandon(@Param("id") Long id);
+
+    /**
      * 获取所有不同的服务标签（非空，按字母排序）
      */
     @Query("SELECT DISTINCT k.service FROM KnowledgeBaseEntity k WHERE k.service IS NOT NULL ORDER BY k.service")

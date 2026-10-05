@@ -85,7 +85,11 @@ public class VectorizeStreamConsumer extends AbstractStreamConsumer<VectorizeStr
     @Override
     protected boolean shouldSkip(VectorizePayload payload) {
         return knowledgeBaseRepository.findById(payload.kbId())
-            .map(kb -> kb.getVectorStatus() == VectorStatus.COMPLETED)
+            .map(kb -> {
+                VectorStatus status = kb.getVectorStatus();
+                // 跳过已完成或已放弃的记录（放弃的版本不应被处理或 promote）
+                return status == VectorStatus.COMPLETED || status == VectorStatus.ABANDONED;
+            })
             .orElse(true);
     }
 
@@ -129,11 +133,18 @@ public class VectorizeStreamConsumer extends AbstractStreamConsumer<VectorizeStr
 
     /**
      * 执行 adopt 模式的 promote 逻辑：
-     * 1. 在事务中：停用同 documentKey 的当前 active 版本，激活新版本
-     * 2. 事务外：删除旧版本的向量数据
+     * 1. 重新读取实体，确认未被 abandon（ABANDONED 状态不 promote）
+     * 2. 在事务中：停用同 documentKey 的当前 active 版本，激活新版本
+     * 3. 事务外：删除旧版本的向量数据
      */
     private void promoteAdoptedVersion(Long kbId) {
         knowledgeBaseRepository.findById(kbId).ifPresent(newKb -> {
+            // 消费者保护：如果实体已被 abandon（ABANDONED），不执行 promote
+            if (newKb.getVectorStatus() == VectorStatus.ABANDONED) {
+                log.warn("冲突版本已被放弃，跳过 promote: kbId={}", kbId);
+                return;
+            }
+
             String documentKey = newKb.getDocumentKey();
             if (documentKey == null || documentKey.isBlank()) {
                 // 无 documentKey，直接标记为 COMPLETED

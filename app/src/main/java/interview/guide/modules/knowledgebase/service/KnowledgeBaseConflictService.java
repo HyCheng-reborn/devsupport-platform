@@ -10,7 +10,6 @@ import interview.guide.modules.knowledgebase.repository.KnowledgeBaseRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 知识库版本冲突解决服务。
@@ -137,36 +136,40 @@ public class KnowledgeBaseConflictService {
   }
 
   /**
-   * 放弃冲突版本：仅清除冲突标记，不影响当前 active 版本。
+   * 放弃冲突版本：原子 CAS + 状态回退判断。
    *
    * <p>流程：
    * <ol>
-   *   <li>校验冲突记录存在</li>
-   *   <li>幂等判断：vectorStatus == ABANDONED 直接返回；ADOPTING 中抛异常</li>
-   *   <li>设置 active=false, conflict=false, vectorStatus=ABANDONED</li>
-   *   <li>不触碰当前 active 版本，不删除 S3 文件（可恢复，非破坏性）</li>
+   *   <li>原子 CAS：tryStartAbandon(id) 将 CONFLICT→ABANDONED（条件 UPDATE，与 tryStartAdopt 互斥）</li>
+   *   <li>抢占成功（affected=1）：直接返回</li>
+   *   <li>抢占失败（affected=0）：重新读取实体判断原因</li>
+   *   <li>vectorStatus=ABANDONED → 幂等返回；ADOPTING → 抛异常；COMPLETED+conflict=false → 已完成；其他 → 非法状态</li>
    * </ol>
    */
-  @Transactional(rollbackFor = Exception.class)
   public void abandonVersion(Long conflictKbId) {
-    KnowledgeBaseEntity conflictEntity = repository.findById(conflictKbId)
-      .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "知识库不存在"));
+    // 1. 原子 CAS：CONFLICT → ABANDONED（独立事务）
+    int affected = transactionalExecutor.call(() -> repository.tryStartAbandon(conflictKbId));
 
-    // 幂等判断：已放弃（vectorStatus=ABANDONED）直接返回
-    if (conflictEntity.getVectorStatus() == VectorStatus.ABANDONED) {
-      log.info("冲突版本已放弃，跳过: kbId={}", conflictKbId);
+    if (affected == 1) {
+      log.info("冲突版本已放弃: kbId={}", conflictKbId);
       return;
     }
-    VectorStatus currentStatus = conflictEntity.getVectorStatus();
-    if (currentStatus == VectorStatus.ADOPTING) {
-      throw new BusinessException(ErrorCode.BAD_REQUEST, "该冲突版本正在采纳中，无法放弃");
+
+    // 2. affected == 0：重新读取实体判断原因
+    KnowledgeBaseEntity entity = repository.findById(conflictKbId)
+      .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "知识库不存在"));
+
+    VectorStatus status = entity.getVectorStatus();
+    if (status == VectorStatus.ABANDONED) {
+      log.info("冲突版本已放弃（幂等），跳过: kbId={}", conflictKbId);
+      return;
     }
-
-    conflictEntity.setActive(false);
-    conflictEntity.setConflict(false);
-    conflictEntity.setVectorStatus(VectorStatus.ABANDONED);
-    repository.save(conflictEntity);
-
-    log.info("冲突版本已放弃: kbId={}, documentKey={}", conflictKbId, conflictEntity.getDocumentKey());
+    if (status == VectorStatus.ADOPTING) {
+      throw new BusinessException(ErrorCode.BAD_REQUEST, "版本正在采用中，无法放弃");
+    }
+    if (status == VectorStatus.COMPLETED && !Boolean.TRUE.equals(entity.getConflict())) {
+      throw new BusinessException(ErrorCode.BAD_REQUEST, "版本已完成采纳，无法放弃");
+    }
+    throw new BusinessException(ErrorCode.BAD_REQUEST, "非法状态，无法放弃");
   }
 }

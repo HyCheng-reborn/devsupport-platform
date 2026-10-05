@@ -279,32 +279,32 @@ class KnowledgeBaseConflictServiceTest {
   class AbandonVersion {
 
     @Test
-    @DisplayName("正常放弃：清除冲突标记和 active，vectorStatus 设为 ABANDONED")
+    @DisplayName("正常放弃：tryStartAbandon 返回 1，原子 CAS 成功")
     void abandon_success() {
-      KnowledgeBaseEntity conflictEntity = buildConflictEntity(2L, "dk1", true);
-      conflictEntity.setActive(false);
-      conflictEntity.setConflict(true);
-      conflictEntity.setVectorStatus(VectorStatus.CONFLICT);
-
-      when(repository.findById(2L)).thenReturn(Optional.of(conflictEntity));
-      when(repository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+      // transactionalExecutor.call() 直接执行 Supplier
+      doAnswer(invocation -> {
+        java.util.function.Supplier<?> supplier = invocation.getArgument(0);
+        return supplier.get();
+      }).when(transactionalExecutor).call(any());
+      when(repository.tryStartAbandon(2L)).thenReturn(1);
 
       // 执行
       conflictService.abandonVersion(2L);
 
-      // 验证：冲突标记被清除
-      assertThat(conflictEntity.getConflict()).isFalse();
-      // 验证：vectorStatus 设为 ABANDONED
-      assertThat(conflictEntity.getVectorStatus()).isEqualTo(VectorStatus.ABANDONED);
-      // 验证：active 为 false
-      assertThat(conflictEntity.getActive()).isFalse();
-      // 验证：保存操作被调用
-      verify(repository).save(conflictEntity);
+      // 验证：tryStartAbandon 被调用，无需 findById/save
+      verify(repository).tryStartAbandon(2L);
+      verify(repository, never()).findById(anyLong());
+      verify(repository, never()).save(any());
     }
 
     @Test
-    @DisplayName("不存在的 ID 调用 abandon → 抛出 BusinessException")
+    @DisplayName("不存在的 ID 调用 abandon → tryStartAbandon 返回 0，re-read 抛 NotFoundException")
     void abandon_notFound_throws() {
+      doAnswer(invocation -> {
+        java.util.function.Supplier<?> supplier = invocation.getArgument(0);
+        return supplier.get();
+      }).when(transactionalExecutor).call(any());
+      when(repository.tryStartAbandon(999L)).thenReturn(0);
       when(repository.findById(999L)).thenReturn(Optional.empty());
 
       assertThatThrownBy(() -> conflictService.abandonVersion(999L))
@@ -315,13 +315,18 @@ class KnowledgeBaseConflictServiceTest {
     }
 
     @Test
-    @DisplayName("放弃已放弃的版本（vectorStatus=ABANDONED）→ 幂等无操作")
+    @DisplayName("放弃已放弃的版本（tryStartAbandon=0, ABANDONED）→ 幂等无操作")
     void abandon_alreadyAbandoned_idempotent() {
       KnowledgeBaseEntity entity = buildConflictEntity(2L, "dk1", false);
       entity.setActive(false);
       entity.setConflict(false);
-      entity.setVectorStatus(VectorStatus.ABANDONED); // 已放弃
+      entity.setVectorStatus(VectorStatus.ABANDONED);
 
+      doAnswer(invocation -> {
+        java.util.function.Supplier<?> supplier = invocation.getArgument(0);
+        return supplier.get();
+      }).when(transactionalExecutor).call(any());
+      when(repository.tryStartAbandon(2L)).thenReturn(0);
       when(repository.findById(2L)).thenReturn(Optional.of(entity));
 
       // 执行：不应抛异常
@@ -332,18 +337,67 @@ class KnowledgeBaseConflictServiceTest {
     }
 
     @Test
-    @DisplayName("放弃正在 ADOPTING 中的版本 → 抛出 BusinessException")
+    @DisplayName("放弃正在 ADOPTING 中的版本（tryStartAbandon=0）→ 抛出 BusinessException('正在采用中')")
     void abandon_whileAdopting_throws() {
       KnowledgeBaseEntity entity = buildConflictEntity(2L, "dk1", true);
       entity.setActive(false);
       entity.setConflict(true);
       entity.setVectorStatus(VectorStatus.ADOPTING);
 
+      doAnswer(invocation -> {
+        java.util.function.Supplier<?> supplier = invocation.getArgument(0);
+        return supplier.get();
+      }).when(transactionalExecutor).call(any());
+      when(repository.tryStartAbandon(2L)).thenReturn(0);
       when(repository.findById(2L)).thenReturn(Optional.of(entity));
 
       assertThatThrownBy(() -> conflictService.abandonVersion(2L))
           .isInstanceOf(BusinessException.class)
-          .hasMessageContaining("正在采纳中");
+          .hasMessageContaining("正在采用中");
+
+      verify(repository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("已完成采纳的版本（COMPLETED+conflict=false）→ 抛出 BusinessException('已完成采纳')")
+    void abandon_completedConflictFalse_throws() {
+      KnowledgeBaseEntity entity = buildConflictEntity(2L, "dk1", false);
+      entity.setActive(true);
+      entity.setConflict(false);
+      entity.setVectorStatus(VectorStatus.COMPLETED);
+
+      doAnswer(invocation -> {
+        java.util.function.Supplier<?> supplier = invocation.getArgument(0);
+        return supplier.get();
+      }).when(transactionalExecutor).call(any());
+      when(repository.tryStartAbandon(2L)).thenReturn(0);
+      when(repository.findById(2L)).thenReturn(Optional.of(entity));
+
+      assertThatThrownBy(() -> conflictService.abandonVersion(2L))
+          .isInstanceOf(BusinessException.class)
+          .hasMessageContaining("已完成采纳");
+
+      verify(repository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("非法状态（tryStartAbandon=0, FAILED）→ 抛出 BusinessException('非法状态')")
+    void abandon_illegalStatus_throws() {
+      KnowledgeBaseEntity entity = buildConflictEntity(2L, "dk1", true);
+      entity.setActive(false);
+      entity.setConflict(true);
+      entity.setVectorStatus(VectorStatus.FAILED);
+
+      doAnswer(invocation -> {
+        java.util.function.Supplier<?> supplier = invocation.getArgument(0);
+        return supplier.get();
+      }).when(transactionalExecutor).call(any());
+      when(repository.tryStartAbandon(2L)).thenReturn(0);
+      when(repository.findById(2L)).thenReturn(Optional.of(entity));
+
+      assertThatThrownBy(() -> conflictService.abandonVersion(2L))
+          .isInstanceOf(BusinessException.class)
+          .hasMessageContaining("非法状态");
 
       verify(repository, never()).save(any());
     }
