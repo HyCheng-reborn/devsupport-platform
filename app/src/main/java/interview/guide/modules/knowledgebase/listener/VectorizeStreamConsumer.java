@@ -98,6 +98,36 @@ public class VectorizeStreamConsumer extends AbstractStreamConsumer<VectorizeStr
         updateVectorStatus(payload.kbId(), VectorStatus.PROCESSING, null);
     }
 
+    /**
+     * 原子领取：adopt 模式使用条件 UPDATE 防止 abandon 时序窗口竞争。
+     * 非 adopt 模式保持原有 findById+save 语义。
+     */
+    @Override
+    protected boolean tryMarkProcessing(VectorizePayload payload) {
+        if (payload.adoptMode()) {
+            int affected = transactionalExecutor.call(
+                () -> knowledgeBaseRepository.tryClaimForProcessing(payload.kbId()));
+            if (affected == 1) {
+                return true;
+            }
+            // 领取失败：重新读取实体判断原因
+            knowledgeBaseRepository.findById(payload.kbId()).ifPresent(kb -> {
+                VectorStatus status = kb.getVectorStatus();
+                if (status == VectorStatus.ABANDONED) {
+                    log.info("adopt 消息领取时实体已被放弃，跳过: kbId={}", payload.kbId());
+                } else if (status == VectorStatus.COMPLETED) {
+                    log.info("adopt 消息领取时实体已完成，跳过: kbId={}", payload.kbId());
+                } else {
+                    log.warn("adopt 消息领取失败，状态不合法，跳过: kbId={}, status={}",
+                        payload.kbId(), status);
+                }
+            });
+            return false;
+        }
+        markProcessing(payload);
+        return true;
+    }
+
     @Override
     protected void processBusiness(VectorizePayload payload) {
         Long kbId = payload.kbId();
@@ -133,56 +163,59 @@ public class VectorizeStreamConsumer extends AbstractStreamConsumer<VectorizeStr
 
     /**
      * 执行 adopt 模式的 promote 逻辑：
-     * 1. 重新读取实体，确认未被 abandon（ABANDONED 状态不 promote）
-     * 2. 在事务中：停用同 documentKey 的当前 active 版本，激活新版本
-     * 3. 事务外：删除旧版本的向量数据
+     * 1. 查找同 documentKey 的当前 active 版本（排除自己）
+     * 2. 在同一事务中：先停用旧版本，再原子完成新版本（PROCESSING → COMPLETED + active=true）
+     * 3. 若原子操作返回 0（状态已被 abandon 改变），跳过 promote
+     * 4. 事务外：删除旧版本的向量数据
      */
     private void promoteAdoptedVersion(Long kbId) {
-        knowledgeBaseRepository.findById(kbId).ifPresent(newKb -> {
-            // 消费者保护：如果实体已被 abandon（ABANDONED），不执行 promote
-            if (newKb.getVectorStatus() == VectorStatus.ABANDONED) {
-                log.warn("冲突版本已被放弃，跳过 promote: kbId={}", kbId);
-                return;
-            }
+        KnowledgeBaseEntity newKb = knowledgeBaseRepository.findById(kbId).orElse(null);
+        if (newKb == null) {
+            log.warn("promote 时实体不存在，跳过: kbId={}", kbId);
+            return;
+        }
 
-            String documentKey = newKb.getDocumentKey();
-            if (documentKey == null || documentKey.isBlank()) {
-                // 无 documentKey，直接标记为 COMPLETED
-                updateVectorStatus(kbId, VectorStatus.COMPLETED, null);
-                return;
-            }
+        String documentKey = newKb.getDocumentKey();
+        if (documentKey == null || documentKey.isBlank()) {
+            // 无 documentKey，回退到简单标记 COMPLETED
+            updateVectorStatus(kbId, VectorStatus.COMPLETED, null);
+            return;
+        }
 
-            // 查找同 documentKey 的当前 active 版本（排除自己）
-            List<KnowledgeBaseEntity> currentActive = knowledgeBaseRepository
-                .findByDocumentKeyAndActiveTrueOrderByVersionNoDesc(documentKey).stream()
-                .filter(e -> !e.getId().equals(kbId))
-                .toList();
+        // 查找同 documentKey 的当前 active 版本（排除自己）
+        List<KnowledgeBaseEntity> currentActive = knowledgeBaseRepository
+            .findByDocumentKeyAndActiveTrueOrderByVersionNoDesc(documentKey).stream()
+            .filter(e -> !e.getId().equals(kbId))
+            .toList();
 
-            // 在事务中：停用旧版本 + 激活新版本
-            transactionalExecutor.run(() -> {
-                for (KnowledgeBaseEntity old : currentActive) {
-                    old.setActive(false);
-                    knowledgeBaseRepository.save(old);
-                }
-                newKb.setActive(true);
-                newKb.setConflict(false);
-                newKb.setVectorStatus(VectorStatus.COMPLETED);
-                newKb.setVectorError(null);
-                knowledgeBaseRepository.save(newKb);
-            });
-
-            // 事务外：删除旧版本的向量
+        // 在同一事务中：先停用旧版本，再原子完成新版本
+        // 避免唯一约束 uq_kb_active_version (document_key, normalized_version_label) 冲突
+        int affected = transactionalExecutor.call(() -> {
+            // 先停用旧版本（释放唯一约束位置）
             for (KnowledgeBaseEntity old : currentActive) {
-                try {
-                    vectorService.deleteByKnowledgeBaseId(old.getId());
-                } catch (Exception e) {
-                    log.warn("删除旧版本向量失败（可后续手动清理）: oldKbId={}", old.getId(), e);
-                }
+                old.setActive(false);
+                knowledgeBaseRepository.save(old);
             }
-
-            log.info("冲突版本采纳完成: kbId={}, documentKey={}, 已停用旧版本数={}",
-                kbId, documentKey, currentActive.size());
+            // 再原子完成新版本：PROCESSING → COMPLETED + active=true + conflict=false
+            return knowledgeBaseRepository.tryCompleteAdopt(kbId);
         });
+
+        if (affected == 0) {
+            log.warn("promote 原子操作失败，状态已变更，跳过: kbId={}", kbId);
+            return;
+        }
+
+        // 事务外：删除旧版本的向量
+        for (KnowledgeBaseEntity old : currentActive) {
+            try {
+                vectorService.deleteByKnowledgeBaseId(old.getId());
+            } catch (Exception e) {
+                log.warn("删除旧版本向量失败（可后续手动清理）: oldKbId={}", old.getId(), e);
+            }
+        }
+
+        log.info("冲突版本采纳完成: kbId={}, documentKey={}, 已停用旧版本数={}",
+            kbId, documentKey, currentActive.size());
     }
 
     @Override

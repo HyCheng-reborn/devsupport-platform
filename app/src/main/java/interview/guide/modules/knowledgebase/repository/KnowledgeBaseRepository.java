@@ -185,6 +185,28 @@ public interface KnowledgeBaseRepository extends JpaRepository<KnowledgeBaseEnti
     int tryStartAbandon(@Param("id") Long id);
 
     /**
+     * 原子性领取向量化任务：ADOPTING/PENDING → PROCESSING。
+     * 消费者在处理 adopt 消息前调用，防止 abandon 时序窗口导致的状态竞争。
+     *
+     * @return 受影响的行数（1=成功领取，0=条件不满足，状态已变）
+     */
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE KnowledgeBaseEntity k SET k.vectorStatus = 'PROCESSING' " +
+           "WHERE k.id = :id AND k.vectorStatus IN ('ADOPTING', 'PENDING')")
+    int tryClaimForProcessing(@Param("id") Long id);
+
+    /**
+     * 原子性完成 adopt：PROCESSING → COMPLETED + active=true + conflict=false。
+     * 消费者在向量化完成后调用，若状态已被 abandon 改变则返回 0。
+     *
+     * @return 受影响的行数（1=成功 promote，0=状态已变）
+     */
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE KnowledgeBaseEntity k SET k.vectorStatus = 'COMPLETED', k.active = true, k.conflict = false, k.vectorError = null " +
+           "WHERE k.id = :id AND k.vectorStatus = 'PROCESSING'")
+    int tryCompleteAdopt(@Param("id") Long id);
+
+    /**
      * 获取所有不同的服务标签（非空，按字母排序）
      */
     @Query("SELECT DISTINCT k.service FROM KnowledgeBaseEntity k WHERE k.service IS NOT NULL ORDER BY k.service")

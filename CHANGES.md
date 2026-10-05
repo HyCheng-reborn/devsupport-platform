@@ -1,3 +1,11 @@
+**2026-10-06 -- 消费者原子领取 + adopt 测试轮询终态**
+- 消费者原子领取：`tryClaimForProcessing` 条件 UPDATE（ADOPTING/PENDING→PROCESSING），防止 abandon 时序窗口内消费者重复领取
+- 消费者原子完成：`tryCompleteAdopt` 条件 UPDATE（PROCESSING→COMPLETED + promote），保证完成与 promote 原子性
+- abandon 时序窗口测试：消费者初检后 abandon 抢先 → 领取必须失败，验证 abandon 在消费者处理前的安全窗口
+- adopt 测试改用 `awaitStatus` 轮询等待终态（移除 `Thread.sleep`），提升测试稳定性和确定性
+- 测试：后端全量 **634 tests**（621 passed, 10 Voice Redis 遗留失败, 3 skipped），DevSupport 全绿；前端单测 **99/99**，E2E **14/17**（3 voice-interview 遗留失败，非 DevSupport）
+- 主要文件：`KnowledgeBaseRepository.java`、`VectorizeStreamConsumer.java`、`KnowledgeBaseConflictService.java`、`KnowledgeBaseConflictServiceTest.java`、`KnowledgeBaseUploadPipelineIntegrationTest.java`
+
 **2026-10-05 -- DevSupport adopt/abandon 并发竞态修复 + Redis Stream 消息数断言**
 - abandon 原子 CAS：`tryStartAbandon` 条件 UPDATE 确保只有 CONFLICT/ADOPTING 状态可放弃，防止并发 abandon 重复投递
 - adopt/abandon 互斥验证：CountDownLatch 制造并发竞争，XOR 测试确保 adopt 和 abandon 互斥（只有一个能成功）

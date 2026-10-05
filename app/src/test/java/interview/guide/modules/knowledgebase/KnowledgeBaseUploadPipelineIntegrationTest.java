@@ -11,6 +11,7 @@ import interview.guide.modules.knowledgebase.service.KnowledgeBaseConflictServic
 import interview.guide.modules.knowledgebase.service.KnowledgeBaseListService;
 import interview.guide.modules.knowledgebase.service.KnowledgeBaseUploadService;
 import interview.guide.modules.knowledgebase.service.KnowledgeBaseVectorService;
+import interview.guide.common.transaction.TransactionalExecutor;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import jakarta.persistence.EntityManager;
@@ -160,6 +161,7 @@ class KnowledgeBaseUploadPipelineIntegrationTest {
     @Autowired RedisService redisService;
     @Autowired JdbcTemplate jdbcTemplate;
     @Autowired EntityManager entityManager;
+    @Autowired TransactionalExecutor transactionalExecutor;
 
     @SuppressWarnings("unchecked")
     private Long extractId(Map<String, Object> result) {
@@ -851,23 +853,26 @@ class KnowledgeBaseUploadPipelineIntegrationTest {
         assertThat(adoptWon ^ abandonWon)
             .as("恰好一个操作成功（XOR）").isTrue();
 
-        // 等待异步处理稳定
-        Thread.sleep(2000);
-
-        KnowledgeBaseEntity kb2Final = knowledgeBaseRepository.findById(id2).orElseThrow();
-        KnowledgeBaseEntity kb1Final = knowledgeBaseRepository.findById(id1).orElseThrow();
-
         if (adoptWon) {
-            // adopt 赢了：最终状态应是 ADOPTING 或 COMPLETED（异步完成后）
+            // adopt 赢了：同步部分发 Redis Stream 消息，异步消费者完成向量化和 promote
+            // 轮询等待终态 COMPLETED
+            KnowledgeBaseEntity kb2Final = awaitStatus(id2, VectorStatus.COMPLETED, 30_000);
             assertThat(kb2Final.getVectorStatus())
-                .as("adopt 赢时最终状态应为 ADOPTING 或 COMPLETED")
-                .isIn(VectorStatus.ADOPTING, VectorStatus.PROCESSING, VectorStatus.COMPLETED);
+                .as("adopt 赢时最终状态应为 COMPLETED")
+                .isEqualTo(VectorStatus.COMPLETED);
+            assertThat(kb2Final.getActive()).as("adopt 赢时新版本应被激活").isTrue();
+            assertThat(kb2Final.getConflict()).as("冲突标记应被清除").isFalse();
             // abandon 应抛异常
             assertThat(abandonEx).isNotNull();
-            // 旧版本可能最终被停用（如果 adopt 异步完成）
-            // 但不能被 ABANDONED 状态的新版本替换
+            // 旧版本应被停用
+            KnowledgeBaseEntity kb1Final = knowledgeBaseRepository.findById(id1).orElseThrow();
+            assertThat(kb1Final.getActive())
+                .as("adopt 赢时旧版本应被停用").isFalse();
         } else {
             // abandon 赢了：最终状态应是 ABANDONED
+            entityManager.clear();
+            KnowledgeBaseEntity kb2Final = knowledgeBaseRepository.findById(id2).orElseThrow();
+            KnowledgeBaseEntity kb1Final = knowledgeBaseRepository.findById(id1).orElseThrow();
             assertThat(kb2Final.getVectorStatus())
                 .as("abandon 赢时最终状态应为 ABANDONED")
                 .isEqualTo(VectorStatus.ABANDONED);
@@ -879,12 +884,63 @@ class KnowledgeBaseUploadPipelineIntegrationTest {
             assertThat(kb1Final.getActive())
                 .as("abandon 赢时旧版本应保持 active").isTrue();
         }
+    }
 
-        // 无论谁赢，不能出现：ABANDONED + active=true（放弃的版本被激活）
-        if (kb2Final.getVectorStatus() == VectorStatus.ABANDONED) {
-            assertThat(kb2Final.getActive())
-                .as("ABANDONED 版本不能是 active").isFalse();
-        }
+    @Test
+    @DisplayName("消费者领取前 abandon 先成功 → 原子领取必须失败，最终状态 ABANDONED")
+    void consumerClaim_afterAbandon_mustFail() throws Exception {
+        Long[] ids = createConflictScenario("claimabn");
+        Long id1 = ids[0], id2 = ids[1];
+
+        // 确认冲突状态
+        KnowledgeBaseEntity kb2Before = knowledgeBaseRepository.findById(id2).orElseThrow();
+        assertThat(kb2Before.getConflict()).isTrue();
+        assertThat(kb2Before.getVectorStatus()).isEqualTo(VectorStatus.CONFLICT);
+
+        // 模拟 adopt 已启动（消费者已读取消息，但尚未领取）
+        int adoptAffected = transactionalExecutor.call(
+            () -> knowledgeBaseRepository.tryStartAdopt(id2));
+        assertThat(adoptAffected).isEqualTo(1);
+        KnowledgeBaseEntity kb2Adopting = knowledgeBaseRepository.findById(id2).orElseThrow();
+        assertThat(kb2Adopting.getVectorStatus()).isEqualTo(VectorStatus.ADOPTING);
+
+        // 时序窗口：在消费者调用 tryClaimForProcessing 之前，abandon 先成功
+        // 因为 ADOPTING 不满足 tryStartAbandon 的条件（需要 CONFLICT），直接通过 SQL 设置 ABANDONED
+        jdbcTemplate.update(
+            "UPDATE knowledge_bases SET vector_status = 'ABANDONED', conflict = false, active = false, vector_error = NULL WHERE id = ?",
+            id2);
+        entityManager.clear();
+
+        KnowledgeBaseEntity kb2Abandoned = knowledgeBaseRepository.findById(id2).orElseThrow();
+        assertThat(kb2Abandoned.getVectorStatus()).isEqualTo(VectorStatus.ABANDONED);
+
+        // 消费者尝试原子领取 → 必须返回 0（ADOPTING/PENDING 条件不满足）
+        int claimAffected = transactionalExecutor.call(
+            () -> knowledgeBaseRepository.tryClaimForProcessing(id2));
+        assertThat(claimAffected)
+            .as("abandon 后原子领取应返回 0")
+            .isEqualTo(0);
+
+        // 最终状态断言
+        entityManager.clear();
+        KnowledgeBaseEntity kb2Final = knowledgeBaseRepository.findById(id2).orElseThrow();
+        assertThat(kb2Final.getVectorStatus())
+            .as("最终状态应为 ABANDONED")
+            .isEqualTo(VectorStatus.ABANDONED);
+        assertThat(kb2Final.getActive()).isFalse();
+        assertThat(kb2Final.getConflict()).isFalse();
+
+        // 旧版本仍然 active
+        KnowledgeBaseEntity kb1Final = knowledgeBaseRepository.findById(id1).orElseThrow();
+        assertThat(kb1Final.getActive())
+            .as("旧版本应保持 active=true")
+            .isTrue();
+        assertThat(kb1Final.getVectorStatus()).isEqualTo(VectorStatus.COMPLETED);
+
+        // 没有向量化工作被完成（ABANDONED 版本不应有向量）
+        assertThat(vectorRowCount(id2))
+            .as("ABANDONED 版本不应有向量数据")
+            .isZero();
     }
 
     @Test
