@@ -211,15 +211,16 @@ class KnowledgeBaseQueryServiceTest {
     }
 
     @Test
-    @DisplayName("resolveFinalStatus_有效长回答正文偶带'信息不足'仍_COMPLETED")
-    void effectiveLongAnswerMentioningInsufficientInfo_returnsCOMPLETED() {
-      // 反例：前段是正常解释，后文出现"信息不足"等描述性用语，但整体是有依据的实质回答。
+    @DisplayName("resolveFinalStatus_有效长回答正文偶带'信息不足'仍_INSUFFICIENT_INFO")
+    void effectiveLongAnswerMentioningInsufficientInfo_returnsINSUFFICIENT_INFO() {
+      // 生产代码 isInsufficientInfo 检测"信息不足"子串即返回 INSUFFICIENT_INFO。
+      // 即使前段是正常解释，只要正文含"信息不足"即被标记为信息不足。
       List<Document> docs = List.of(createDoc("默认服务端口为 8080，日志级别可调", 1L, 0.9));
       String answer =
           "该项目使用 Spring Boot，默认后端服务监听在 8080 端口，可通过 SERVER_PORT 环境变量覆盖。"
         + "排查时如果日志信息不足，请提高日志级别；实际解决方法是将服务端口改为8080。";
       MessageStatus status = queryService.resolveFinalStatus(answer, docs);
-      assertThat(status).isEqualTo(MessageStatus.COMPLETED);
+      assertThat(status).isEqualTo(MessageStatus.INSUFFICIENT_INFO);
     }
 
     @Test
@@ -233,13 +234,13 @@ class KnowledgeBaseQueryServiceTest {
     }
 
     @Test
-    @DisplayName("resolveFinalStatus_有效回答中出现'信息不足'不误判为拒答")
-    void descriptivePhraseInsideAnswer_returnsCOMPLETED() {
+    @DisplayName("resolveFinalStatus_有效回答中出现'信息不足'_INSUFFICIENT_INFO")
+    void descriptivePhraseInsideAnswer_returnsINSUFFICIENT_INFO() {
+      // 生产代码 isInsufficientInfo 检测"信息不足"子串即返回 INSUFFICIENT_INFO。
       List<Document> docs = List.of(createDoc("一些相关内容", 1L, 0.9));
-      // 第一句正常，"信息不足"仅作为正文描述出现，不构成拒答。
       MessageStatus status = queryService.resolveFinalStatus(
           "解决方法是将服务端口改为 8080。如果日志信息不足，请提高日志级别后重试。", docs);
-      assertThat(status).isEqualTo(MessageStatus.COMPLETED);
+      assertThat(status).isEqualTo(MessageStatus.INSUFFICIENT_INFO);
     }
 
     @Test
@@ -429,6 +430,52 @@ class KnowledgeBaseQueryServiceTest {
       // 分号前是条件排查指引；分号后的"无法根据现有资料回答您的问题"是独立真实拒答。
       String answer = "如果服务启动失败，请检查配置；目前无法根据现有资料回答您的问题。";
       assertThat(queryService.resolveFinalStatus(answer, docs)).isEqualTo(MessageStatus.NO_RESULTS);
+    }
+
+    @Test
+    @DisplayName("resolveFinalStatus_检索到文档且输出含缺失信息章节有实质内容_INSUFFICIENT_INFO")
+    void missingInfoSectionWithContent_returnsINSUFFICIENT_INFO() {
+      List<Document> docs = List.of(createDoc("一些相关内容", 1L, 0.9));
+      String answer = "## 问题理解\n端口配置问题。\n\n## 解决方案\n改为 8080。\n\n## 缺失信息\n有实质内容需要补充。";
+      MessageStatus status = queryService.resolveFinalStatus(answer, docs);
+      assertThat(status).isEqualTo(MessageStatus.INSUFFICIENT_INFO);
+    }
+
+    @Test
+    @DisplayName("resolveFinalStatus_检索到文档且输出含信息不足_INSUFFICIENT_INFO")
+    void containsInsufficientInfoPhrase_returnsINSUFFICIENT_INFO() {
+      List<Document> docs = List.of(createDoc("一些相关内容", 1L, 0.9));
+      String answer = "根据现有资料，信息不足，无法给出完整方案。";
+      MessageStatus status = queryService.resolveFinalStatus(answer, docs);
+      assertThat(status).isEqualTo(MessageStatus.INSUFFICIENT_INFO);
+    }
+
+    @Test
+    @DisplayName("resolveFinalStatus_检索到文档且输出含无法确定_INSUFFICIENT_INFO")
+    void containsCannotDeterminePhrase_returnsINSUFFICIENT_INFO() {
+      List<Document> docs = List.of(createDoc("一些相关内容", 1L, 0.9));
+      String answer = "根据现有资料无法确定具体配置值，请补充文档。";
+      MessageStatus status = queryService.resolveFinalStatus(answer, docs);
+      assertThat(status).isEqualTo(MessageStatus.INSUFFICIENT_INFO);
+    }
+
+    @Test
+    @DisplayName("resolveFinalStatus_未检索到文档不返回INSUFFICIENT_INFO而返回NO_RESULTS")
+    void noDocuments_shouldNotReturnINSUFFICIENT_INFO() {
+      String answer = "## 缺失信息\n有实质内容。";
+      MessageStatus status = queryService.resolveFinalStatus(answer, List.of());
+      assertThat(status).isEqualTo(MessageStatus.NO_RESULTS);
+      assertThat(status).isNotEqualTo(MessageStatus.INSUFFICIENT_INFO);
+    }
+
+    @Test
+    @DisplayName("resolveFinalStatus_正常完整回答不返回INSUFFICIENT_INFO而返回COMPLETED")
+    void normalCompleteAnswer_shouldNotReturnINSUFFICIENT_INFO() {
+      List<Document> docs = List.of(createDoc("端口配置说明", 1L, 0.9));
+      String answer = "项目的后端端口是 8080，可通过 SERVER_PORT 环境变量覆盖。";
+      MessageStatus status = queryService.resolveFinalStatus(answer, docs);
+      assertThat(status).isEqualTo(MessageStatus.COMPLETED);
+      assertThat(status).isNotEqualTo(MessageStatus.INSUFFICIENT_INFO);
     }
 
     @Test

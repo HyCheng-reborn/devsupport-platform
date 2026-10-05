@@ -7,11 +7,12 @@ import {
   sourcesDisplayMode,
 } from './ragStreamStatus.ts';
 
-test('parseDoneStatus 解析服务端确认的四种最终状态', () => {
+test('parseDoneStatus 解析服务端确认的五种最终状态（含 INSUFFICIENT_INFO）', () => {
   assert.equal(parseDoneStatus('{"status":"COMPLETED"}'), 'COMPLETED');
   assert.equal(parseDoneStatus('{"status":"NO_RESULTS"}'), 'NO_RESULTS');
   assert.equal(parseDoneStatus('{"status":"MODEL_FAILED"}'), 'MODEL_FAILED');
   assert.equal(parseDoneStatus('{"status":"CLIENT_DISCONNECTED"}'), 'CLIENT_DISCONNECTED');
+  assert.equal(parseDoneStatus('{"status":"INSUFFICIENT_INFO"}'), 'INSUFFICIENT_INFO');
 });
 
 test('parseDoneStatus 缺失/非法/未知状态返回 undefined（不得据此判定成功）', () => {
@@ -40,6 +41,10 @@ test('sourcesDisplayMode 使失败/无结果不显示成有依据的正常回答
   // 流式生成中（尚未提交状态）不渲染来源
   assert.equal(sourcesDisplayMode(undefined), 'pending');
   assert.equal(sourcesDisplayMode(null), 'pending');
+});
+
+test('sourcesDisplayMode: INSUFFICIENT_INFO 返回 insufficient', () => {
+  assert.equal(sourcesDisplayMode('INSUFFICIENT_INFO'), 'insufficient');
 });
 
 test('selectSourcesForStatus 无结果一律清空来源，其余保留', () => {

@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 import {
+  AlertTriangle,
   ArrowLeft,
   Edit,
   Loader2,
@@ -366,6 +367,15 @@ export default function ChatSessionDetailPage() {
                           const mode = sourcesDisplayMode(msg.status);
                           if (mode !== 'grounded' && mode !== 'degraded') return null;
                           const isGrounded = mode === 'grounded';
+                          // 检测是否存在多个不同 versionLabel（非空）
+                          const uniqueVersions = Array.from(
+                            new Set(
+                              msg.sources!
+                                .map((s) => s.versionLabel?.trim())
+                                .filter((v): v is string => !!v)
+                            )
+                          );
+                          const hasMultipleVersions = uniqueVersions.length > 1;
                           return (
                             <div
                               className={`mt-2 border-t pt-2 ${
@@ -374,6 +384,14 @@ export default function ChatSessionDetailPage() {
                                   : 'border-amber-200 dark:border-amber-700/50'
                               }`}
                             >
+                              {hasMultipleVersions && (
+                                <div className="mb-2 flex items-center gap-2 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/50 px-3 py-2">
+                                  <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                                  <span className="text-xs text-amber-700 dark:text-amber-400">
+                                    本次回答引用了多个版本文档，请注意版本适用性
+                                  </span>
+                                </div>
+                              )}
                               <div className="text-xs text-gray-500 dark:text-slate-400 mb-1">
                                 {isGrounded ? '引用来源：' : '检索到的参考文档（仅供参考）：'}
                               </div>
@@ -389,7 +407,15 @@ export default function ChatSessionDetailPage() {
                                       }`}
                                     >
                                       <span className="inline-flex items-center gap-1.5 flex-wrap">
-                                        <span>{view.documentName}</span>
+                                        <span>
+                                          {view.documentName}
+                                          {view.sectionTitle && (
+                                            <>
+                                              <span className="text-gray-400 dark:text-slate-500 mx-0.5">&gt;</span>
+                                              <span className="text-slate-600 dark:text-slate-300">{view.sectionTitle}</span>
+                                            </>
+                                          )}
+                                        </span>
                                         {view.serviceName && (
                                           <span className="px-1 py-0.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded text-[10px]">
                                             {view.serviceName}
@@ -419,7 +445,15 @@ export default function ChatSessionDetailPage() {
                             </div>
                           );
                         })()}
-                        {msg.status && msg.status !== 'COMPLETED' && (
+                        {msg.status === 'INSUFFICIENT_INFO' && (
+                          <div className="mt-2 flex items-center gap-2 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/50 px-3 py-2">
+                            <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                            <span className="text-xs text-amber-700 dark:text-amber-400">
+                              信息不足，建议补充更多细节或检查相关文档
+                            </span>
+                          </div>
+                        )}
+                        {msg.status && msg.status !== 'COMPLETED' && msg.status !== 'INSUFFICIENT_INFO' && (
                           <div className="mt-1 text-xs">
                             {msg.status === 'NO_RESULTS' && (
                               <span className="text-yellow-500">未找到相关文档</span>

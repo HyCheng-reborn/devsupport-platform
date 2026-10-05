@@ -315,11 +315,13 @@ public class KnowledgeBaseQueryService {
      * 依据实际检索结果与模型最终输出，确定这条回答的最终状态。
      * <ul>
      *   <li>未检索到文档：NO_RESULTS。</li>
-     *   <li>检索到文档，但模型最终输出为空或为"整段式明确拒答"：NO_RESULTS——
+     *   <li>检索到文档，但模型最终输出为空或为“整段式明确拒答”：NO_RESULTS——
      *       避免把一段拒答保存为有依据的 COMPLETED 回答。有效长回答即使在正文中偶带
-     *       "信息不足"等描述性用语，也不视为拒答（见 {@link #isExplicitRefusal}）。</li>
+     *       “信息不足”等描述性用语，也不视为拒答（见 {@link #isExplicitRefusal}）。</li>
+     *   <li>检索到文档，模型有输出但内容表明信息不足：INSUFFICIENT_INFO。</li>
      *   <li>检索到文档且模型给出了实质性回答：COMPLETED。</li>
      * </ul>
+     * 优先级：COMPLETED > INSUFFICIENT_INFO > NO_RESULTS > MODEL_FAILED。
      * 说明：MODEL_FAILED / CLIENT_DISCONNECTED 由调用方在流式终止信号处判定，
      * 本方法只覆盖“流正常完成”后的内容层面状态。
      *
@@ -335,7 +337,49 @@ public class KnowledgeBaseQueryService {
         if (normalized.isEmpty() || isExplicitRefusal(normalized)) {
             return MessageStatus.NO_RESULTS;
         }
+        if (isInsufficientInfo(normalized)) {
+            return MessageStatus.INSUFFICIENT_INFO;
+        }
         return MessageStatus.COMPLETED;
+    }
+    
+    /**
+     * 检测模型输出是否表明信息不足。
+     * 判定条件：
+     * <ul>
+     *   <li>包含「缺失信息」章节且有实质内容（非空章节）</li>
+     *   <li>或包含“信息不足”“无法确定”“需要更多信息”等关键短语</li>
+     * </ul>
+     */
+    private boolean isInsufficientInfo(String text) {
+        // 检查「缺失信息」章节是否有实质内容
+        if (hasMissingInfoSection(text)) {
+            return true;
+        }
+        // 检查关键短语
+        return text.contains("信息不足")
+            || text.contains("无法确定")
+            || text.contains("需要更多信息")
+            || text.contains("无法判断")
+            || text.contains("资料不足");
+    }
+    
+    /**
+     * 检查是否存在「缺失信息」章节且有实质内容。
+     * 匹配 `## 缺失信息` 后跟非空内容（不只是空白或下一个标题）。
+     */
+    private boolean hasMissingInfoSection(String text) {
+        int idx = text.indexOf("## 缺失信息");
+        if (idx < 0) {
+            return false;
+        }
+        // 截取章节标题之后的内容
+        String after = text.substring(idx + "## 缺失信息".length()).trim();
+        if (after.isEmpty()) {
+            return false;
+        }
+        // 如果紧接着是下一个标题（## 开头），说明该章节无内容
+        return !after.startsWith("## ");
     }
 
     private QueryContext buildQueryContext(String originalQuestion, List<Message> history) {

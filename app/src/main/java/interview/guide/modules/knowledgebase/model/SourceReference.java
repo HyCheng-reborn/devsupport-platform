@@ -14,5 +14,6 @@ public record SourceReference(
     String environment,
     String versionLabel,
     Integer versionNo,
-    String documentKey
+    String documentKey,
+    String sectionTitle
 ) {}

@@ -265,4 +265,83 @@ class RagChatSseIntegrationTest {
             .findFirst().orElseThrow();
         assertThat(aiMessage.content()).isEqualTo(ANSWER_TEXT);
     }
+
+    @Test
+    @DisplayName("骨架格式 SSE 事件流：data 含骨架章节、sources 含 sectionTitle、done 状态正确")
+    void skeletonFormatSseFlowWithSectionTitle() {
+        // 文档内容以 ## 开头，用于 sectionTitle 提取
+        Map<String, Object> metadata = new HashMap<>();
+        metadata.put("kb_id", testKb.getId());
+        Document doc = new Document("## 部署配置\n\n项目的后端端口是 8080", metadata);
+        when(vectorService.similaritySearch(anyString(), anyList(), anyInt(), anyDouble()))
+            .thenReturn(List.of(doc));
+
+        // 覆盖 setUp 中的 mock，返回骨架格式回答
+        String skeletonAnswer = "## 问题理解\n"
+            + "端口配置问题。\n\n"
+            + "## 可能原因\n"
+            + "- 默认端口未修改\n\n"
+            + "## 解决方案\n"
+            + "将端口改为 8080。\n\n"
+            + "## 缺失信息\n"
+            + "缺少环境变量配置细节";
+        overrideChatClientMock(skeletonAnswer);
+
+        List<ServerSentEvent<String>> events = collectEvents(testSession.getId(), "后端端口是多少？");
+
+        // 收集 data 事件文本
+        String dataContent = events.stream()
+            .filter(e -> "data".equals(e.event()))
+            .map(e -> e.data())
+            .reduce("", (a, b) -> a + b);
+
+        // data 事件包含骨架章节标题
+        assertThat(dataContent).contains("## 问题理解");
+        assertThat(dataContent).contains("## 可能原因");
+        assertThat(dataContent).contains("## 解决方案");
+        assertThat(dataContent).contains("## 缺失信息");
+
+        // sources 事件包含 sectionTitle
+        ServerSentEvent<String> sourcesEvent = events.stream()
+            .filter(e -> "sources".equals(e.event()))
+            .findFirst().orElseThrow();
+        assertThat(sourcesEvent.data())
+            .contains("sectionTitle")
+            .contains("部署配置");
+
+        // done 事件携带 INSUFFICIENT_INFO 状态（因为含缺失信息章节）
+        ServerSentEvent<String> doneEvent = events.stream()
+            .filter(e -> "done".equals(e.event()))
+            .findFirst().orElseThrow();
+        assertThat(doneEvent.data()).contains("INSUFFICIENT_INFO");
+
+        // PostgreSQL 落库验证
+        List<RagChatMessageEntity> messages =
+            messageRepository.findBySessionIdOrderByMessageOrderAsc(testSession.getId());
+        RagChatMessageEntity aiMsg = messages.stream()
+            .filter(m -> m.getType() == RagChatMessageEntity.MessageType.ASSISTANT)
+            .reduce((first, second) -> second) // 取最后一条（本次测试的）
+            .orElseThrow();
+        assertThat(aiMsg.getStatus()).isEqualTo(MessageStatus.INSUFFICIENT_INFO);
+        assertThat(aiMsg.getContent()).contains("## 问题理解");
+    }
+
+    /**
+     * 覆盖 setUp 中的 ChatClient mock，使用自定义回答内容。
+     */
+    private void overrideChatClientMock(String answerContent) {
+        ChatClient mockChatClient = org.mockito.Mockito.mock(ChatClient.class);
+        ChatClient.ChatClientRequestSpec mockRequestSpec =
+            org.mockito.Mockito.mock(ChatClient.ChatClientRequestSpec.class);
+        ChatClient.StreamResponseSpec mockStreamSpec =
+            org.mockito.Mockito.mock(ChatClient.StreamResponseSpec.class);
+
+        when(llmProviderRegistry.getDefaultChatClient()).thenReturn(mockChatClient);
+        when(mockChatClient.prompt()).thenReturn(mockRequestSpec);
+        lenient().when(mockRequestSpec.system(anyString())).thenReturn(mockRequestSpec);
+        lenient().when(mockRequestSpec.user(anyString())).thenReturn(mockRequestSpec);
+        lenient().when(mockRequestSpec.messages(anyList())).thenReturn(mockRequestSpec);
+        when(mockRequestSpec.stream()).thenReturn(mockStreamSpec);
+        when(mockStreamSpec.content()).thenReturn(Flux.just(answerContent));
+    }
 }

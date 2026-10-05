@@ -75,7 +75,7 @@ class RagChatControllerTest {
   }
 
   private List<SourceReference> oneSource() {
-    return List.of(new SourceReference(1L, "README.md", "后端端口 8080", 0.9, "支付网关", "生产", null, null, null));
+    return List.of(new SourceReference(1L, "README.md", "后端端口 8080", 0.9, "支付网关", "生产", null, null, null, null));
   }
 
   private RetrievalResult resultWith(Flux<String> contentStream, List<Document> docs) {
@@ -385,6 +385,51 @@ class RagChatControllerTest {
 
     ServerSentEvent<String> done = events.get(2);
     assertThat(done.data()).contains("NO_RESULTS");
+  }
+
+  // ========== 骨架格式 SSE ==========
+
+  @Test
+  @DisplayName("骨架格式回答 SSE 传输：data 事件包含骨架章节标题")
+  void skeletonFormatSseEventsContainSkeletonHeaders() {
+    List<Document> docs = List.of(doc());
+    String skeletonAnswer = "## 问题理解\n"
+        + "端口配置问题。\n\n"
+        + "## 可能原因\n"
+        + "- 默认端口未修改\n"
+        + "- 环境变量未设置\n\n"
+        + "## 解决方案\n"
+        + "将端口改为 8080。\n\n"
+        + "## 缺失信息\n"
+        + "无";
+    when(sessionService.prepareStreamMessage(SESSION_ID, QUESTION)).thenReturn(MESSAGE_ID);
+    when(sessionService.getStreamAnswer(SESSION_ID, QUESTION))
+        .thenReturn(resultWith(Flux.just(skeletonAnswer), docs));
+    when(sessionService.buildSourceReferences(anyList())).thenReturn(oneSource());
+    when(queryService.resolveFinalStatus(skeletonAnswer, docs))
+        .thenReturn(MessageStatus.INSUFFICIENT_INFO);
+
+    List<ServerSentEvent<String>> events =
+        controller.sendMessageStream(SESSION_ID, request()).collectList().block();
+
+    assertThat(events).isNotNull();
+
+    // 收集所有 data 事件的文本
+    String dataContent = events.stream()
+        .filter(e -> "data".equals(e.event()))
+        .map(ServerSentEvent::data)
+        .reduce("", (a, b) -> a + b);
+
+    // data 事件包含骨架章节标题
+    assertThat(dataContent).contains("## 问题理解");
+    assertThat(dataContent).contains("## 可能原因");
+    assertThat(dataContent).contains("## 解决方案");
+    assertThat(dataContent).contains("## 缺失信息");
+
+    // done 事件携带 INSUFFICIENT_INFO 状态
+    ServerSentEvent<String> done = events.get(events.size() - 1);
+    assertThat(done.event()).isEqualTo("done");
+    assertThat(done.data()).contains("INSUFFICIENT_INFO");
   }
 
   // ========== 模型错误 ==========

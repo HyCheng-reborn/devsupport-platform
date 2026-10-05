@@ -9,6 +9,8 @@ import type { SourceReference } from '../api/ragChat';
 export interface SourceTagView {
   /** 原文透传，映射不改动文档名，保证展示不变 */
   documentName: string;
+  /** 章节标题：存在时展示为「文档名 > 章节标题」，否则仅文档名 */
+  sectionTitle: string | null;
   /** 原文透传，映射不改动片段，保证展示不变 */
   contentSnippet: string;
   /** service 归一：空串/缺失/null 视为无 → null（不渲染蓝色标签） */
@@ -36,8 +38,11 @@ export function toSourceTagView(src: SourceReference): SourceTagView {
     versionTag = `v${src.versionNo}`;
   }
   
+  const sectionTitle = src.sectionTitle && src.sectionTitle.trim().length > 0 ? src.sectionTitle : null;
+
   return {
     documentName: src.documentName,
+    sectionTitle,
     contentSnippet: src.contentSnippet,
     serviceName,
     environmentName,

@@ -1003,10 +1003,24 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
-                      <StatusIcon status={kb.vectorStatus} />
-                        <span className="text-sm text-slate-600 dark:text-slate-300">
-                        {getStatusText(kb.vectorStatus)}
-                      </span>
+                      {kb.vectorStatus === 'ADOPTING' ? (
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 rounded text-xs font-medium">
+                          <Loader className="w-3 h-3 animate-spin" />
+                          采用中
+                        </span>
+                      ) : kb.vectorStatus === 'ABANDONED' ? (
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 rounded text-xs font-medium">
+                          <MinusCircle className="w-3 h-3" />
+                          已放弃
+                        </span>
+                      ) : (
+                        <>
+                          <StatusIcon status={kb.vectorStatus} />
+                          <span className="text-sm text-slate-600 dark:text-slate-300">
+                            {getStatusText(kb.vectorStatus)}
+                          </span>
+                        </>
+                      )}
                     </div>
                   </td>
                     <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-300">

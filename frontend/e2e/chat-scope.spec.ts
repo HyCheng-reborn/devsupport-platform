@@ -162,4 +162,88 @@ test.describe('排查会话来源版本标签', () => {
     // 无 versionLabel 但有 versionNo → 展示 "v3"
     await expect(page.getByText('v3').first()).toBeVisible();
   });
+
+  test('多个不同 versionLabel 时展示版本冲突横幅', async ({ page }) => {
+    const sourcesMultiVersion = [
+      { kbId: 1, documentName: '支付网关手册', contentSnippet: '端口 8080', score: 0.9,
+        service: 'payment', environment: '生产', versionLabel: 'v2.3', versionNo: 5, documentKey: 'dk1' },
+      { kbId: 2, documentName: '对账文档', contentSnippet: 'T+1 结算', score: 0.7,
+        service: 'payment', environment: '生产', versionLabel: 'v1.0', versionNo: 1, documentKey: 'dk2' },
+    ];
+
+    const sessionDetail = {
+      id: 998,
+      title: 'e2e-conflict-test',
+      knowledgeBases: KB_ITEMS.map(kbItem),
+      messages: [
+        { id: 1, type: 'user', content: '测试问题', createdAt: '2026-01-01T00:00:00Z' },
+        { id: 2, type: 'assistant', content: '这是回答内容',
+          sourcesJson: JSON.stringify(sourcesMultiVersion),
+          status: 'COMPLETED', createdAt: '2026-01-01T00:00:01Z' },
+      ],
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:01Z',
+    };
+
+    await page.route('**/api/rag-chat/sessions/998', (r) => r.fulfill(ok(sessionDetail)));
+    await page.goto('/chat/998');
+
+    // 版本冲突横幅可见
+    await expect(page.getByText('本次回答引用了多个版本文档，请注意版本适用性')).toBeVisible();
+  });
+
+  test('单一 versionLabel 时不展示版本冲突横幅', async ({ page }) => {
+    const sourcesSingleVersion = [
+      { kbId: 1, documentName: '支付网关手册', contentSnippet: '端口 8080', score: 0.9,
+        service: 'payment', environment: '生产', versionLabel: 'v2.3', versionNo: 5, documentKey: 'dk1' },
+      { kbId: 2, documentName: '对账文档', contentSnippet: 'T+1 结算', score: 0.7,
+        service: 'payment', environment: '生产', versionLabel: 'v2.3', versionNo: 5, documentKey: 'dk2' },
+    ];
+
+    const sessionDetail = {
+      id: 997,
+      title: 'e2e-no-conflict-test',
+      knowledgeBases: KB_ITEMS.map(kbItem),
+      messages: [
+        { id: 1, type: 'user', content: '测试问题', createdAt: '2026-01-01T00:00:00Z' },
+        { id: 2, type: 'assistant', content: '这是回答内容',
+          sourcesJson: JSON.stringify(sourcesSingleVersion),
+          status: 'COMPLETED', createdAt: '2026-01-01T00:00:01Z' },
+      ],
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:01Z',
+    };
+
+    await page.route('**/api/rag-chat/sessions/997', (r) => r.fulfill(ok(sessionDetail)));
+    await page.goto('/chat/997');
+
+    // 版本冲突横幅不可见
+    await expect(page.getByText('本次回答引用了多个版本文档，请注意版本适用性')).toHaveCount(0);
+  });
+});
+
+// ========== INSUFFICIENT_INFO 提示 ==========
+
+test.describe('排查会话 INSUFFICIENT_INFO 提示', () => {
+  test('INSUFFICIENT_INFO 状态展示信息不足提示', async ({ page }) => {
+    const sessionDetail = {
+      id: 996,
+      title: 'e2e-insufficient-test',
+      knowledgeBases: KB_ITEMS.map(kbItem),
+      messages: [
+        { id: 1, type: 'user', content: '测试问题', createdAt: '2026-01-01T00:00:00Z' },
+        { id: 2, type: 'assistant', content: '',
+          sourcesJson: null,
+          status: 'INSUFFICIENT_INFO', createdAt: '2026-01-01T00:00:01Z' },
+      ],
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:01Z',
+    };
+
+    await page.route('**/api/rag-chat/sessions/996', (r) => r.fulfill(ok(sessionDetail)));
+    await page.goto('/chat/996');
+
+    // 信息不足提示可见
+    await expect(page.getByText('信息不足，建议补充更多细节或检查相关文档')).toBeVisible();
+  });
 });

@@ -30,7 +30,7 @@ class SourceReferenceTest {
     String text = doc.getText();
     String snippet = text.length() > 200 ? text.substring(0, 200) + "..." : text;
 
-    SourceReference ref = new SourceReference(1L, "测试文档.pdf", snippet, 0.95, "支付网关", "生产", null, null, null);
+    SourceReference ref = new SourceReference(1L, "测试文档.pdf", snippet, 0.95, "支付网关", "生产", null, null, null, null);
 
     assertThat(ref.contentSnippet()).hasSize(203); // 200 + "..."
     assertThat(ref.contentSnippet()).endsWith("...");
@@ -45,7 +45,7 @@ class SourceReferenceTest {
     Document doc = new Document("短文本内容", metadata);
     // 不调用 setScore，getScore() 应返回 null
 
-    SourceReference ref = new SourceReference(1L, "文档.txt", doc.getText(), doc.getScore(), null, null, null, null, null);
+    SourceReference ref = new SourceReference(1L, "文档.txt", doc.getText(), doc.getScore(), null, null, null, null, null, null);
 
     assertThat(ref.score()).isNull();
     assertThat(ref.documentName()).isEqualTo("文档.txt");
@@ -55,7 +55,7 @@ class SourceReferenceTest {
   @Test
   @DisplayName("SourceRecord_record访问器正常工作")
   void record_accessorsWorkCorrectly() {
-    SourceReference ref = new SourceReference(42L, "简历.pdf", "这是一段摘要内容", 0.87, "用户中心", "预发", null, null, null);
+    SourceReference ref = new SourceReference(42L, "简历.pdf", "这是一段摘要内容", 0.87, "用户中心", "预发", null, null, null, null);
 
     assertThat(ref.kbId()).isEqualTo(42L);
     assertThat(ref.documentName()).isEqualTo("简历.pdf");

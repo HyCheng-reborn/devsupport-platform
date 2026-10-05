@@ -1,3 +1,11 @@
+**2026-10-06 -- Stage 3 结构化排查回答骨架 + 来源章节定位 + 版本冲突提示 + INSUFFICIENT_INFO 拒答细化**
+- Prompt 定义 8 段结构化回答骨架：问题理解 → 可能原因 → 排查步骤 → 验证命令 → 引用来源 → 适用版本 → 置信边界 → 缺失信息
+- `SourceReference` 新增 `sectionTitle` 字段，从文档 heading 提取；前端来源面板显示「文档名 > 章节标题」
+- `MessageStatus` 新增 `INSUFFICIENT_INFO` 拒答细化，前端展示追问式提示而非通用失败
+- 前端多版本来源时显示冲突提示条
+- 测试：后端全量 **644 tests**（631 passed, 10 Voice Redis 遗留失败, 3 skipped），DevSupport 全绿；前端单测 **113/113**，E2E **17/20**（3 voice-interview 遗留失败，非 DevSupport）
+- 主要文件：`rag-chat.st`、`SourceReference.java`、`MessageStatus.java`、`KnowledgeBaseQueryService.java`、`RagChatController.java`、`sourceDisplay.ts`、`kbStatus.ts`、`ChatSessionsPage.tsx`
+
 **2026-10-06 -- 消费者原子领取 + adopt 测试轮询终态**
 - 消费者原子领取：`tryClaimForProcessing` 条件 UPDATE（ADOPTING/PENDING→PROCESSING），防止 abandon 时序窗口内消费者重复领取
 - 消费者原子完成：`tryCompleteAdopt` 条件 UPDATE（PROCESSING→COMPLETED + promote），保证完成与 promote 原子性

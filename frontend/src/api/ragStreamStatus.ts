@@ -1,13 +1,14 @@
 // RAG 流式回答的前端状态处理：把服务端确认的最终状态与来源展示规则收敛为可测试的纯函数。
 // 无副作用、不依赖 React / axios，供 node --test 直接运行。
 
-export type MessageStatus = 'COMPLETED' | 'NO_RESULTS' | 'MODEL_FAILED' | 'CLIENT_DISCONNECTED';
+export type MessageStatus = 'COMPLETED' | 'NO_RESULTS' | 'MODEL_FAILED' | 'CLIENT_DISCONNECTED' | 'INSUFFICIENT_INFO';
 
 const VALID_STATUSES: readonly string[] = [
   'COMPLETED',
   'NO_RESULTS',
   'MODEL_FAILED',
   'CLIENT_DISCONNECTED',
+  'INSUFFICIENT_INFO',
 ];
 
 export function isValidMessageStatus(value: unknown): value is MessageStatus {
@@ -39,13 +40,14 @@ export function resolveFinalStatus(serverStatus: MessageStatus | undefined): Mes
   return serverStatus ?? 'MODEL_FAILED';
 }
 
-export type SourcesDisplayMode = 'grounded' | 'degraded' | 'none' | 'pending';
+export type SourcesDisplayMode = 'grounded' | 'degraded' | 'none' | 'pending' | 'insufficient';
 
 /**
  * 根据状态决定来源展示方式，使失败/无结果的回答不会显示成有依据的正常回答。
  * - COMPLETED：作为“有依据”的正常引用展示
  * - NO_RESULTS：不展示来源（无依据）
  * - MODEL_FAILED / CLIENT_DISCONNECTED：降级展示（检索到文档但不代表回答有效）
+ * - INSUFFICIENT_INFO：信息不足，提示用户补充细节
  * - undefined/null：流式生成中，尚未提交来源，按既有行为不渲染
  */
 export function sourcesDisplayMode(status: MessageStatus | null | undefined): SourcesDisplayMode {
@@ -57,6 +59,8 @@ export function sourcesDisplayMode(status: MessageStatus | null | undefined): So
     case 'MODEL_FAILED':
     case 'CLIENT_DISCONNECTED':
       return 'degraded';
+    case 'INSUFFICIENT_INFO':
+      return 'insufficient';
     default:
       return 'pending';
   }

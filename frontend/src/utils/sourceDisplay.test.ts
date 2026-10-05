@@ -109,3 +109,37 @@ test('旧来源缺 version 字段（undefined）→ versionTag 为 null', () => 
   const v = toSourceTagView(legacy);
   assert.equal(v.versionTag, null);
 });
+
+// ========== 章节标题 ==========
+
+test('sectionTitle 存在 → 映射视图包含 sectionTitle', () => {
+  const v = toSourceTagView(src({ sectionTitle: '部署步骤' }));
+  assert.equal(v.sectionTitle, '部署步骤');
+});
+
+test('sectionTitle 为 null → 映射视图 sectionTitle 为 null', () => {
+  const v = toSourceTagView(src({ sectionTitle: null }));
+  assert.equal(v.sectionTitle, null);
+});
+
+test('sectionTitle 为 undefined → 映射视图 sectionTitle 为 null', () => {
+  const legacy = { kbId: 2, documentName: 'a.md', contentSnippet: 'x', score: 0.5 } as SourceReference;
+  const v = toSourceTagView(legacy);
+  assert.equal(v.sectionTitle, null);
+});
+
+test('sectionTitle 为空串 → 映射视图 sectionTitle 为 null', () => {
+  const v = toSourceTagView(src({ sectionTitle: '' }));
+  assert.equal(v.sectionTitle, null);
+});
+
+test('sectionTitle 为纯空格 → 映射视图 sectionTitle 为 null', () => {
+  const v = toSourceTagView(src({ sectionTitle: '   ' }));
+  assert.equal(v.sectionTitle, null);
+});
+
+test('sectionTitle 存在时，documentName 与 sectionTitle 均保留供组件拼接「文档名 > 章节标题」', () => {
+  const v = toSourceTagView(src({ documentName: '部署手册.pdf', sectionTitle: '环境配置' }));
+  assert.equal(v.documentName, '部署手册.pdf');
+  assert.equal(v.sectionTitle, '环境配置');
+});

@@ -34,6 +34,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -249,6 +251,9 @@ public class RagChatSessionService {
         return queryService.answerQuestionStream(kbIds, question, history);
     }
 
+    /** Markdown 标题匹配：# 或 ## 开头的行 */
+    private static final Pattern HEADING_PATTERN = Pattern.compile("^(#{1,2})\\s+(.+)$", Pattern.MULTILINE);
+
     /**
      * 从检索文档列表构建来源引用。
      * 从每个 Document 的 metadata 中提取 kb_id，批量查询知识库获取原始文件名（documentName）
@@ -294,9 +299,28 @@ public class RagChatSessionService {
                 String versionLabel = kb != null ? kb.getVersionLabel() : null;
                 Integer versionNo = kb != null ? kb.getVersionNo() : null;
                 String documentKey = kb != null ? kb.getDocumentKey() : null;
-                return new SourceReference(kbId, docName, snippet, score, service, environment, versionLabel, versionNo, documentKey);
+                String sectionTitle = extractSectionTitle(text);
+                return new SourceReference(kbId, docName, snippet, score, service, environment, versionLabel, versionNo, documentKey, sectionTitle);
             })
             .toList();
+    }
+
+    /**
+     * 从文档内容中提取第一个 Markdown 标题作为 sectionTitle。
+     * 扫描以 # 或 ## 开头的行，取第一个匹配项。
+     *
+     * @param content 文档内容
+     * @return 第一个标题文本，无标题时返回 null
+     */
+    private String extractSectionTitle(String content) {
+        if (content == null || content.isBlank()) {
+            return null;
+        }
+        Matcher matcher = HEADING_PATTERN.matcher(content);
+        if (matcher.find()) {
+            return matcher.group(2).trim();
+        }
+        return null;
     }
 
     /**

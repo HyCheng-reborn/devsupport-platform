@@ -5,6 +5,7 @@ package interview.guide.modules.knowledgebase.model;
  */
 public enum MessageStatus {
     COMPLETED,
+    INSUFFICIENT_INFO,
     NO_RESULTS,
     MODEL_FAILED,
     CLIENT_DISCONNECTED

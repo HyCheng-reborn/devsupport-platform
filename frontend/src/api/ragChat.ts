@@ -30,6 +30,7 @@ export interface SourceReference {
   versionLabel?: string | null;
   versionNo?: number | null;
   documentKey?: string | null;
+  sectionTitle?: string | null;
 }
 
 export type { MessageStatus };

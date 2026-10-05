@@ -295,4 +295,59 @@ class RagChatSessionServiceTest {
       assertThat(ragChatSessionService.buildSourceReferences(null)).isEmpty();
     }
   }
+
+  // ========== sectionTitle 提取测试 ==========
+
+  @Nested
+  @DisplayName("buildSourceReferences sectionTitle 提取测试")
+  class SectionTitleExtractionTests {
+
+    @Test
+    @DisplayName("sectionTitle_文档内容以# Title开头_提取Title")
+    void h1Heading_extractsTitle() {
+      List<Document> docs = List.of(createDoc("# 支付网关配置\n\n后端端口是 8080。", 10L, 0.9));
+
+      KnowledgeBaseEntity kb = new KnowledgeBaseEntity();
+      kb.setId(10L);
+      kb.setOriginalFilename("支付网关.md");
+      when(knowledgeBaseRepository.findAllById(anySet())).thenReturn(List.of(kb));
+
+      List<SourceReference> refs = ragChatSessionService.buildSourceReferences(docs);
+
+      assertThat(refs).hasSize(1);
+      assertThat(refs.get(0).sectionTitle()).isEqualTo("支付网关配置");
+    }
+
+    @Test
+    @DisplayName("sectionTitle_文档内容以## Section开头_提取Section")
+    void h2Heading_extractsSection() {
+      List<Document> docs = List.of(createDoc("## 部署步骤\n\n1. 拉取镜像\n2. 启动容器", 10L, 0.85));
+
+      KnowledgeBaseEntity kb = new KnowledgeBaseEntity();
+      kb.setId(10L);
+      kb.setOriginalFilename("部署手册.md");
+      when(knowledgeBaseRepository.findAllById(anySet())).thenReturn(List.of(kb));
+
+      List<SourceReference> refs = ragChatSessionService.buildSourceReferences(docs);
+
+      assertThat(refs).hasSize(1);
+      assertThat(refs.get(0).sectionTitle()).isEqualTo("部署步骤");
+    }
+
+    @Test
+    @DisplayName("sectionTitle_文档内容无标题_返回null")
+    void noHeading_returnsNull() {
+      List<Document> docs = List.of(createDoc("这是一段没有标题的普通文本内容。", 10L, 0.8));
+
+      KnowledgeBaseEntity kb = new KnowledgeBaseEntity();
+      kb.setId(10L);
+      kb.setOriginalFilename("说明文档.md");
+      when(knowledgeBaseRepository.findAllById(anySet())).thenReturn(List.of(kb));
+
+      List<SourceReference> refs = ragChatSessionService.buildSourceReferences(docs);
+
+      assertThat(refs).hasSize(1);
+      assertThat(refs.get(0).sectionTitle()).isNull();
+    }
+  }
 }
