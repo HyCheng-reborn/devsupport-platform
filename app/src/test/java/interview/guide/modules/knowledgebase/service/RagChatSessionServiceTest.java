@@ -335,6 +335,22 @@ class RagChatSessionServiceTest {
     }
 
     @Test
+    @DisplayName("sectionTitle_文档内容以### SubSection开头_提取SubSection")
+    void h3Heading_extractsSubSection() {
+      List<Document> docs = List.of(createDoc("### 子章节\n\n详细内容如下", 10L, 0.88));
+
+      KnowledgeBaseEntity kb = new KnowledgeBaseEntity();
+      kb.setId(10L);
+      kb.setOriginalFilename("技术文档.md");
+      when(knowledgeBaseRepository.findAllById(anySet())).thenReturn(List.of(kb));
+
+      List<SourceReference> refs = ragChatSessionService.buildSourceReferences(docs);
+
+      assertThat(refs).hasSize(1);
+      assertThat(refs.get(0).sectionTitle()).isEqualTo("子章节");
+    }
+
+    @Test
     @DisplayName("sectionTitle_文档内容无标题_返回null")
     void noHeading_returnsNull() {
       List<Document> docs = List.of(createDoc("这是一段没有标题的普通文本内容。", 10L, 0.8));

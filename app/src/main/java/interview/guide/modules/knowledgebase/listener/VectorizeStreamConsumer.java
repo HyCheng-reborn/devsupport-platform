@@ -222,6 +222,18 @@ public class VectorizeStreamConsumer extends AbstractStreamConsumer<VectorizeStr
     protected void retryMessage(VectorizePayload payload, int retryCount) {
         Long kbId = payload.kbId();
         String content = payload.content();
+
+        // adopt 模式：条件重置 PROCESSING → ADOPTING，防止覆盖 ABANDONED/COMPLETED 等终态
+        if (payload.adoptMode()) {
+            int affected = transactionalExecutor.call(
+                () -> knowledgeBaseRepository.resetToAdoptingForRetry(kbId));
+            if (affected == 0) {
+                // 状态已变（可能被 abandon），不再重入队
+                log.info("重试重置失败，状态已变更，跳过重入队: kbId={}, retryCount={}", kbId, retryCount);
+                return;
+            }
+        }
+
         try {
             Map<String, String> message = Map.of(
                 AsyncTaskStreamConstants.FIELD_KB_ID, kbId.toString(),
@@ -239,6 +251,7 @@ public class VectorizeStreamConsumer extends AbstractStreamConsumer<VectorizeStr
 
         } catch (Exception e) {
             log.error("重试入队失败: kbId={}, error={}", kbId, e.getMessage(), e);
+            // Redis 发送失败：进入明确终态 CONFLICT（adopt）或 FAILED（非 adopt）
             VectorStatus failStatus = payload.adoptMode() ? VectorStatus.CONFLICT : VectorStatus.FAILED;
             updateVectorStatus(kbId, failStatus, truncateError("重试入队失败: " + e.getMessage()));
         }

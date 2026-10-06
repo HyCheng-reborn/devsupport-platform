@@ -11,6 +11,7 @@ import interview.guide.modules.knowledgebase.service.KnowledgeBaseConflictServic
 import interview.guide.modules.knowledgebase.service.KnowledgeBaseListService;
 import interview.guide.modules.knowledgebase.service.KnowledgeBaseUploadService;
 import interview.guide.modules.knowledgebase.service.KnowledgeBaseVectorService;
+import interview.guide.modules.knowledgebase.listener.VectorizeStreamProducer;
 import interview.guide.common.transaction.TransactionalExecutor;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -159,6 +160,7 @@ class KnowledgeBaseUploadPipelineIntegrationTest {
     @Autowired KnowledgeBaseConflictService conflictService;
     @Autowired FileStorageService storageService;
     @Autowired RedisService redisService;
+    @Autowired VectorizeStreamProducer vectorizeStreamProducer;
     @Autowired JdbcTemplate jdbcTemplate;
     @Autowired EntityManager entityManager;
     @Autowired TransactionalExecutor transactionalExecutor;
@@ -897,20 +899,10 @@ class KnowledgeBaseUploadPipelineIntegrationTest {
         assertThat(kb2Before.getConflict()).isTrue();
         assertThat(kb2Before.getVectorStatus()).isEqualTo(VectorStatus.CONFLICT);
 
-        // 模拟 adopt 已启动（消费者已读取消息，但尚未领取）
-        int adoptAffected = transactionalExecutor.call(
-            () -> knowledgeBaseRepository.tryStartAdopt(id2));
-        assertThat(adoptAffected).isEqualTo(1);
-        KnowledgeBaseEntity kb2Adopting = knowledgeBaseRepository.findById(id2).orElseThrow();
-        assertThat(kb2Adopting.getVectorStatus()).isEqualTo(VectorStatus.ADOPTING);
+        // 使用真实业务操作：abandonVersion 原子 CAS CONFLICT→ABANDONED
+        conflictService.abandonVersion(id2);
 
-        // 时序窗口：在消费者调用 tryClaimForProcessing 之前，abandon 先成功
-        // 因为 ADOPTING 不满足 tryStartAbandon 的条件（需要 CONFLICT），直接通过 SQL 设置 ABANDONED
-        jdbcTemplate.update(
-            "UPDATE knowledge_bases SET vector_status = 'ABANDONED', conflict = false, active = false, vector_error = NULL WHERE id = ?",
-            id2);
         entityManager.clear();
-
         KnowledgeBaseEntity kb2Abandoned = knowledgeBaseRepository.findById(id2).orElseThrow();
         assertThat(kb2Abandoned.getVectorStatus()).isEqualTo(VectorStatus.ABANDONED);
 
@@ -941,6 +933,105 @@ class KnowledgeBaseUploadPipelineIntegrationTest {
         assertThat(vectorRowCount(id2))
             .as("ABANDONED 版本不应有向量数据")
             .isZero();
+    }
+
+    @Test
+    @DisplayName("adopt 向量化重试：首次失败后重置 ADOPTING，重试成功后 COMPLETED + active")
+    void adoptVectorizeRetry_successAfterFailure() throws Exception {
+        Long[] ids = createConflictScenario("retryok");
+        Long id1 = ids[0], id2 = ids[1];
+
+        // 手动启动 adopt：CONFLICT → ADOPTING
+        int adoptAffected = transactionalExecutor.call(
+            () -> knowledgeBaseRepository.tryStartAdopt(id2));
+        assertThat(adoptAffected).isEqualTo(1);
+
+        // 模拟消费者领取：ADOPTING → PROCESSING
+        int claimAffected = transactionalExecutor.call(
+            () -> knowledgeBaseRepository.tryClaimForProcessing(id2));
+        assertThat(claimAffected).isEqualTo(1);
+
+        entityManager.clear();
+        KnowledgeBaseEntity kb2Processing = knowledgeBaseRepository.findById(id2).orElseThrow();
+        assertThat(kb2Processing.getVectorStatus()).isEqualTo(VectorStatus.PROCESSING);
+
+        // 模拟向量化失败 → 消费者 retryMessage 重置 PROCESSING → ADOPTING
+        vectorizeStreamProducer.retryMessageForAdopt(id2);
+
+        entityManager.clear();
+        KnowledgeBaseEntity kb2Retry = knowledgeBaseRepository.findById(id2).orElseThrow();
+        assertThat(kb2Retry.getVectorStatus())
+            .as("重试时应重置为 ADOPTING，使 tryClaimForProcessing 可重新领取")
+            .isEqualTo(VectorStatus.ADOPTING);
+
+        // 重试领取：ADOPTING → PROCESSING
+        int retryClaim = transactionalExecutor.call(
+            () -> knowledgeBaseRepository.tryClaimForProcessing(id2));
+        assertThat(retryClaim).as("重试应能成功领取").isEqualTo(1);
+
+        // 模拟重试成功：promote（停用旧版本 + 完成新版本）
+        entityManager.clear();
+        KnowledgeBaseEntity kb1 = knowledgeBaseRepository.findById(id1).orElseThrow();
+        int promoteAffected = transactionalExecutor.call(() -> {
+            kb1.setActive(false);
+            knowledgeBaseRepository.save(kb1);
+            return knowledgeBaseRepository.tryCompleteAdopt(id2);
+        });
+        assertThat(promoteAffected).isEqualTo(1);
+
+        // 最终断言
+        entityManager.clear();
+        KnowledgeBaseEntity kb2Final = knowledgeBaseRepository.findById(id2).orElseThrow();
+        assertThat(kb2Final.getVectorStatus()).isEqualTo(VectorStatus.COMPLETED);
+        assertThat(kb2Final.getActive()).as("重试成功后新版本应被激活").isTrue();
+        assertThat(kb2Final.getConflict()).isFalse();
+
+        KnowledgeBaseEntity kb1Final = knowledgeBaseRepository.findById(id1).orElseThrow();
+        assertThat(kb1Final.getActive()).as("旧版本应被停用").isFalse();
+    }
+
+    @Test
+    @DisplayName("adopt 向量化最大重试次数：最终状态 CONFLICT（不卡在 PROCESSING），旧版本仍 active")
+    void adoptVectorizeMaxRetries_exitsProcessing() throws Exception {
+        Long[] ids = createConflictScenario("maxretry");
+        Long id1 = ids[0], id2 = ids[1];
+
+        // 手动启动 adopt：CONFLICT → ADOPTING
+        int adoptAffected = transactionalExecutor.call(
+            () -> knowledgeBaseRepository.tryStartAdopt(id2));
+        assertThat(adoptAffected).isEqualTo(1);
+
+        // 模拟消费者领取：ADOPTING → PROCESSING
+        int claimAffected = transactionalExecutor.call(
+            () -> knowledgeBaseRepository.tryClaimForProcessing(id2));
+        assertThat(claimAffected).isEqualTo(1);
+
+        entityManager.clear();
+        KnowledgeBaseEntity kb2 = knowledgeBaseRepository.findById(id2).orElseThrow();
+        assertThat(kb2.getVectorStatus()).isEqualTo(VectorStatus.PROCESSING);
+
+        // 模拟最大重试次数超过：markFailed 设置 CONFLICT
+        String maxRetryError = "向量化 failed after retry 3: embedding timeout";
+        vectorizeStreamProducer.markFailedForAdopt(id2, maxRetryError);
+
+        // 最终断言
+        entityManager.clear();
+        KnowledgeBaseEntity kb2Final = knowledgeBaseRepository.findById(id2).orElseThrow();
+        assertThat(kb2Final.getVectorStatus())
+            .as("最大重试后应回到 CONFLICT（不卡在 PROCESSING）")
+            .isEqualTo(VectorStatus.CONFLICT);
+        assertThat(kb2Final.getVectorError())
+            .as("vectorError 应包含最大重试信息")
+            .contains("failed after retry");
+
+        // 旧版本仍然 active
+        KnowledgeBaseEntity kb1Final = knowledgeBaseRepository.findById(id1).orElseThrow();
+        assertThat(kb1Final.getActive())
+            .as("最大重试失败后旧版本应保持 active")
+            .isTrue();
+        assertThat(kb1Final.getVectorStatus()).isEqualTo(VectorStatus.COMPLETED);
+        assertThat(vectorRowCount(id1)).isGreaterThan(0);
+        assertThat(vectorRowCount(id2)).isZero();
     }
 
     @Test

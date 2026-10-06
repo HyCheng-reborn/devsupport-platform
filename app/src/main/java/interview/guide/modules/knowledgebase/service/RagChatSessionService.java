@@ -251,8 +251,8 @@ public class RagChatSessionService {
         return queryService.answerQuestionStream(kbIds, question, history);
     }
 
-    /** Markdown 标题匹配：# 或 ## 开头的行 */
-    private static final Pattern HEADING_PATTERN = Pattern.compile("^(#{1,2})\\s+(.+)$", Pattern.MULTILINE);
+    /** Markdown 标题匹配：# 、 ## 或 ### 开头的行 */
+    private static final Pattern HEADING_PATTERN = Pattern.compile("^(#{1,3})\\s+(.+)$", Pattern.MULTILINE);
 
     /**
      * 从检索文档列表构建来源引用。
@@ -307,7 +307,7 @@ public class RagChatSessionService {
 
     /**
      * 从文档内容中提取第一个 Markdown 标题作为 sectionTitle。
-     * 扫描以 # 或 ## 开头的行，取第一个匹配项。
+     * 扫描以 # 、 ## 或 ### 开头的行，取第一个匹配项。
      *
      * @param content 文档内容
      * @return 第一个标题文本，无标题时返回 null

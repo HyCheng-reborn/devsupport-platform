@@ -390,7 +390,7 @@ class RagChatControllerTest {
   // ========== 骨架格式 SSE ==========
 
   @Test
-  @DisplayName("骨架格式回答 SSE 传输：data 事件包含骨架章节标题")
+  @DisplayName("骨架格式回答 SSE 传输：data 事件包含骨架章节标题，缺失信息章节为空占位时状态为 COMPLETED")
   void skeletonFormatSseEventsContainSkeletonHeaders() {
     List<Document> docs = List.of(doc());
     String skeletonAnswer = "## 问题理解\n"
@@ -406,8 +406,9 @@ class RagChatControllerTest {
     when(sessionService.getStreamAnswer(SESSION_ID, QUESTION))
         .thenReturn(resultWith(Flux.just(skeletonAnswer), docs));
     when(sessionService.buildSourceReferences(anyList())).thenReturn(oneSource());
+    // "## 缺失信息\n无" 是空占位，不构成 INSUFFICIENT_INFO；有实质排查步骤应为 COMPLETED
     when(queryService.resolveFinalStatus(skeletonAnswer, docs))
-        .thenReturn(MessageStatus.INSUFFICIENT_INFO);
+        .thenReturn(MessageStatus.COMPLETED);
 
     List<ServerSentEvent<String>> events =
         controller.sendMessageStream(SESSION_ID, request()).collectList().block();
@@ -426,10 +427,10 @@ class RagChatControllerTest {
     assertThat(dataContent).contains("## 解决方案");
     assertThat(dataContent).contains("## 缺失信息");
 
-    // done 事件携带 INSUFFICIENT_INFO 状态
+    // done 事件携带 COMPLETED 状态（缺失信息章节为空占位「无」）
     ServerSentEvent<String> done = events.get(events.size() - 1);
     assertThat(done.event()).isEqualTo("done");
-    assertThat(done.data()).contains("INSUFFICIENT_INFO");
+    assertThat(done.data()).contains("COMPLETED");
   }
 
   // ========== 模型错误 ==========

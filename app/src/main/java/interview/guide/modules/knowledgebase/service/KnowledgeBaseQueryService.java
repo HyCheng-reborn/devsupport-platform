@@ -345,41 +345,62 @@ public class KnowledgeBaseQueryService {
     
     /**
      * 检测模型输出是否表明信息不足。
-     * 判定条件：
+     * 判定条件（需同时满足「有文档」前提，由 resolveFinalStatus 保证）：
      * <ul>
-     *   <li>包含「缺失信息」章节且有实质内容（非空章节）</li>
-     *   <li>或包含“信息不足”“无法确定”“需要更多信息”等关键短语</li>
+     *   <li>包含「缺失信息」章节且有实质内容（非「无」「暂无」等空占位）</li>
+     *   <li>或关键短语出现在回答前半段，表明回答主旨是信息不足——
+     *       若关键词仅出现在后半段（前半段已给出实质内容），则不视为 INSUFFICIENT_INFO</li>
      * </ul>
      */
     private boolean isInsufficientInfo(String text) {
         // 检查「缺失信息」章节是否有实质内容
-        if (hasMissingInfoSection(text)) {
+        if (hasMissingInfoSectionWithSubstantiveContent(text)) {
             return true;
         }
-        // 检查关键短语
-        return text.contains("信息不足")
-            || text.contains("无法确定")
-            || text.contains("需要更多信息")
-            || text.contains("无法判断")
-            || text.contains("资料不足");
+        // 检查关键短语是否出现在回答前半段（主旨是信息不足）
+        return hasKeywordInFirstHalf(text);
+    }
+
+    /**
+     * 检查信息不足关键短语是否出现在文本前半段。
+     * 若关键词出现在后半段，说明前半段已给出实质内容，不应误标为 INSUFFICIENT_INFO。
+     */
+    private boolean hasKeywordInFirstHalf(String text) {
+        String[] keywords = {"信息不足", "无法确定", "需要更多信息", "无法判断", "资料不足"};
+        int halfPoint = text.length() / 2;
+        for (String keyword : keywords) {
+            int idx = text.indexOf(keyword);
+            if (idx >= 0 && idx < halfPoint) {
+                return true;
+            }
+        }
+        return false;
     }
     
     /**
      * 检查是否存在「缺失信息」章节且有实质内容。
-     * 匹配 `## 缺失信息` 后跟非空内容（不只是空白或下一个标题）。
+     * 匹配 `## 缺失信息` 后跟非空内容，排除「无」「暂无」等空占位。
      */
-    private boolean hasMissingInfoSection(String text) {
+    private boolean hasMissingInfoSectionWithSubstantiveContent(String text) {
         int idx = text.indexOf("## 缺失信息");
         if (idx < 0) {
             return false;
         }
-        // 截取章节标题之后的内容
         String after = text.substring(idx + "## 缺失信息".length()).trim();
         if (after.isEmpty()) {
             return false;
         }
         // 如果紧接着是下一个标题（## 开头），说明该章节无内容
-        return !after.startsWith("## ");
+        if (after.startsWith("## ")) {
+            return false;
+        }
+        // 取章节内容直到下一个标题或结尾
+        int nextHeading = after.indexOf("\n## ");
+        String sectionContent = (nextHeading >= 0 ? after.substring(0, nextHeading) : after).trim();
+        // 排除空占位：「无」「暂无」「暂无额外信息」等
+        return !sectionContent.isEmpty()
+            && !sectionContent.equals("无")
+            && !sectionContent.startsWith("暂无");
     }
 
     private QueryContext buildQueryContext(String originalQuestion, List<Message> history) {
@@ -495,6 +516,11 @@ public class KnowledgeBaseQueryService {
             return NO_RESULT_RESPONSE;
         }
         String normalized = answer.trim();
+        // INSUFFICIENT_INFO  indicators pass through unchanged so resolveFinalStatus
+        // can distinguish them from NO_RESULTS (documents exist but info is insufficient).
+        if (isInsufficientInfo(normalized)) {
+            return normalized;
+        }
         if (isNoResultLike(normalized)) {
             return NO_RESULT_RESPONSE;
         }
@@ -504,7 +530,6 @@ public class KnowledgeBaseQueryService {
     private boolean isNoResultLike(String text) {
         return text.contains("没有找到相关信息")
             || text.contains("未检索到相关信息")
-            || text.contains("信息不足")
             || text.contains("超出知识库范围")
             || text.contains("无法根据提供内容回答");
     }

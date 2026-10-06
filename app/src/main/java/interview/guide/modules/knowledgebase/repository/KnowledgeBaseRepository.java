@@ -207,6 +207,17 @@ public interface KnowledgeBaseRepository extends JpaRepository<KnowledgeBaseEnti
     int tryCompleteAdopt(@Param("id") Long id);
 
     /**
+     * 原子性重置 adopt 重试：PROCESSING → ADOPTING。
+     * 仅当实体仍处于 PROCESSING 且为冲突版本时才允许重置，防止覆盖 ABANDONED/COMPLETED 等终态。
+     *
+     * @return 受影响的行数（1=成功重置，0=状态已变）
+     */
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE KnowledgeBaseEntity k SET k.vectorStatus = 'ADOPTING', k.vectorError = null " +
+           "WHERE k.id = :id AND k.vectorStatus = 'PROCESSING' AND k.conflict = true AND k.active = false")
+    int resetToAdoptingForRetry(@Param("id") Long id);
+
+    /**
      * 获取所有不同的服务标签（非空，按字母排序）
      */
     @Query("SELECT DISTINCT k.service FROM KnowledgeBaseEntity k WHERE k.service IS NOT NULL ORDER BY k.service")

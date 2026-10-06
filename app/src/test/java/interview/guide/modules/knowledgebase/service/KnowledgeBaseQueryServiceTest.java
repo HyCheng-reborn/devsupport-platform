@@ -211,17 +211,16 @@ class KnowledgeBaseQueryServiceTest {
     }
 
     @Test
-    @DisplayName("resolveFinalStatus_有效长回答正文偶带'信息不足'仍_INSUFFICIENT_INFO")
-    void effectiveLongAnswerMentioningInsufficientInfo_returnsINSUFFICIENT_INFO() {
-      // 生产代码 isInsufficientInfo 检测"信息不足"子串即返回 INSUFFICIENT_INFO。
-      // 即使前段是正常解释，只要正文含"信息不足"即被标记为信息不足。
-      List<Document> docs = List.of(createDoc("默认服务端口为 8080，日志级别可调", 1L, 0.9));
-      String answer =
-          "该项目使用 Spring Boot，默认后端服务监听在 8080 端口，可通过 SERVER_PORT 环境变量覆盖。"
-        + "排查时如果日志信息不足，请提高日志级别；实际解决方法是将服务端口改为8080。";
-      MessageStatus status = queryService.resolveFinalStatus(answer, docs);
-      assertThat(status).isEqualTo(MessageStatus.INSUFFICIENT_INFO);
-    }
+    @DisplayName("resolveFinalStatus_有效长回答正文偶带'信息不足'应为_COMPLETED（不被误标为_INSUFFICIENT_INFO）")
+    void effectiveLongAnswerMentioningInsufficientInfo_returnsCOMPLETED() {
+        // 长回答中偶带"信息不足"等描述性用语，但提供了实质性排查步骤，应为 COMPLETED。
+        List<Document> docs = List.of(createDoc("默认服务端口为 8080，日志级别可调", 1L, 0.9));
+        String answer =
+            "该项目使用 Spring Boot，默认后端服务监听在 8080 端口，可通过 SERVER_PORT 环境变量覆盖。"
+          + "排查时如果日志信息不足，请提高日志级别；实际解决方法是将服务端口改为8080。";
+        MessageStatus status = queryService.resolveFinalStatus(answer, docs);
+        assertThat(status).isEqualTo(MessageStatus.COMPLETED);
+      }
 
     @Test
     @DisplayName("resolveFinalStatus_起始句为明确拒答（非固定模板）_NO_RESULTS")
@@ -234,13 +233,13 @@ class KnowledgeBaseQueryServiceTest {
     }
 
     @Test
-    @DisplayName("resolveFinalStatus_有效回答中出现'信息不足'_INSUFFICIENT_INFO")
-    void descriptivePhraseInsideAnswer_returnsINSUFFICIENT_INFO() {
-      // 生产代码 isInsufficientInfo 检测"信息不足"子串即返回 INSUFFICIENT_INFO。
+    @DisplayName("resolveFinalStatus_有效回答中偶带'信息不足'但给出了实质步骤_COMPLETED")
+    void descriptivePhraseInsideAnswer_returnsCOMPLETED() {
+      // 回答包含实质排查步骤（改端口），"信息不足"只是附带条件说明，不应误标为 INSUFFICIENT_INFO。
       List<Document> docs = List.of(createDoc("一些相关内容", 1L, 0.9));
       MessageStatus status = queryService.resolveFinalStatus(
           "解决方法是将服务端口改为 8080。如果日志信息不足，请提高日志级别后重试。", docs);
-      assertThat(status).isEqualTo(MessageStatus.INSUFFICIENT_INFO);
+      assertThat(status).isEqualTo(MessageStatus.COMPLETED);
     }
 
     @Test
@@ -500,9 +499,98 @@ class KnowledgeBaseQueryServiceTest {
     @DisplayName("Codex六次_P1_引用内部含换行不干扰_外部真实拒答仍_NO_RESULTS")
     void newlineInsideQuoteDoesNotBreakExternalRefusal_returnsNO_RESULTS() {
       List<Document> docs = List.of(createDoc("部署手册", 1L, 0.9));
-      // 引用内含换行，屏蔽后不应把外部“无法…回答”截断。
-      String answer = "抱歉，无法根据“部署\n说明”回答您的问题，请补充资料。";
+      // 引用内含换行，屏蔽后不应把外部"无法…回答"截断。
+      String answer = "抱歉，无法根据\u201c部署\n说明\u201d回答您的问题，请补充资料。";
       assertThat(queryService.resolveFinalStatus(answer, docs)).isEqualTo(MessageStatus.NO_RESULTS);
+    }
+  }
+
+  @Nested
+  @DisplayName("流式路径：answerQuestionStream → normalizeStreamOutput → resolveFinalStatus")
+  class StreamingPathTests {
+
+    @Test
+    @DisplayName("流式路径_短回答信息不足_保留原始输出且状态为_INSUFFICIENT_INFO")
+    void insufficientInfo_shortAnswer_preservesStatus() {
+      // 文档存在（检索命中）
+      List<Document> docs = List.of(createDoc("一些相关内容", 1L, 0.8));
+      when(vectorService.similaritySearch(anyString(), anyList(), anyInt(), anyDouble()))
+          .thenReturn(docs);
+      // 模型返回短回答，表明信息不足
+      String modelOutput = "## 缺失信息\n需要更多日志信息来确定根因";
+      mockStreamChain(Flux.just(modelOutput));
+
+      RetrievalResult result = queryService.answerQuestionStream(List.of(1L), "根因是什么？");
+
+      // 收集流式输出的完整内容
+      String fullContent = result.contentStream().collectList().block().stream()
+          .reduce("", (a, b) -> a + b);
+
+      // 实际模型输出被保留（未被替换为 NO_RESULT_RESPONSE）
+      assertThat(fullContent).contains("缺失信息");
+      assertThat(fullContent).contains("需要更多日志信息");
+
+      // resolveFinalStatus 应判为 INSUFFICIENT_INFO（不是 NO_RESULTS）
+      MessageStatus status = queryService.resolveFinalStatus(fullContent, result.sourceDocuments());
+      assertThat(status).isEqualTo(MessageStatus.INSUFFICIENT_INFO);
+    }
+
+    @Test
+    @DisplayName("流式路径_答案提及信息不足但给出实质步骤_状态为_COMPLETED")
+    void answerMentionsInsufficientButProvidesSteps_notMisclassified() {
+      List<Document> docs = List.of(createDoc("一些相关内容", 1L, 0.8));
+      when(vectorService.similaritySearch(anyString(), anyList(), anyInt(), anyDouble()))
+          .thenReturn(docs);
+      // 模型返回包含排查步骤的答案，"缺失信息"章节为空占位
+      String modelOutput = "## 检查步骤\n1. 检查日志\n2. 检查配置\n\n## 缺失信息\n暂无额外信息";
+      mockStreamChain(Flux.just(modelOutput));
+
+      RetrievalResult result = queryService.answerQuestionStream(List.of(1L), "如何排查？");
+
+      String fullContent = result.contentStream().collectList().block().stream()
+          .reduce("", (a, b) -> a + b);
+
+      // 实际输出被保留
+      assertThat(fullContent).contains("检查步骤");
+      assertThat(fullContent).contains("检查日志");
+
+      // 有实质排查步骤，即使提及"缺失信息"也应为 COMPLETED
+      MessageStatus status = queryService.resolveFinalStatus(fullContent, result.sourceDocuments());
+      assertThat(status).isEqualTo(MessageStatus.COMPLETED);
+    }
+
+    @Test
+    @DisplayName("流式路径_无文档短回答_NO_RESULTS 与 有文档信息不足_INSUFFICIENT_INFO 的区分")
+    void noResultsVsInsufficientInfo_distinction() {
+      // 路径 A：无文档 + 短回答 → NO_RESULTS
+      when(vectorService.similaritySearch(anyString(), anyList(), anyInt(), anyDouble()))
+          .thenReturn(List.of());
+
+      RetrievalResult noResultRetrieval = queryService.answerQuestionStream(List.of(1L), "根因是什么？");
+      String noResultContent = noResultRetrieval.contentStream().collectList().block().stream()
+          .reduce("", (a, b) -> a + b);
+
+      // 零命中时来源为空，状态为 NO_RESULTS
+      assertThat(noResultRetrieval.sourceDocuments()).isEmpty();
+      MessageStatus statusA = queryService.resolveFinalStatus(noResultContent, noResultRetrieval.sourceDocuments());
+      assertThat(statusA).isEqualTo(MessageStatus.NO_RESULTS);
+
+      // 路径 B：有文档 + "信息不足"短回答 → INSUFFICIENT_INFO
+      List<Document> docs = List.of(createDoc("一些相关内容", 1L, 0.8));
+      when(vectorService.similaritySearch(anyString(), anyList(), anyInt(), anyDouble()))
+          .thenReturn(docs);
+      String insufficientOutput = "信息不足，需要补充更多日志才能确定根因。";
+      mockStreamChain(Flux.just(insufficientOutput));
+
+      RetrievalResult insufficientResult = queryService.answerQuestionStream(List.of(1L), "根因是什么？");
+      String insufficientContent = insufficientResult.contentStream().collectList().block().stream()
+          .reduce("", (a, b) -> a + b);
+
+      // 模型输出被保留（未被替换为 NO_RESULT_RESPONSE）
+      assertThat(insufficientContent).contains("信息不足");
+      // 有文档且输出表明信息不足 → INSUFFICIENT_INFO
+      MessageStatus statusB = queryService.resolveFinalStatus(insufficientContent, insufficientResult.sourceDocuments());
+      assertThat(statusB).isEqualTo(MessageStatus.INSUFFICIENT_INFO);
     }
   }
 }

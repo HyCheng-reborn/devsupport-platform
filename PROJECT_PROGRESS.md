@@ -3,7 +3,7 @@
 > 本项目（远程仓库 `HyCheng-reborn/devsupport-platform`，本地目录名仍为 `interview-guide`）的进度事实源。
 > **跨机器 remote 别名映射（读文档前先对齐，避免 `origin` 误读）**：本机 `devsupport` = `HyCheng-reborn/devsupport-platform`（推送目标），本机 `origin` = `Snailclimb/interview-guide`（上游，**勿推**）；另一台验证机（批次 C/D 补验）的 `origin` = `HyCheng-reborn/devsupport-platform`，故其文档/提交记录里的「push 到 `origin/master`」等同于本机的「push 到 `devsupport/master`」。判断实际目标仓库一律以 remote URL 为准，不要只看别名。
 > 新会话接手时先读本文件，再读「交接区」列出的文件。
-> 最近更新：**2026-10-06 Stage 3 结构化排查回答骨架 + 来源章节定位 + 版本冲突提示 + INSUFFICIENT_INFO 拒答细化（后端全量 644/631 passed/10 Voice 遗留/3 skipped，前端单测 113/113，E2E 17/20（3 voice 遗留））**。前一轮：消费者原子领取 + adopt 测试轮询终态（后端全量 634/621 passed/10 Voice 遗留/3 skipped，前端单测 99/99，E2E 14/17）。
+> 最近更新：**2026-10-07 测试数字校正（定点 114，全量 650/637 passed/10 Voice 遗留/3 skipped；前端单测 89/89，E2E 17/20（3 voice 遗留））+ sectionTitle 扩展 h1-h3 + retry 状态机条件原子迁移 + INSUFFICIENT_INFO 流式路径修正 + consumerClaim_afterAbandon 改用真实 abandonVersion()**。前一轮：Stage 3 结构化排查回答骨架（后端全量 644/631 passed/10 Voice 遗留/3 skipped，前端单测 113/113，E2E 17/20）。
 
 ## 0. 维护规则
 
@@ -36,7 +36,7 @@
   - `SourceReference` 新增 `sectionTitle` 字段，从文档 heading 提取；前端来源面板显示「文档名 > 章节标题」。
   - `MessageStatus` 新增 `INSUFFICIENT_INFO` 拒答细化，前端展示追问式提示而非通用失败。
   - 前端多版本来源时显示冲突提示条。
-  - 测试：后端定点 `RagChatControllerTest`(11/0) + `RagChatSseIntegrationTest`(4/0) + `KnowledgeBaseQueryServiceTest`(39/0) + `RagChatSessionServiceTest`(14/0) + `KnowledgeBaseConflictServiceTest`(14/0) + `KnowledgeBaseUploadPipelineIntegrationTest`(19/0)；全量后端 **644 tests / 631 passed / 10 failed（Voice Redis 遗留）/ 3 skipped**，DevSupport 相关全绿。前端单测 **113/113**，E2E **17/20**（3 voice 遗留）。
+  - 测试：后端定点 `RagChatControllerTest`(11/0) + `RagChatSseIntegrationTest`(4/0) + `KnowledgeBaseQueryServiceTest`(42/0) + `RagChatSessionServiceTest`(15/0) + `KnowledgeBaseConflictServiceTest`(14/0) + `KnowledgeBaseUploadPipelineIntegrationTest`(21/0) + `KnowledgeBaseUploadServiceTest`(7/0)；定点合计 **114 tests / 0 failed / 0 skipped**。全量后端 **650 tests / 637 passed / 10 failed（Voice Redis 遗留）/ 3 skipped**，DevSupport 相关全绿。前端单测 **89/89**，E2E **17/20**（3 voice 遗留）。
 
 - **DevSupport 阶段 2：文档中心与知识版本生命周期（2026-10-05 验收通过）** — 状态 `验收通过（并发安全 + 异步状态机 + ABANDONED 状态；源码实现+自动化验证已完成，真实付费模型端到端未验证）`。
   - 迁移 `V20261005` 只 ADD 列 project/docType/source/versionLabel/documentKey/versionNo/active + 索引，**不改** fileHash 全局唯一（内容去重不变；同文件跨项目归属仍不支持=已知边界）。
