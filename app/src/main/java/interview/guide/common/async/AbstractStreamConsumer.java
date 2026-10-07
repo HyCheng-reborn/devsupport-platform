@@ -119,6 +119,7 @@ public abstract class AbstractStreamConsumer<T> {
                 log.info("{} task skipped: {}", taskDisplayName(), payloadIdentifier(payload));
                 return;
             }
+            beforeClaim(payload);
             if (!tryMarkProcessing(payload)) {
                 ackMessage(messageId);
                 log.info("{} task was not claimed: {}", taskDisplayName(), payloadIdentifier(payload));
@@ -206,4 +207,12 @@ public abstract class AbstractStreamConsumer<T> {
     protected abstract void markFailed(T payload, String error);
 
     protected abstract void retryMessage(T payload, int retryCount);
+
+    /**
+     * 在 shouldSkip 之后、tryMarkProcessing 之前调用。
+     * 默认空实现，子类可覆写用于测试钩子。
+     */
+    protected void beforeClaim(T payload) {
+        // no-op by default
+    }
 }

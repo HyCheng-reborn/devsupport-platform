@@ -26,6 +26,12 @@ public class VectorizeStreamConsumer extends AbstractStreamConsumer<VectorizeStr
     private final KnowledgeBaseRepository knowledgeBaseRepository;
     private final interview.guide.common.transaction.TransactionalExecutor transactionalExecutor;
 
+    /**
+     * 测试钩子：在 shouldSkip 之后、tryMarkProcessing 之前调用。
+     * 生产环境始终为 null，仅集成测试使用。
+     */
+    private volatile Runnable beforeClaimHook;
+
     public VectorizeStreamConsumer(
         RedisService redisService,
         KnowledgeBaseVectorService vectorService,
@@ -39,6 +45,10 @@ public class VectorizeStreamConsumer extends AbstractStreamConsumer<VectorizeStr
     }
 
     record VectorizePayload(Long kbId, String content, boolean adoptMode) {}
+
+    public void setBeforeClaimHook(Runnable hook) {
+        this.beforeClaimHook = hook;
+    }
 
     @Override
     protected String taskDisplayName() {
@@ -91,6 +101,14 @@ public class VectorizeStreamConsumer extends AbstractStreamConsumer<VectorizeStr
                 return status == VectorStatus.COMPLETED || status == VectorStatus.ABANDONED;
             })
             .orElse(true);
+    }
+
+    @Override
+    protected void beforeClaim(VectorizePayload payload) {
+        Runnable hook = beforeClaimHook;
+        if (hook != null) {
+            hook.run();
+        }
     }
 
     @Override

@@ -2,7 +2,6 @@ package interview.guide.modules.knowledgebase.listener;
 
 import interview.guide.common.async.AbstractStreamProducer;
 import interview.guide.common.constant.AsyncTaskStreamConstants;
-import interview.guide.common.transaction.TransactionalExecutor;
 import interview.guide.infrastructure.redis.RedisService;
 import interview.guide.modules.knowledgebase.model.VectorStatus;
 import interview.guide.modules.knowledgebase.repository.KnowledgeBaseRepository;
@@ -20,7 +19,6 @@ import java.util.Map;
 public class VectorizeStreamProducer extends AbstractStreamProducer<VectorizeStreamProducer.VectorizeTaskPayload> {
 
     private final KnowledgeBaseRepository knowledgeBaseRepository;
-    private final TransactionalExecutor transactionalExecutor;
 
     record VectorizeTaskPayload(Long kbId, String content, boolean adoptMode) {
         VectorizeTaskPayload(Long kbId, String content) {
@@ -28,11 +26,9 @@ public class VectorizeStreamProducer extends AbstractStreamProducer<VectorizeStr
         }
     }
 
-    public VectorizeStreamProducer(RedisService redisService, KnowledgeBaseRepository knowledgeBaseRepository,
-                                   TransactionalExecutor transactionalExecutor) {
+    public VectorizeStreamProducer(RedisService redisService, KnowledgeBaseRepository knowledgeBaseRepository) {
         super(redisService);
         this.knowledgeBaseRepository = knowledgeBaseRepository;
-        this.transactionalExecutor = transactionalExecutor;
     }
 
     /**
@@ -97,25 +93,5 @@ public class VectorizeStreamProducer extends AbstractStreamProducer<VectorizeStr
             }
             knowledgeBaseRepository.save(kb);
         });
-    }
-
-    // ==================== 测试辅助方法 ====================
-
-    /**
-     * 模拟 adopt 模式重试：条件重置 PROCESSING → ADOPTING。
-     * 仅供集成测试调用，模拟 VectorizeStreamConsumer.retryMessage 的 adopt 重试逻辑。
-     * 使用条件更新，仅当实体仍处于 PROCESSING + conflict=true + active=false 时才重置。
-     */
-    public int retryMessageForAdopt(Long kbId) {
-        return transactionalExecutor.call(
-            () -> knowledgeBaseRepository.resetToAdoptingForRetry(kbId));
-    }
-
-    /**
-     * 模拟 adopt 模式最大重试失败：设置 CONFLICT + error。
-     * 仅供集成测试调用，模拟 VectorizeStreamConsumer.markFailed 的 adopt 失败逻辑。
-     */
-    public void markFailedForAdopt(Long kbId, String error) {
-        updateVectorStatus(kbId, VectorStatus.CONFLICT, error);
     }
 }
