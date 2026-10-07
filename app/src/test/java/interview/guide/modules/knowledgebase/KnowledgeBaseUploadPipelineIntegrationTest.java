@@ -1118,8 +1118,10 @@ class KnowledgeBaseUploadPipelineIntegrationTest {
             // 设置测试钩子：消费者在 tryClaimForProcessing 之前暂停
             CountDownLatch consumerAtHook = new CountDownLatch(1);
             CountDownLatch releaseConsumer = new CountDownLatch(1);
+            AtomicInteger claimAttempts = new AtomicInteger(0);
 
             vectorizeStreamConsumer.setBeforeClaimHook(() -> {
+                claimAttempts.incrementAndGet();
                 consumerAtHook.countDown();
                 try {
                     releaseConsumer.await(30, TimeUnit.SECONDS);
@@ -1185,6 +1187,11 @@ class KnowledgeBaseUploadPipelineIntegrationTest {
 
             // 候选版本无向量
             assertThat(vectorRowCount(id2)).isZero();
+
+            // 消费者确实走过了 claim 逻辑（hook 被调用至少 1 次）
+            assertThat(claimAttempts.get())
+                .as("释放后消费者应至少尝试领取 1 次")
+                .isGreaterThanOrEqualTo(1);
         } finally {
             vectorizeStreamConsumer.setBeforeClaimHook(null);
         }

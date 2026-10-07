@@ -10,6 +10,7 @@ import {
   Edit,
   Loader2,
   MessageSquare,
+  FileText,
 } from 'lucide-react';
 import {
   ragChatApi,
@@ -21,6 +22,7 @@ import { selectSourcesForStatus, sourcesDisplayMode } from '../api/ragStreamStat
 import { toSourceTagView } from '../utils/sourceDisplay';
 import CodeBlock from '../components/CodeBlock';
 import { ROUTES } from '../constants/routes';
+import { casesApi } from '../api/cases';
 
 interface Message {
   id?: number;
@@ -43,6 +45,7 @@ export default function ChatSessionDetailPage() {
   const [question, setQuestion] = useState('');
   const [editingTitle, setEditingTitle] = useState(false);
   const [newTitle, setNewTitle] = useState('');
+  const [generatingCaseForMsgId, setGeneratingCaseForMsgId] = useState<number | null>(null);
 
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const rafRef = useRef<number>();
@@ -211,6 +214,19 @@ export default function ChatSessionDetailPage() {
     }
   };
 
+  const handleGenerateCase = async (messageId: number) => {
+    if (!numericSessionId || generatingCaseForMsgId) return;
+    setGeneratingCaseForMsgId(messageId);
+    try {
+      const newCase = await casesApi.createDraft({ sessionId: numericSessionId, messageId });
+      navigate(ROUTES.caseDetail(newCase.id));
+    } catch (err) {
+      console.error('生成案例失败', err);
+    } finally {
+      setGeneratingCaseForMsgId(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[50vh]">
@@ -335,6 +351,7 @@ export default function ChatSessionDetailPage() {
                     {msg.type === 'user' ? (
                       <p className="whitespace-pre-wrap leading-relaxed text-sm">{msg.content}</p>
                     ) : (
+                      <>
                       <div className="prose prose-slate dark:prose-invert prose-sm max-w-none">
                         <ReactMarkdown
                           remarkPlugins={[remarkGfm]}
@@ -467,6 +484,27 @@ export default function ChatSessionDetailPage() {
                           </div>
                         )}
                       </div>
+                      {msg.status === 'COMPLETED' && msg.id && (
+                        <div className="mt-2 flex justify-end">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleGenerateCase(msg.id!);
+                            }}
+                            disabled={generatingCaseForMsgId === msg.id}
+                            className="inline-flex items-center gap-1 px-2 py-1 text-xs text-slate-400 hover:text-primary-500 dark:text-slate-500 dark:hover:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-md transition-colors disabled:opacity-50"
+                            title="从这条回答生成故障案例"
+                          >
+                            {generatingCaseForMsgId === msg.id ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <FileText className="w-3 h-3" />
+                            )}
+                            生成案例
+                          </button>
+                        </div>
+                      )}
+                    </>
                     )}
                   </div>
                 </motion.div>

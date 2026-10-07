@@ -1,3 +1,18 @@
+**2026-10-08 -- Stage 4 案例库审核发布：数据模型 + 状态机 + 前端页面 + 测试**
+- DB 迁移：cases 表 + case_audit_logs 表
+- CaseStatus 枚举：DRAFT/PENDING_REVIEW/PUBLISHED/REJECTED/DEPRECATED
+- CaseDraftService：从会话消息生成草稿（区分 AI/人工内容）
+- CaseReviewService：提交/批准/退回 + 状态机约束
+- CaseLifecycleService：废弃 + 列表/详情查询
+- CaseLibraryController：8 个 REST 端点
+- 前端：案例列表页 + 详情页 + 从会话生成按钮
+- 后端测试：22 单测 + 6 集成测试（CaseLibraryServiceTest + CaseLibraryIntegrationTest）
+- 前端测试：3 单测 (caseStatus) + 5 E2E
+- abandon 竞态测试 ACK 断言补强
+- 全量后端 **679 tests / 666 passed / 10 failed（Voice Redis 遗留）/ 3 skipped**，DevSupport 相关全绿
+- 前端单测 **80/80**，build 通过
+- 主要文件：`V20261008__create_cases_tables.sql`、`CaseEntity.java`、`CaseAuditLogEntity.java`、`CaseStatus.java`、`CaseDraftService.java`、`CaseReviewService.java`、`CaseLifecycleService.java`、`CaseLibraryController.java`、`CasesPage.tsx`、`CaseDetailPage.tsx`、`caseStatus.ts`
+
 **2026-10-07 -- sectionTitle 扩展至 h1/h2/h3 + retry 状态机条件原子迁移 + INSUFFICIENT_INFO 流式路径修正 + 测试数字校正**
 - `sectionTitle` 提取范围从 h2 扩展至 h1/h2/h3，确保所有层级文档标题均可定位
 - retry 状态机条件原子迁移：`resetToAdoptingForRetry` 作为原子条件 UPDATE，替代非原子的状态切换

@@ -4,6 +4,7 @@ export const ROUTES = {
   chatSessions: '/chat',
   chatSessionDetail: (id: string) => `/chat/${id}` as const,
   cases: '/cases',
+  caseDetail: (id: number) => `/cases/${id}` as const,
   evalResults: '/eval-results',
   settings: '/settings',
   // Legacy routes kept for redirect compatibility

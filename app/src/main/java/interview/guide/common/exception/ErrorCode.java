@@ -82,7 +82,13 @@ public enum ErrorCode {
     VOICE_CONFIG_READ_FAILED(11009, "读取语音服务配置失败"),
     VOICE_CONFIG_WRITE_FAILED(11010, "写入语音服务配置失败"),
     VOICE_CONFIG_TEST_FAILED(11011, "语音服务连通性测试失败"),
-    PROVIDER_DISABLED(11012, "LLM Provider 已禁用");
+    PROVIDER_DISABLED(11012, "LLM Provider 已禁用"),
+
+    // ========== 案例库模块错误 12xxx ==========
+    CASE_NOT_FOUND(12001, "案例不存在"),
+    CASE_INVALID_OPERATION(12002, "案例状态操作无效"),
+    CASE_NOT_EDITABLE(12003, "案例当前状态不可编辑"),
+    CASE_MESSAGE_NOT_FOUND(12004, "消息不存在或不是 ASSISTANT 类型");
 
     private final Integer code;
     private final String message;

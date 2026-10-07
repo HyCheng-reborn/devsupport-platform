@@ -9,6 +9,7 @@ const DocsCenterPage = lazy(() => import('./pages/DocsCenterPage'));
 const ChatSessionsPage = lazy(() => import('./pages/ChatSessionsPage'));
 const ChatSessionDetailPage = lazy(() => import('./pages/ChatSessionDetailPage'));
 const CasesPage = lazy(() => import('./pages/CasesPage'));
+const CaseDetailPage = lazy(() => import('./pages/CaseDetailPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const EvalResultsPage = lazy(() => import('./pages/EvalResultsPage'));
 const KnowledgeBaseUploadPage = lazy(() => import('./pages/KnowledgeBaseUploadPage'));
@@ -41,6 +42,7 @@ function App() {
 
             {/* 案例库 */}
             <Route path="cases" element={<CasesPage />} />
+            <Route path="cases/:id" element={<CaseDetailPage />} />
 
             {/* 评测结果 */}
             <Route path="eval-results" element={<EvalResultsPage />} />
