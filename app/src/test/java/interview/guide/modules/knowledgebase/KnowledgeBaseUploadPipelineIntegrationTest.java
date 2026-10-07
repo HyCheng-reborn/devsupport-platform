@@ -1109,73 +1109,85 @@ class KnowledgeBaseUploadPipelineIntegrationTest {
         Long[] ids = createConflictScenario("racelatch");
         Long id1 = ids[0], id2 = ids[1];
 
-        // 确认冲突状态
-        KnowledgeBaseEntity kb2Before = knowledgeBaseRepository.findById(id2).orElseThrow();
-        assertThat(kb2Before.getConflict()).isTrue();
-        assertThat(kb2Before.getVectorStatus()).isEqualTo(VectorStatus.CONFLICT);
+        try {
+            // 确认冲突状态
+            KnowledgeBaseEntity kb2Before = knowledgeBaseRepository.findById(id2).orElseThrow();
+            assertThat(kb2Before.getConflict()).isTrue();
+            assertThat(kb2Before.getVectorStatus()).isEqualTo(VectorStatus.CONFLICT);
 
-        // 设置测试钩子：消费者在 tryClaimForProcessing 之前暂停
-        CountDownLatch consumerAtHook = new CountDownLatch(1);
-        CountDownLatch releaseConsumer = new CountDownLatch(1);
+            // 设置测试钩子：消费者在 tryClaimForProcessing 之前暂停
+            CountDownLatch consumerAtHook = new CountDownLatch(1);
+            CountDownLatch releaseConsumer = new CountDownLatch(1);
 
-        vectorizeStreamConsumer.setBeforeClaimHook(() -> {
-            consumerAtHook.countDown();
-            try {
-                releaseConsumer.await(30, TimeUnit.SECONDS);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
+            vectorizeStreamConsumer.setBeforeClaimHook(() -> {
+                consumerAtHook.countDown();
+                try {
+                    releaseConsumer.await(30, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            });
+
+            // 手动发送 adoptMode Redis 消息（不调用 adoptVersion，保持 CONFLICT 状态）
+            // 这样 abandonVersion 可以在消费者暂停期间成功执行
+            String content = "race test content for kbId=" + id2;
+            redisService.streamAdd(AsyncTaskStreamConstants.KB_VECTORIZE_STREAM_KEY, Map.of(
+                AsyncTaskStreamConstants.FIELD_KB_ID, id2.toString(),
+                AsyncTaskStreamConstants.FIELD_CONTENT, content,
+                AsyncTaskStreamConstants.FIELD_RETRY_COUNT, "0",
+                AsyncTaskStreamConstants.FIELD_ADOPT_MODE, "true"
+            ), AsyncTaskStreamConstants.STREAM_MAX_LEN);
+
+            // 等待消费者到达钩子（状态仍为 CONFLICT，消费者尚未领取）
+            boolean hookReached = consumerAtHook.await(30, TimeUnit.SECONDS);
+            assertThat(hookReached).as("消费者应到达 beforeClaim 钩子").isTrue();
+
+            // 消费者暂停期间，执行 abandon：CONFLICT → ABANDONED
+            conflictService.abandonVersion(id2);
+
+            // 验证 abandon 已生效
+            entityManager.clear();
+            KnowledgeBaseEntity kb2Abandoned = knowledgeBaseRepository.findById(id2).orElseThrow();
+            assertThat(kb2Abandoned.getVectorStatus()).isEqualTo(VectorStatus.ABANDONED);
+
+            // 释放消费者 → tryClaimForProcessing 必须失败（状态已不是 ADOPTING）
+            releaseConsumer.countDown();
+
+            // 等待消费者完成处理（hook 返回后消费者执行 claim→ACK→回到阻塞读取）
+            // 使用 awaitStatus 确认实体状态 + 短暂轮询确保消费者线程完成 ACK
+            awaitStatus(id2, VectorStatus.ABANDONED, 15_000);
+            long ackDeadline = System.currentTimeMillis() + 10_000;
+            while (System.currentTimeMillis() < ackDeadline) {
+                entityManager.clear();
+                KnowledgeBaseEntity check = knowledgeBaseRepository.findById(id2).orElseThrow();
+                if (check.getVectorStatus() == VectorStatus.ABANDONED
+                        && !check.getActive() && !check.getConflict()) {
+                    break;
+                }
+                Thread.sleep(300);
             }
-        });
 
-        // 手动发送 adoptMode Redis 消息（不调用 adoptVersion，保持 CONFLICT 状态）
-        // 这样 abandonVersion 可以在消费者暂停期间成功执行
-        String content = "race test content for kbId=" + id2;
-        redisService.streamAdd(AsyncTaskStreamConstants.KB_VECTORIZE_STREAM_KEY, Map.of(
-            AsyncTaskStreamConstants.FIELD_KB_ID, id2.toString(),
-            AsyncTaskStreamConstants.FIELD_CONTENT, content,
-            AsyncTaskStreamConstants.FIELD_RETRY_COUNT, "0",
-            AsyncTaskStreamConstants.FIELD_ADOPT_MODE, "true"
-        ), AsyncTaskStreamConstants.STREAM_MAX_LEN);
+            // 最终断言：状态保持 ABANDONED
+            entityManager.clear();
+            KnowledgeBaseEntity kb2Final = knowledgeBaseRepository.findById(id2).orElseThrow();
+            assertThat(kb2Final.getVectorStatus())
+                .as("最终状态应为 ABANDONED")
+                .isEqualTo(VectorStatus.ABANDONED);
+            assertThat(kb2Final.getActive()).isFalse();
+            assertThat(kb2Final.getConflict()).isFalse();
 
-        // 等待消费者到达钩子（状态仍为 CONFLICT，消费者尚未领取）
-        boolean hookReached = consumerAtHook.await(30, TimeUnit.SECONDS);
-        assertThat(hookReached).as("消费者应到达 beforeClaim 钩子").isTrue();
+            // 旧版本保持 active
+            KnowledgeBaseEntity kb1Final = knowledgeBaseRepository.findById(id1).orElseThrow();
+            assertThat(kb1Final.getActive())
+                .as("旧版本应保持 active=true")
+                .isTrue();
+            assertThat(kb1Final.getVectorStatus()).isEqualTo(VectorStatus.COMPLETED);
 
-        // 消费者暂停期间，执行 abandon：CONFLICT → ABANDONED
-        conflictService.abandonVersion(id2);
-
-        // 验证 abandon 已生效
-        entityManager.clear();
-        KnowledgeBaseEntity kb2Abandoned = knowledgeBaseRepository.findById(id2).orElseThrow();
-        assertThat(kb2Abandoned.getVectorStatus()).isEqualTo(VectorStatus.ABANDONED);
-
-        // 释放消费者 → tryClaimForProcessing 必须失败（状态已不是 ADOPTING）
-        releaseConsumer.countDown();
-
-        // 等待消费者处理完成
-        Thread.sleep(3000);
-
-        // 最终断言：状态保持 ABANDONED
-        entityManager.clear();
-        KnowledgeBaseEntity kb2Final = knowledgeBaseRepository.findById(id2).orElseThrow();
-        assertThat(kb2Final.getVectorStatus())
-            .as("最终状态应为 ABANDONED")
-            .isEqualTo(VectorStatus.ABANDONED);
-        assertThat(kb2Final.getActive()).isFalse();
-        assertThat(kb2Final.getConflict()).isFalse();
-
-        // 旧版本保持 active
-        KnowledgeBaseEntity kb1Final = knowledgeBaseRepository.findById(id1).orElseThrow();
-        assertThat(kb1Final.getActive())
-            .as("旧版本应保持 active=true")
-            .isTrue();
-        assertThat(kb1Final.getVectorStatus()).isEqualTo(VectorStatus.COMPLETED);
-
-        // 候选版本无向量
-        assertThat(vectorRowCount(id2)).isZero();
-
-        // 清理钩子
-        vectorizeStreamConsumer.setBeforeClaimHook(null);
+            // 候选版本无向量
+            assertThat(vectorRowCount(id2)).isZero();
+        } finally {
+            vectorizeStreamConsumer.setBeforeClaimHook(null);
+        }
     }
 
     @Test

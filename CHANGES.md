@@ -3,7 +3,7 @@
 - retry 状态机条件原子迁移：`resetToAdoptingForRetry` 作为原子条件 UPDATE，替代非原子的状态切换
 - INSUFFICIENT_INFO 流式路径修正：确保信息不足状态在流式输出路径中正确传播
 - `consumerClaim_afterAbandon` 测试改用真实 `abandonVersion()` 调用，不再手动设置状态
-- 测试数字校正（JUnit XML 核实）：定点 7 个测试类合计 **114 tests / 0 failed / 0 skipped**（RagChatControllerTest 11 + KnowledgeBaseQueryServiceTest 42 + RagChatSessionServiceTest 15 + RagChatSseIntegrationTest 4 + KnowledgeBaseConflictServiceTest 14 + KnowledgeBaseUploadPipelineIntegrationTest 21 + KnowledgeBaseUploadServiceTest 7；RagChatServiceTest 不存在）；全量后端 **650 tests / 637 passed / 10 failed（Voice Redis 遗留）/ 3 skipped**；前端单测 **113/113**，E2E **17/20**（3 voice 遗留）
+- 测试数字校正（JUnit XML 核实）：定点 7 个测试类合计 **115 tests / 0 failed / 0 skipped**（RagChatControllerTest 11 + KnowledgeBaseQueryServiceTest 42 + RagChatSessionServiceTest 15 + RagChatSseIntegrationTest 4 + KnowledgeBaseConflictServiceTest 14 + KnowledgeBaseUploadPipelineIntegrationTest 22 + KnowledgeBaseUploadServiceTest 7；RagChatServiceTest 不存在）；全量后端 **650 tests / 637 passed / 10 failed（Voice Redis 遗留）/ 3 skipped**；前端单测 **113/113**，E2E **17/20**（3 voice 遗留）
 
 **2026-10-06 -- Stage 3 结构化排查回答骨架 + 来源章节定位 + 版本冲突提示 + INSUFFICIENT_INFO 拒答细化**
 - Prompt 定义 8 段结构化回答骨架：问题理解 → 可能原因 → 排查步骤 → 验证命令 → 引用来源 → 适用版本 → 置信边界 → 缺失信息
