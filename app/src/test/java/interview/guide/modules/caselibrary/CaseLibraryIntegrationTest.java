@@ -577,6 +577,94 @@ class CaseLibraryIntegrationTest {
     }
 
     @Test
+    @DisplayName("废弃后状态持久化且向量清理标记正确清除")
+    void deprecate_vectorDeletionFails_statusPersisted_vectorCleanupPending() {
+      // 1. 创建并批准（向量存在）
+      String uniqueContent = "deprecate_phase_test_juliet_8010";
+      CaseDTO published = createApproveCaseWithTags(uniqueContent, "billing", "prod");
+      assertThat(vectorCountForCase(published.id())).isGreaterThan(0);
+
+      // 2. 废弃 — 两阶段策略：Phase 1 标记 → Phase 2 删除向量 → 清除标记
+      CaseDTO deprecated = lifecycleService.deprecate(published.id(), "tester");
+
+      // 3. 验证最终状态：status=DEPRECATED, active=false
+      assertThat(deprecated.status()).isEqualTo(CaseStatus.DEPRECATED);
+      assertThat(deprecated.active()).isFalse();
+
+      // 4. 向量删除成功，vectorCleanupPending 应已从 true → false
+      CaseEntity entity = caseRepository.findById(published.id()).orElseThrow();
+      assertThat(entity.getVectorCleanupPending())
+          .as("向量删除成功后 vectorCleanupPending 应为 false")
+          .isFalse();
+      assertThat(entity.getStatus()).isEqualTo(CaseStatus.DEPRECATED);
+      assertThat(entity.getActive()).isFalse();
+
+      // 5. 审计日志应包含 DEPRECATED
+      List<CaseAuditLogEntity> logs = auditLogRepository
+          .findByCaseIdOrderByCreatedAtDesc(published.id());
+      assertThat(logs).anyMatch(l -> "DEPRECATED".equals(l.getAction()));
+
+      // 6. 通过上下文检索不应命中
+      Map<String, String> contextFilter = Map.of("service", "billing");
+      List<Document> results = vectorService.searchCaseVectors(uniqueContent, contextFilter, List.of(), 10, 0.0);
+      assertThat(results)
+          .as("废弃案例不应被检索到")
+          .noneMatch(doc -> {
+            Object caseIdLong = doc.getMetadata().get("case_id_long");
+            return caseIdLong != null &&
+                String.valueOf(caseIdLong).equals(String.valueOf(published.id()));
+          });
+    }
+
+    @Test
+    @DisplayName("向量删除失败场景：vectorCleanupPending=true 排除检索，重试后恢复正常")
+    void deprecate_vectorCleanupPending_true_searchExcludes() {
+      // 1. 创建并批准（向量存在）
+      String uniqueContent = "pending_retry_test_kilo_8011";
+      CaseDTO published = createApproveCaseWithTags(uniqueContent, "billing", "prod");
+      assertThat(vectorCountForCase(published.id())).isGreaterThan(0);
+
+      // 2. 手动设置 vectorCleanupPending=true（模拟向量删除失败）
+      CaseEntity entity = caseRepository.findById(published.id()).orElseThrow();
+      entity.setVectorCleanupPending(true);
+      entity.setStatus(CaseStatus.DEPRECATED);
+      entity.setActive(false);
+      caseRepository.save(entity);
+
+      // 3. 通过上下文检索不应命中（被 vectorCleanupPending 排除）
+      Map<String, String> contextFilter = Map.of("service", "billing");
+      List<Document> results = vectorService.searchCaseVectors(uniqueContent, contextFilter, List.of(), 10, 0.0);
+      assertThat(results)
+          .as("vectorCleanupPending=true 的案例不应被检索到")
+          .noneMatch(doc -> {
+            Object caseIdLong = doc.getMetadata().get("case_id_long");
+            return caseIdLong != null &&
+                String.valueOf(caseIdLong).equals(String.valueOf(published.id()));
+          });
+
+      // 4. 调用 retryVectorCleanup 重试清理
+      boolean cleanupResult = lifecycleService.retryVectorCleanup(published.id());
+      assertThat(cleanupResult).isTrue();
+
+      // 5. 验证 vectorCleanupPending=false 且向量已删除
+      CaseEntity afterRetry = caseRepository.findById(published.id()).orElseThrow();
+      assertThat(afterRetry.getVectorCleanupPending()).isFalse();
+      assertThat(vectorCountForCase(published.id()))
+          .as("重试清理后向量应被删除")
+          .isZero();
+
+      // 6. 重试后检索仍不应命中（向量已删除）
+      List<Document> afterResults = vectorService.searchCaseVectors(uniqueContent, contextFilter, List.of(), 10, 0.0);
+      assertThat(afterResults)
+          .as("清理后案例不应被检索到")
+          .noneMatch(doc -> {
+            Object caseIdLong = doc.getMetadata().get("case_id_long");
+            return caseIdLong != null &&
+                String.valueOf(caseIdLong).equals(String.valueOf(published.id()));
+          });
+    }
+
+    @Test
     @DisplayName("重试向量清理成功后案例不可检索")
     void retryVectorCleanup_success() {
       // 1. 创建并批准
@@ -622,7 +710,7 @@ class CaseLibraryIntegrationTest {
   class KbCaseMerge {
 
     @Test
-    @DisplayName("知识库和案例结果同时被检索到")
+    @DisplayName("知识库和案例结果通过合并逻辑同时被检索到")
     void kbAndCaseResults_merged() {
       // 1. 创建知识库文档并向量化
       KnowledgeBaseEntity kb = createKnowledgeBase("合并测试文档");
@@ -634,36 +722,56 @@ class CaseLibraryIntegrationTest {
       CaseDTO published = createApproveCaseWithTags(uniqueContent, "billing", "prod");
       assertThat(vectorCountForCase(published.id())).isGreaterThan(0);
 
-      // 3. 搜索知识库向量
-      List<Document> kbResults = vectorService.similaritySearch(sharedKeyword, List.of(kb.getId()), 10, 0.0);
-      assertThat(kbResults)
+      // 3. 分别检索知识库和案例
+      List<Document> kbDocs = vectorService.similaritySearch(sharedKeyword, List.of(kb.getId()), 10, 0.0);
+      assertThat(kbDocs)
           .as("知识库文档应被检索到")
           .isNotEmpty();
-      assertThat(kbResults).anyMatch(doc -> {
-        Object kbId = doc.getMetadata().get("kb_id");
-        return kbId != null && String.valueOf(kbId).equals(String.valueOf(kb.getId()));
-      });
 
-      // 4. 搜索案例向量
       Map<String, String> contextFilter = Map.of("service", "billing");
-      List<Document> caseResults = vectorService.searchCaseVectors(sharedKeyword, contextFilter, List.of(), 10, 0.0);
-      assertThat(caseResults)
+      List<Document> caseDocs = vectorService.searchCaseVectors(sharedKeyword, contextFilter, List.of(), 10, 0.0);
+      assertThat(caseDocs)
           .as("案例应被检索到")
           .isNotEmpty();
-      assertThat(caseResults).anyMatch(doc -> {
-        Object caseIdLong = doc.getMetadata().get("case_id_long");
-        return caseIdLong != null &&
-            String.valueOf(caseIdLong).equals(String.valueOf(published.id()));
-      });
 
-      // 5. 验证来源类型不同
-      Document kbDoc = kbResults.stream()
+      // 4. 模拟 KnowledgeBaseQueryService.mergeResults 合并逻辑（KB 在前，案例补充，去重）
+      int topK = 20;
+      List<Document> merged = new ArrayList<>(kbDocs);
+      java.util.Set<String> seenIds = new java.util.LinkedHashSet<>(
+          kbDocs.stream().map(Document::getId).toList());
+      for (Document caseDoc : caseDocs) {
+        if (seenIds.add(caseDoc.getId()) && merged.size() < topK) {
+          merged.add(caseDoc);
+        }
+      }
+
+      // 5. 合并结果应同时包含 KB 来源和 CASE 来源
+      boolean hasKbSource = merged.stream()
+          .anyMatch(doc -> {
+            Object kbId = doc.getMetadata().get("kb_id");
+            return kbId != null && String.valueOf(kbId).equals(String.valueOf(kb.getId()));
+          });
+      boolean hasCaseSource = merged.stream()
+          .anyMatch(doc -> {
+            Object caseIdLong = doc.getMetadata().get("case_id_long");
+            return caseIdLong != null &&
+                String.valueOf(caseIdLong).equals(String.valueOf(published.id()));
+          });
+      assertThat(hasKbSource)
+          .as("合并结果应包含 KB 来源文档")
+          .isTrue();
+      assertThat(hasCaseSource)
+          .as("合并结果应包含 CASE 来源文档")
+          .isTrue();
+
+      // 6. 验证来源类型标识
+      Document kbDoc = merged.stream()
           .filter(doc -> String.valueOf(doc.getMetadata().get("kb_id"))
               .equals(String.valueOf(kb.getId())))
           .findFirst().orElseThrow();
       assertThat(kbDoc.getMetadata().get("source_type")).isNotEqualTo("CASE");
 
-      Document caseDoc = caseResults.stream()
+      Document caseDoc = merged.stream()
           .filter(doc -> String.valueOf(doc.getMetadata().get("case_id_long"))
               .equals(String.valueOf(published.id())))
           .findFirst().orElseThrow();

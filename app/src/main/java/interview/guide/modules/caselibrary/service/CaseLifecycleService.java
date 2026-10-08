@@ -2,6 +2,7 @@ package interview.guide.modules.caselibrary.service;
 
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
+import interview.guide.common.transaction.TransactionalExecutor;
 import interview.guide.infrastructure.mapper.CaseLibraryMapper;
 import interview.guide.modules.caselibrary.model.CaseAuditLogEntity;
 import interview.guide.modules.caselibrary.model.CaseDTO;
@@ -29,59 +30,80 @@ public class CaseLifecycleService {
   private final CaseAuditLogRepository auditLogRepository;
   private final CaseLibraryMapper caseLibraryMapper;
   private final VectorRepository vectorRepository;
+  private final TransactionalExecutor transactionalExecutor;
 
   /**
    * 废弃案例（PUBLISHED → DEPRECATED）
    * <p>
-   * 向量清理采用“先标记后删除”策略：
-   * 1. 先设置 vectorCleanupPending=true（标记待清理）
-   * 2. 尝试删除向量
-   * 3. 成功则清除标记，失败则保留标记供后续重试
+   * 向量清理采用“先标记后删除”两阶段策略：
+   * Phase 1（独立事务）：设置 status=DEPRECATED, active=false, vectorCleanupPending=true + 审计日志
+   * Phase 2（事务外）：尝试删除向量
+   *   - 成功：通过新事务清除 vectorCleanupPending 标记
+   *   - 失败：保留标记供后续 retryVectorCleanup 补偿
+   * <p>
+   * 不使用 @Transactional，而是通过 TransactionalExecutor 显式控制事务边界，
+   * 确保 Phase 1 在向量删除之前就已提交，即使向量删除失败也不会丢失废弃状态。
    *
    * @param caseId   案例ID
    * @param operator 操作者（来自 X-Operator header，默认 anonymous）
    * @return 案例DTO
    */
-  @Transactional
   public CaseDTO deprecate(Long caseId, String operator) {
-    CaseEntity caseEntity = caseRepository.findById(caseId)
-      .orElseThrow(() -> new BusinessException(ErrorCode.CASE_NOT_FOUND));
+    // Phase 1: 独立事务内标记废弃 + vectorCleanupPending=true + 审计日志
+    CaseEntity saved = transactionalExecutor.call(() -> {
+      CaseEntity caseEntity = caseRepository.findById(caseId)
+        .orElseThrow(() -> new BusinessException(ErrorCode.CASE_NOT_FOUND));
 
-    if (caseEntity.getStatus() != CaseStatus.PUBLISHED) {
-      throw new BusinessException(ErrorCode.CASE_INVALID_OPERATION,
-        "只有 PUBLISHED 状态可以废弃，当前状态: " + caseEntity.getStatus());
-    }
+      if (caseEntity.getStatus() != CaseStatus.PUBLISHED) {
+        throw new BusinessException(ErrorCode.CASE_INVALID_OPERATION,
+          "只有 PUBLISHED 状态可以废弃，当前状态: " + caseEntity.getStatus());
+      }
 
-    caseEntity.setStatus(CaseStatus.DEPRECATED);
-    caseEntity.setActive(false);
-    // 先标记待清理，确保即使向量删除失败也不会被检索到
-    caseEntity.setVectorCleanupPending(true);
-    CaseEntity saved = caseRepository.save(caseEntity);
+      caseEntity.setStatus(CaseStatus.DEPRECATED);
+      caseEntity.setActive(false);
+      caseEntity.setVectorCleanupPending(true);
+      CaseEntity entity = caseRepository.save(caseEntity);
 
-    // 删除案例向量（废弃后不再参与检索）
+      CaseAuditLogEntity auditLog = CaseAuditLogEntity.builder()
+        .caseId(caseId)
+        .action("DEPRECATED")
+        .previousStatus(CaseStatus.PUBLISHED.name())
+        .newStatus(CaseStatus.DEPRECATED.name())
+        .operator(operator)
+        .remark("案例已废弃并停用")
+        .build();
+      auditLogRepository.save(auditLog);
+
+      return entity;
+    });
+
+    // Phase 1 事务已提交，废弃状态已持久化
+
+    // Phase 2: 事务外尝试删除向量
     try {
       int deleted = vectorRepository.deleteByCaseId(caseId);
       log.info("废弃案例已清理向量: caseId={}, deletedRows={}", caseId, deleted);
-      // 向量删除成功，清除标记
-      saved.setVectorCleanupPending(false);
-      caseRepository.save(saved);
+      // Phase 3: 向量删除成功，通过新事务清除标记
+      markVectorCleanupComplete(caseId);
     } catch (Exception e) {
       // 向量删除失败，保留 vectorCleanupPending=true 标记，后续可通过 retryVectorCleanup 补偿
       log.warn("废弃案例向量删除失败，已标记待清理: caseId={}, error={}", caseId, e.getMessage(), e);
     }
 
-    // 写入审计日志
-    CaseAuditLogEntity auditLog = CaseAuditLogEntity.builder()
-      .caseId(caseId)
-      .action("DEPRECATED")
-      .previousStatus(CaseStatus.PUBLISHED.name())
-      .newStatus(CaseStatus.DEPRECATED.name())
-      .operator(operator)
-      .remark("案例已废弃并停用")
-      .build();
-    auditLogRepository.save(auditLog);
-
     return caseLibraryMapper.toDTO(saved);
+  }
+
+  /**
+   * 在新事务中清除 vectorCleanupPending 标记。
+   * 使用 REQUIRES_NEW 确保与 deprecate() 事务分离。
+   */
+  private void markVectorCleanupComplete(Long caseId) {
+    transactionalExecutor.runRequiresNew(() -> {
+      CaseEntity entity = caseRepository.findById(caseId)
+        .orElseThrow(() -> new BusinessException(ErrorCode.CASE_NOT_FOUND));
+      entity.setVectorCleanupPending(false);
+      caseRepository.save(entity);
+    });
   }
 
   /**

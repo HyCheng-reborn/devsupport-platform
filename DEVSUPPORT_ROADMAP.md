@@ -135,6 +135,9 @@ Resume、Interview、VoiceInterview、InterviewSchedule 属于原上游项目遗
 - **版本语义说明**：案例 versionNo 为简单递增计数器，每次编辑同一条行记录，无版本历史表、无回滚/diff 支持。「版本与审计记录」实际指审计日志（case_audit_logs）记录每次状态变更（SUBMITTED/APPROVED/REJECTED/DEPRECATED/EDITED），而非完整版本快照。
 - **预期交付物**：案例草稿、人工审核、发布检索（PUBLISHED 案例向量化后参与 RAG 检索）、更新/废弃的完整流程。
 - **验收标准**：案例可从会话生成草稿；未审核草稿不进入正式检索；审核发布后可从案例库查到且来源清楚；状态转换有权限检查和测试。
+- **已知缺口**：
+  - 项目维度（project）暂不参与案例范围过滤：会话关联的 KB 虽有 project 字段，但该字段可空且无一致性保证，待数据模型完善后补充。
+  - affected_versions 过滤已接入：当会话 KB 携带 versionLabel 时，会按 affected_versions 匹配案例；但案例 affectedVersions 与 KB versionLabel 的语义对齐依赖人工维护，无自动校验。
 
 ### 阶段 5：可评测检索优化
 

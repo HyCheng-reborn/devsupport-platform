@@ -272,6 +272,24 @@ public class KnowledgeBaseQueryService {
     public RetrievalResult answerQuestionStream(List<Long> knowledgeBaseIds, String question,
                                                 List<Message> history,
                                                 String service, String environment) {
+        return answerQuestionStream(knowledgeBaseIds, question, history, service, environment, null);
+    }
+
+    /**
+     * 流式查询知识库（SSE，支持多轮上下文 + 案例检索范围隔离 + 版本过滤）
+     *
+     * @param knowledgeBaseIds 知识库ID列表
+     * @param question 用户问题
+     * @param history 历史对话消息（可选）
+     * @param service 会话关联的服务标签（可为 null）
+     * @param environment 会话关联的环境标签（可为 null）
+     * @param affectedVersions 版本标签（可为 null）
+     * @return 检索结果（包含流式响应和来源文档）
+     */
+    public RetrievalResult answerQuestionStream(List<Long> knowledgeBaseIds, String question,
+                                                List<Message> history,
+                                                String service, String environment,
+                                                String affectedVersions) {
         log.info("收到知识库流式提问: kbIds={}, question={}, historySize={}", knowledgeBaseIds, question,
                 history != null ? history.size() : 0);
         if (knowledgeBaseIds == null || knowledgeBaseIds.isEmpty() || normalizeQuestion(question).isBlank()) {
@@ -285,7 +303,7 @@ public class KnowledgeBaseQueryService {
             // 2. Query rewrite + 动态参数检索
             List<Message> effectiveHistory = sanitizeHistory(history);
             QueryContext queryContext = buildQueryContext(question, effectiveHistory);
-            Map<String, String> caseContextFilter = buildCaseContextFilter(service, environment);
+            Map<String, String> caseContextFilter = buildCaseContextFilter(service, environment, affectedVersions);
             List<Document> relevantDocs = retrieveRelevantDocs(queryContext, knowledgeBaseIds, caseContextFilter);
 
             if (!hasEffectiveHit(relevantDocs)) {
@@ -564,15 +582,19 @@ public class KnowledgeBaseQueryService {
 
     /**
      * 构建案例检索上下文过滤条件。
-     * service/environment 均为空时返回空 Map，触发“无上下文不召回”逻辑。
+     * service/environment/affectedVersions 均为空时返回空 Map，触发“无上下文不召回”逻辑。
      */
-    private Map<String, String> buildCaseContextFilter(String service, String environment) {
+    private Map<String, String> buildCaseContextFilter(String service, String environment,
+                                                        String affectedVersions) {
         Map<String, String> filter = new HashMap<>();
         if (service != null && !service.isBlank()) {
             filter.put("service", service.trim());
         }
         if (environment != null && !environment.isBlank()) {
             filter.put("environment", environment.trim());
+        }
+        if (affectedVersions != null && !affectedVersions.isBlank()) {
+            filter.put("affected_versions", affectedVersions.trim());
         }
         return filter;
     }

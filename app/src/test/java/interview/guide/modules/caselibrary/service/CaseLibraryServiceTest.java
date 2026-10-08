@@ -2,6 +2,7 @@ package interview.guide.modules.caselibrary.service;
 
 import interview.guide.common.ai.LlmProviderRegistry;
 import interview.guide.common.exception.BusinessException;
+import interview.guide.common.transaction.TransactionalExecutor;
 import interview.guide.infrastructure.mapper.CaseLibraryMapper;
 import interview.guide.modules.caselibrary.model.CaseAuditLogEntity;
 import interview.guide.modules.caselibrary.model.CaseDTO;
@@ -31,6 +32,8 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -51,6 +54,7 @@ class CaseLibraryServiceTest {
   @Mock private LlmProviderRegistry llmProviderRegistry;
   @Mock private org.springframework.ai.vectorstore.VectorStore vectorStore;
   @Mock private VectorRepository vectorRepository;
+  @Mock private TransactionalExecutor transactionalExecutor;
 
   private CaseDraftService draftService;
   private CaseReviewService reviewService;
@@ -61,7 +65,17 @@ class CaseLibraryServiceTest {
     draftService = new CaseDraftService(
         caseRepository, auditLogRepository, sessionRepository, messageRepository, caseLibraryMapper);
     reviewService = new CaseReviewService(caseRepository, auditLogRepository, caseLibraryMapper, llmProviderRegistry, vectorStore);
-    lifecycleService = new CaseLifecycleService(caseRepository, auditLogRepository, caseLibraryMapper, vectorRepository);
+    // transactionalExecutor mock: 直接执行传入的 Runnable/Supplier
+    lenient().when(transactionalExecutor.call(any())).thenAnswer(inv -> {
+      java.util.function.Supplier<?> supplier = inv.getArgument(0);
+      return supplier.get();
+    });
+    lenient().doAnswer(inv -> {
+      Runnable action = inv.getArgument(0);
+      action.run();
+      return null;
+    }).when(transactionalExecutor).runRequiresNew(any());
+    lifecycleService = new CaseLifecycleService(caseRepository, auditLogRepository, caseLibraryMapper, vectorRepository, transactionalExecutor);
   }
 
   // ─────────── 辅助方法 ───────────

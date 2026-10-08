@@ -252,17 +252,20 @@ public class RagChatSessionService {
         List<Message> history = queryProperties.getHistory().isEnabled()
             ? loadHistoryMessages(sessionId) : List.of();
 
-        // 从会话关联的 KB 中提取 service/environment 作为案例检索上下文
+        // 从会话关联的 KB 中提取 service/environment/version 作为案例检索上下文
         String service = null;
         String environment = null;
+        String affectedVersions = null;
         if (session.getKnowledgeBases() != null && !session.getKnowledgeBases().isEmpty()) {
             KnowledgeBaseEntity firstKb = session.getKnowledgeBases().iterator().next();
             service = firstKb.getService();
             environment = firstKb.getEnvironment();
+            // 使用 KB 的 versionLabel 作为案例检索的版本过滤条件
+            affectedVersions = firstKb.getVersionLabel();
         }
 
         log.info("加载历史上下文: sessionId={}, historySize={}", sessionId, history.size());
-        return queryService.answerQuestionStream(kbIds, question, history, service, environment);
+        return queryService.answerQuestionStream(kbIds, question, history, service, environment, affectedVersions);
     }
 
     /** Markdown 标题匹配：# 、 ## 或 ### 开头的行 */

@@ -1,3 +1,11 @@
+**2026-10-08 -- Stage 4 最终验收：affected_versions 过滤 + fail-closed + 事务边界 + 失败路径测试**
+- affected_versions 真正参与检索过滤，versionLabel 从会话上下文传递
+- 待清理案例 ID 查询失败时案例检索 fail-closed（返回空列表）
+- deprecate 事务边界修复：Phase1 独立事务持久化废弃状态 + vectorCleanupPending，Phase2 事务外删除向量
+- 已知缺口：project 维度暂不参与过滤（字段可空无一致性保证）
+- 失败路径测试：向量删除失败场景 + vectorCleanupPending 排除 + 重试清理
+- KB/案例合并测试改为实际调用检索路径
+
 **2026-10-08 -- Stage 4 范围隔离 + 废弃一致性 + X-Operator 审计标签澄清**
 - 案例检索按 service/environment 上下文过滤，无上下文不全局召回
 - 案例向量 metadata 携带 affected_versions

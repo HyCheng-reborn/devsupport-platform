@@ -15,9 +15,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -308,16 +311,21 @@ public class KnowledgeBaseVectorService {
         }
 
         // 合并外部排除列表与 vectorCleanupPending=true 的案例 ID
+        // Fail-closed: 如果查询待清理案例失败，不执行案例检索，避免召回已废弃案例
+        Set<Long> pendingCleanupIds;
+        if (caseRepository != null) {
+          try {
+            pendingCleanupIds = new HashSet<>(caseRepository.findIdsWithVectorCleanupPending());
+          } catch (Exception e) {
+            log.error("Failed to query vectorCleanupPending cases, skipping case search", e);
+            return Collections.emptyList();
+          }
+        } else {
+          pendingCleanupIds = new HashSet<>();
+        }
         List<Long> effectiveExcludes = new ArrayList<>(
             excludeCaseIds != null ? excludeCaseIds : List.of());
-        if (caseRepository != null) {
-            try {
-                List<Long> pendingIds = caseRepository.findIdsWithVectorCleanupPending();
-                effectiveExcludes.addAll(pendingIds);
-            } catch (Exception e) {
-                log.warn("查询 vectorCleanupPending 案例失败，跳过排除: {}", e.getMessage());
-            }
-        }
+        effectiveExcludes.addAll(pendingCleanupIds);
 
         log.info("案例向量检索: query={}, contextFilter={}, excludeCaseIds={}, topK={}, minScore={}",
             query, contextFilter, effectiveExcludes, topK, minScore);
@@ -363,6 +371,10 @@ public class KnowledgeBaseVectorService {
         String environment = contextFilter.get("environment");
         if (environment != null && !environment.isBlank()) {
             conditions.add("environment == '" + escapeFilterValue(environment) + "'");
+        }
+        String affectedVersions = contextFilter.get("affected_versions");
+        if (affectedVersions != null && !affectedVersions.isBlank()) {
+            conditions.add("affected_versions == '" + escapeFilterValue(affectedVersions) + "'");
         }
 
         if (excludeCaseIds != null && !excludeCaseIds.isEmpty()) {
