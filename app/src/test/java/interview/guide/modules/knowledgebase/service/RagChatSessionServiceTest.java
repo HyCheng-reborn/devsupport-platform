@@ -9,6 +9,7 @@ import interview.guide.modules.knowledgebase.model.SourceReference;
 import interview.guide.modules.knowledgebase.repository.KnowledgeBaseRepository;
 import interview.guide.modules.knowledgebase.repository.RagChatMessageRepository;
 import interview.guide.modules.knowledgebase.repository.RagChatSessionRepository;
+import interview.guide.modules.caselibrary.repository.CaseRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -42,6 +43,8 @@ class RagChatSessionServiceTest {
   private RagChatMessageRepository messageRepository;
   @Mock
   private KnowledgeBaseRepository knowledgeBaseRepository;
+  @Mock
+  private CaseRepository caseRepository;
   @Mock
   private KnowledgeBaseQueryService queryService;
   @Mock

@@ -1,3 +1,13 @@
+**2026-10-08 -- Stage 4 验收缺口修复：案例检索接入 + 操作者追溯 + 版本语义澄清**
+- 案例检索接入：approve 触发向量化（TokenTextSplitter + vector_store 共用表），deprecate 删除向量（VectorRepository.deleteByCaseId），检索链路合并案例结果（searchCaseVectors + mergeResults）
+- SourceReference 扩展 sourceType/caseId/caseTitle
+- RagChatSessionService 处理 CASE 来源
+- X-Operator 请求头审计追溯（无硬鉴权，状态机约束保护）
+- versionNo 语义澄清：简单计数器，无版本历史表
+- 集成测试：草稿不可检索/批准后可检索/废弃后不可检索
+- 全量后端 **682 tests / 669 passed / 10 failed（Voice Redis 遗留）/ 3 skipped**，DevSupport 相关全绿
+- 前端单测 **96/96**（kb-filter 30 + chat-scope 8 + kb-status 19 + source-display 20 + case-status 3 + rag-stream 6 + sse-stream 10），build 通过
+
 **2026-10-08 -- Stage 4 案例库审核发布：数据模型 + 状态机 + 前端页面 + 测试**
 - DB 迁移：cases 表 + case_audit_logs 表
 - CaseStatus 枚举：DRAFT/PENDING_REVIEW/PUBLISHED/REJECTED/DEPRECATED

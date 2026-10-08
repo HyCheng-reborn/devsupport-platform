@@ -9,7 +9,9 @@ import interview.guide.modules.caselibrary.model.CaseEntity;
 import interview.guide.modules.caselibrary.model.CaseStatus;
 import interview.guide.modules.caselibrary.repository.CaseAuditLogRepository;
 import interview.guide.modules.caselibrary.repository.CaseRepository;
+import interview.guide.modules.knowledgebase.repository.VectorRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,6 +20,7 @@ import java.util.List;
 /**
  * 案例生命周期服务
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class CaseLifecycleService {
@@ -25,15 +28,17 @@ public class CaseLifecycleService {
   private final CaseRepository caseRepository;
   private final CaseAuditLogRepository auditLogRepository;
   private final CaseLibraryMapper caseLibraryMapper;
+  private final VectorRepository vectorRepository;
 
   /**
    * 废弃案例（PUBLISHED → DEPRECATED）
    *
-   * @param caseId 案例ID
+   * @param caseId   案例ID
+   * @param operator 操作者（来自 X-Operator header，默认 anonymous）
    * @return 案例DTO
    */
   @Transactional
-  public CaseDTO deprecate(Long caseId) {
+  public CaseDTO deprecate(Long caseId, String operator) {
     CaseEntity caseEntity = caseRepository.findById(caseId)
       .orElseThrow(() -> new BusinessException(ErrorCode.CASE_NOT_FOUND));
 
@@ -46,12 +51,22 @@ public class CaseLifecycleService {
     caseEntity.setActive(false);
     CaseEntity saved = caseRepository.save(caseEntity);
 
+    // 删除案例向量（废弃后不再参与检索）
+    try {
+      int deleted = vectorRepository.deleteByCaseId(caseId);
+      log.info("废弃案例已清理向量: caseId={}, deletedRows={}", caseId, deleted);
+    } catch (Exception e) {
+      // 向量删除失败不阻断废弃流程，后续可补偿
+      log.warn("废弃案例向量删除失败，可后续补偿: caseId={}, error={}", caseId, e.getMessage(), e);
+    }
+
     // 写入审计日志
     CaseAuditLogEntity auditLog = CaseAuditLogEntity.builder()
       .caseId(caseId)
       .action("DEPRECATED")
       .previousStatus(CaseStatus.PUBLISHED.name())
       .newStatus(CaseStatus.DEPRECATED.name())
+      .operator(operator)
       .remark("案例已废弃并停用")
       .build();
     auditLogRepository.save(auditLog);

@@ -15,6 +15,10 @@ import java.util.List;
 
 /**
  * 案例库 Controller
+ * <p>
+ * 当前项目无认证体系。X-Operator 仅用于审计追溯，不做硬鉴权。
+ * 状态机约束（合法转换检查）是唯一的操作保护机制。
+ * 引入 Spring Security 后应将 approve/reject/deprecate 限制为 REVIEWER 角色。
  */
 @RestController
 @RequestMapping("/api/cases")
@@ -59,8 +63,12 @@ public class CaseLibraryController {
    * 更新案例（仅 DRAFT 或 REJECTED 可编辑）
    */
   @PutMapping("/{id}")
-  public Result<CaseDTO> updateCase(@PathVariable Long id, @RequestBody CaseUpdateRequest request) {
-    CaseDTO dto = reviewService.updateCase(id, request);
+  public Result<CaseDTO> updateCase(
+    @PathVariable Long id,
+    @RequestBody CaseUpdateRequest request,
+    @RequestHeader(value = "X-Operator", required = false, defaultValue = "anonymous") String operator
+  ) {
+    CaseDTO dto = reviewService.updateCase(id, request, operator);
     return Result.success(dto);
   }
 
@@ -68,8 +76,11 @@ public class CaseLibraryController {
    * 提交审核（DRAFT → PENDING_REVIEW）
    */
   @PostMapping("/{id}/submit")
-  public Result<CaseDTO> submitForReview(@PathVariable Long id) {
-    CaseDTO dto = reviewService.submitForReview(id);
+  public Result<CaseDTO> submitForReview(
+    @PathVariable Long id,
+    @RequestHeader(value = "X-Operator", required = false, defaultValue = "anonymous") String operator
+  ) {
+    CaseDTO dto = reviewService.submitForReview(id, operator);
     return Result.success(dto);
   }
 
@@ -77,8 +88,11 @@ public class CaseLibraryController {
    * 审核通过（PENDING_REVIEW → PUBLISHED）
    */
   @PostMapping("/{id}/approve")
-  public Result<CaseDTO> approve(@PathVariable Long id) {
-    CaseDTO dto = reviewService.approve(id);
+  public Result<CaseDTO> approve(
+    @PathVariable Long id,
+    @RequestHeader(value = "X-Operator", required = false, defaultValue = "anonymous") String operator
+  ) {
+    CaseDTO dto = reviewService.approve(id, operator);
     return Result.success(dto);
   }
 
@@ -86,9 +100,13 @@ public class CaseLibraryController {
    * 审核拒绝（PENDING_REVIEW → REJECTED）
    */
   @PostMapping("/{id}/reject")
-  public Result<CaseDTO> reject(@PathVariable Long id, @RequestBody(required = false) RejectRequest request) {
+  public Result<CaseDTO> reject(
+    @PathVariable Long id,
+    @RequestBody(required = false) RejectRequest request,
+    @RequestHeader(value = "X-Operator", required = false, defaultValue = "anonymous") String operator
+  ) {
     String remark = request != null ? request.remark() : null;
-    CaseDTO dto = reviewService.reject(id, remark);
+    CaseDTO dto = reviewService.reject(id, remark, operator);
     return Result.success(dto);
   }
 
@@ -96,8 +114,11 @@ public class CaseLibraryController {
    * 废弃案例（PUBLISHED → DEPRECATED）
    */
   @PostMapping("/{id}/deprecate")
-  public Result<CaseDTO> deprecate(@PathVariable Long id) {
-    CaseDTO dto = lifecycleService.deprecate(id);
+  public Result<CaseDTO> deprecate(
+    @PathVariable Long id,
+    @RequestHeader(value = "X-Operator", required = false, defaultValue = "anonymous") String operator
+  ) {
+    CaseDTO dto = lifecycleService.deprecate(id, operator);
     return Result.success(dto);
   }
 }

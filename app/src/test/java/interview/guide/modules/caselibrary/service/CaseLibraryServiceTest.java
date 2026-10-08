@@ -1,5 +1,6 @@
 package interview.guide.modules.caselibrary.service;
 
+import interview.guide.common.ai.LlmProviderRegistry;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.infrastructure.mapper.CaseLibraryMapper;
 import interview.guide.modules.caselibrary.model.CaseAuditLogEntity;
@@ -13,6 +14,7 @@ import interview.guide.modules.knowledgebase.model.RagChatMessageEntity;
 import interview.guide.modules.knowledgebase.model.RagChatSessionEntity;
 import interview.guide.modules.knowledgebase.repository.RagChatMessageRepository;
 import interview.guide.modules.knowledgebase.repository.RagChatSessionRepository;
+import interview.guide.modules.knowledgebase.repository.VectorRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -46,6 +48,9 @@ class CaseLibraryServiceTest {
   @Mock private RagChatSessionRepository sessionRepository;
   @Mock private RagChatMessageRepository messageRepository;
   @Mock private CaseLibraryMapper caseLibraryMapper;
+  @Mock private LlmProviderRegistry llmProviderRegistry;
+  @Mock private org.springframework.ai.vectorstore.VectorStore vectorStore;
+  @Mock private VectorRepository vectorRepository;
 
   private CaseDraftService draftService;
   private CaseReviewService reviewService;
@@ -55,8 +60,8 @@ class CaseLibraryServiceTest {
   void setUp() {
     draftService = new CaseDraftService(
         caseRepository, auditLogRepository, sessionRepository, messageRepository, caseLibraryMapper);
-    reviewService = new CaseReviewService(caseRepository, auditLogRepository, caseLibraryMapper);
-    lifecycleService = new CaseLifecycleService(caseRepository, auditLogRepository, caseLibraryMapper);
+    reviewService = new CaseReviewService(caseRepository, auditLogRepository, caseLibraryMapper, llmProviderRegistry, vectorStore);
+    lifecycleService = new CaseLifecycleService(caseRepository, auditLogRepository, caseLibraryMapper, vectorRepository);
   }
 
   // ─────────── 辅助方法 ───────────
@@ -219,7 +224,7 @@ class CaseLibraryServiceTest {
       when(caseRepository.save(any(CaseEntity.class))).thenReturn(savedEntity);
       when(caseLibraryMapper.toDTO(savedEntity)).thenReturn(expectedDTO);
 
-      CaseDTO result = reviewService.submitForReview(1L);
+      CaseDTO result = reviewService.submitForReview(1L, "tester");
 
       assertThat(result.status()).isEqualTo(CaseStatus.PENDING_REVIEW);
 
@@ -242,7 +247,7 @@ class CaseLibraryServiceTest {
       when(caseRepository.save(any(CaseEntity.class))).thenReturn(savedEntity);
       when(caseLibraryMapper.toDTO(savedEntity)).thenReturn(expectedDTO);
 
-      CaseDTO result = reviewService.approve(1L);
+      CaseDTO result = reviewService.approve(1L, "tester");
 
       assertThat(result.status()).isEqualTo(CaseStatus.PUBLISHED);
       assertThat(result.active()).isTrue();
@@ -267,7 +272,7 @@ class CaseLibraryServiceTest {
       when(caseRepository.save(any(CaseEntity.class))).thenReturn(savedEntity);
       when(caseLibraryMapper.toDTO(savedEntity)).thenReturn(expectedDTO);
 
-      CaseDTO result = reviewService.reject(1L, "内容不够详细");
+      CaseDTO result = reviewService.reject(1L, "内容不够详细", "tester");
 
       assertThat(result.status()).isEqualTo(CaseStatus.REJECTED);
 
@@ -292,7 +297,7 @@ class CaseLibraryServiceTest {
 
       CaseUpdateRequest request = new CaseUpdateRequest(
           "更新后的标题", null, null, null, null, null, null, null, null, null);
-      CaseDTO result = reviewService.updateCase(1L, request);
+      CaseDTO result = reviewService.updateCase(1L, request, "tester");
 
       assertThat(result.status()).isEqualTo(CaseStatus.DRAFT);
 
@@ -318,7 +323,7 @@ class CaseLibraryServiceTest {
       when(caseRepository.save(any(CaseEntity.class))).thenReturn(savedEntity);
       when(caseLibraryMapper.toDTO(savedEntity)).thenReturn(expectedDTO);
 
-      CaseDTO result = lifecycleService.deprecate(1L);
+      CaseDTO result = lifecycleService.deprecate(1L, "tester");
 
       assertThat(result.status()).isEqualTo(CaseStatus.DEPRECATED);
       assertThat(result.active()).isFalse();
@@ -338,7 +343,7 @@ class CaseLibraryServiceTest {
       CaseEntity caseEntity = buildCase(1L, CaseStatus.DRAFT);
       when(caseRepository.findById(1L)).thenReturn(Optional.of(caseEntity));
 
-      assertThatThrownBy(() -> reviewService.approve(1L))
+      assertThatThrownBy(() -> reviewService.approve(1L, "tester"))
           .isInstanceOf(BusinessException.class)
           .hasMessageContaining("只有 PENDING_REVIEW 状态可以审核通过");
 
@@ -353,7 +358,7 @@ class CaseLibraryServiceTest {
       caseEntity.setActive(false);
       when(caseRepository.findById(1L)).thenReturn(Optional.of(caseEntity));
 
-      assertThatThrownBy(() -> lifecycleService.deprecate(1L))
+      assertThatThrownBy(() -> lifecycleService.deprecate(1L, "tester"))
           .isInstanceOf(BusinessException.class)
           .hasMessageContaining("只有 PUBLISHED 状态可以废弃");
 
@@ -367,7 +372,7 @@ class CaseLibraryServiceTest {
       CaseEntity caseEntity = buildCase(1L, CaseStatus.PUBLISHED);
       when(caseRepository.findById(1L)).thenReturn(Optional.of(caseEntity));
 
-      assertThatThrownBy(() -> reviewService.submitForReview(1L))
+      assertThatThrownBy(() -> reviewService.submitForReview(1L, "tester"))
           .isInstanceOf(BusinessException.class)
           .hasMessageContaining("只有 DRAFT 状态可以提交审核");
 
@@ -380,7 +385,7 @@ class CaseLibraryServiceTest {
       CaseEntity caseEntity = buildCase(1L, CaseStatus.DRAFT);
       when(caseRepository.findById(1L)).thenReturn(Optional.of(caseEntity));
 
-      assertThatThrownBy(() -> reviewService.reject(1L, "原因"))
+      assertThatThrownBy(() -> reviewService.reject(1L, "原因", "tester"))
           .isInstanceOf(BusinessException.class)
           .hasMessageContaining("只有 PENDING_REVIEW 状态可以拒绝");
 
@@ -396,7 +401,7 @@ class CaseLibraryServiceTest {
       CaseUpdateRequest request = new CaseUpdateRequest(
           "新标题", null, null, null, null, null, null, null, null, null);
 
-      assertThatThrownBy(() -> reviewService.updateCase(1L, request))
+      assertThatThrownBy(() -> reviewService.updateCase(1L, request, "tester"))
           .isInstanceOf(BusinessException.class)
           .hasMessageContaining("不可编辑");
 
@@ -408,7 +413,7 @@ class CaseLibraryServiceTest {
     void submit_nonExistentCase_shouldThrow() {
       when(caseRepository.findById(999L)).thenReturn(Optional.empty());
 
-      assertThatThrownBy(() -> reviewService.submitForReview(999L))
+      assertThatThrownBy(() -> reviewService.submitForReview(999L, "tester"))
           .isInstanceOf(BusinessException.class)
           .hasMessageContaining("案例不存在");
     }

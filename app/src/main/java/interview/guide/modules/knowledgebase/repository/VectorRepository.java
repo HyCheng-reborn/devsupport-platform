@@ -81,6 +81,35 @@ public class VectorRepository {
     }
 
     /**
+     * 删除指定案例的所有向量数据。
+     * 案例废弃时调用，清理 vector_store 中 source_type='CASE' 且 case_id 匹配的记录。
+     *
+     * @param caseId 案例ID
+     * @return 删除的行数
+     */
+    public int deleteByCaseId(Long caseId) {
+        log.info("开始删除案例向量数据: caseId={}", caseId);
+        String sql = """
+            DELETE FROM vector_store
+            WHERE metadata->>'source_type' = 'CASE'
+              AND metadata->>'case_id_long' IS NOT NULL
+              AND (metadata->>'case_id_long')::bigint = ?
+            """;
+        try {
+            int deletedRows = jdbcTemplate.update(sql, caseId);
+            if (deletedRows > 0) {
+                log.info("成功删除案例向量数据: caseId={}, 删除行数={}", caseId, deletedRows);
+            } else {
+                log.info("未找到相关案例向量数据，无需删除: caseId={}", caseId);
+            }
+            return deletedRows;
+        } catch (Exception e) {
+            log.error("执行删除案例向量 SQL 失败: caseId={}, error={}", caseId, e.getMessage(), e);
+            throw new BusinessException(ErrorCode.KNOWLEDGE_BASE_DELETE_FAILED, "删除案例向量数据失败");
+        }
+    }
+
+    /**
      * 将临时向量任务提升为当前知识库的正式向量数据。
      */
     public int promoteVectorJob(Long knowledgeBaseId, String jobId) {

@@ -263,4 +263,39 @@ public class KnowledgeBaseVectorService {
         }
         transactionalExecutor.run(action);
     }
+
+    /**
+     * 搜索已发布案例的向量（source_type='CASE'）。
+     * 用于将案例检索结果与知识库检索结果合并。
+     *
+     * @param query  查询文本
+     * @param topK   返回条数
+     * @param minScore 最低相似度阈值
+     * @return 匹配的案例文档列表
+     */
+    public List<Document> searchCaseVectors(String query, int topK, double minScore) {
+        log.info("案例向量检索: query={}, topK={}, minScore={}", query, topK, minScore);
+        try {
+            SearchRequest.Builder builder = SearchRequest.builder()
+                .query(query)
+                .topK(Math.max(topK, 1))
+                .filterExpression("source_type == 'CASE'");
+
+            if (minScore > 0) {
+                builder.similarityThreshold(minScore);
+            }
+
+            List<Document> results = vectorStore.similaritySearch(builder.build());
+            if (results == null) {
+                return List.of();
+            }
+
+            List<Document> limited = results.stream().limit(topK).collect(Collectors.toList());
+            log.info("案例向量检索完成: 命中 {} 条", limited.size());
+            return limited;
+        } catch (Exception e) {
+            log.warn("案例向量检索失败，跳过案例检索: {}", e.getMessage(), e);
+            return List.of();
+        }
+    }
 }

@@ -12,6 +12,7 @@ import interview.guide.modules.knowledgebase.model.VectorStatus;
 import interview.guide.modules.knowledgebase.repository.KnowledgeBaseRepository;
 import interview.guide.modules.knowledgebase.repository.RagChatMessageRepository;
 import interview.guide.modules.knowledgebase.repository.RagChatSessionRepository;
+import interview.guide.modules.caselibrary.repository.CaseRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -43,6 +44,7 @@ class RagChatSessionContextTest {
   @Mock private RagChatSessionRepository sessionRepository;
   @Mock private RagChatMessageRepository messageRepository;
   @Mock private KnowledgeBaseRepository knowledgeBaseRepository;
+  @Mock private CaseRepository caseRepository;
   @Mock private KnowledgeBaseQueryService queryService;
   @Mock private KnowledgeBaseListService listService;
   @Mock private RagChatMapper ragChatMapper;
@@ -55,7 +57,7 @@ class RagChatSessionContextTest {
   void setUp() {
     ragChatSessionService = new RagChatSessionService(
         sessionRepository, messageRepository, knowledgeBaseRepository,
-        queryService, listService, ragChatMapper, knowledgeBaseMapper, queryProperties);
+        caseRepository, queryService, listService, ragChatMapper, knowledgeBaseMapper, queryProperties);
   }
 
   private static KnowledgeBaseEntity buildKb(Long id, String name) {

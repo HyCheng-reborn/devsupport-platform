@@ -3,7 +3,7 @@
 > 本项目（远程仓库 `HyCheng-reborn/devsupport-platform`，本地目录名仍为 `interview-guide`）的进度事实源。
 > **跨机器 remote 别名映射（读文档前先对齐，避免 `origin` 误读）**：本机 `devsupport` = `HyCheng-reborn/devsupport-platform`（推送目标），本机 `origin` = `Snailclimb/interview-guide`（上游，**勿推**）；另一台验证机（批次 C/D 补验）的 `origin` = `HyCheng-reborn/devsupport-platform`，故其文档/提交记录里的「push 到 `origin/master`」等同于本机的「push 到 `devsupport/master`」。判断实际目标仓库一律以 remote URL 为准，不要只看别名。
 > 新会话接手时先读本文件，再读「交接区」列出的文件。
-> 最近更新：**2026-10-08 Stage 4 案例库审核发布（后端全量 679/666 passed/10 Voice 遗留/3 skipped；前端单测 80/80，build 通过）**。前一轮：Stage 3 结构化排查回答骨架（后端全量 650/637 passed/10 Voice 遗留/3 skipped，前端单测 113/113，E2E 17/20）。
+> 最近更新：**2026-10-08 Stage 4 验收缺口修复 — 案例检索接入 + X-Operator 审计追溯 + versionNo 语义澄清（后端全量 682/669 passed/10 Voice 遗留/3 skipped；前端单测 96/96，build 通过）**。前一轮：Stage 4 案例库审核发布（后端全量 679/666 passed/10 Voice 遗留/3 skipped；前端单测 80/80，build 通过）。
 
 ## 0. 维护规则
 
@@ -30,6 +30,14 @@
 - **P1-C**（当前阶段）：真实 pgvector + 真实 Embedding 的 **L1 向量检索组件基线**，明确不含查询改写、动态 topK/阈值（这三项生产里都开着，见 §3.4）。
 
 ## 2. 已完成且有证据
+
+- **DevSupport 阶段 4 验收缺口修复：案例检索接入 + 操作者追溯 + 版本语义澄清（2026-10-08）** — 状态 `已完成（源码实现+自动化验证已完成，真实付费模型端到端未验证）`。
+  - 案例检索接入：approve 触发向量化（TokenTextSplitter + vector_store 共用表），deprecate 删除向量（VectorRepository.deleteByCaseId），检索链路合并案例结果（searchCaseVectors + mergeResults）。
+  - SourceReference 扩展 sourceType/caseId/caseTitle。RagChatSessionService 处理 CASE 来源。
+  - X-Operator 请求头审计追溯（无硬鉴权，状态机约束保护）。CaseReviewService/CaseLifecycleService 从请求头读取操作者写入审计日志。
+  - versionNo 语义澄清：简单计数器，无版本历史表、无回滚/diff 支持。路线图 §4 已补充版本语义说明。
+  - 集成测试：草稿不可检索/批准后可检索/废弃后不可检索（CaseLibrarySearchIntegrationTest 3/0）。
+  - 全量后端 **682 tests / 669 passed / 10 failed（Voice Redis 遗留）/ 3 skipped**，DevSupport 相关全绿。前端单测 **96/96**，build 通过。
 
 - **DevSupport 阶段 4：案例库审核发布（2026-10-08）** — 状态 `已完成（源码实现+自动化验证已完成，真实付费模型端到端未验证）`。
   - DB 迁移 `V20261008`：cases 表 + case_audit_logs 表。

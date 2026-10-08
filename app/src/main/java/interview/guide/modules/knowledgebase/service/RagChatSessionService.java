@@ -4,6 +4,8 @@ import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
 import interview.guide.infrastructure.mapper.KnowledgeBaseMapper;
 import interview.guide.infrastructure.mapper.RagChatMapper;
+import interview.guide.modules.caselibrary.model.CaseEntity;
+import interview.guide.modules.caselibrary.repository.CaseRepository;
 import interview.guide.modules.knowledgebase.model.ContextKbItem;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseEntity;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseListItemDTO;
@@ -50,6 +52,7 @@ public class RagChatSessionService {
     private final RagChatSessionRepository sessionRepository;
     private final RagChatMessageRepository messageRepository;
     private final KnowledgeBaseRepository knowledgeBaseRepository;
+    private final CaseRepository caseRepository;
     private final KnowledgeBaseQueryService queryService;
     private final KnowledgeBaseListService listService;
     private final RagChatMapper ragChatMapper;
@@ -256,8 +259,9 @@ public class RagChatSessionService {
 
     /**
      * 从检索文档列表构建来源引用。
-     * 从每个 Document 的 metadata 中提取 kb_id，批量查询知识库获取原始文件名（documentName）
-     * 以及 service/environment 标签（提问时刻快照）。
+     * 从每个 Document 的 metadata 中提取来源类型：
+     * - source_type="CASE"：案例来源，提取 case_id 查询案例标题
+     * - source_type="KB" 或无标识：知识库来源，提取 kb_id 查询原始文件名
      * 来源顺序与入参 docs 保持一致，不改变字段含义与 SSE 序列化契约。
      *
      * @param docs 检索到的文档列表
@@ -268,14 +272,27 @@ public class RagChatSessionService {
             return List.of();
         }
 
-        // 提取所有 kb_id
-        Set<Long> kbIds = docs.stream()
-            .map(doc -> doc.getMetadata() != null ? doc.getMetadata().get("kb_id") : null)
-            .filter(id -> id instanceof Number)
-            .map(id -> ((Number) id).longValue())
-            .collect(Collectors.toSet());
+        // 分离 KB 来源和 CASE 来源
+        Set<Long> kbIds = new HashSet<>();
+        Set<Long> caseIds = new HashSet<>();
+        for (Document doc : docs) {
+            Map<String, Object> metadata = doc.getMetadata();
+            if (metadata == null) continue;
+            String sourceType = (String) metadata.get("source_type");
+            if ("CASE".equals(sourceType)) {
+                Object caseIdObj = metadata.get("case_id_long");
+                if (caseIdObj instanceof Number) {
+                    caseIds.add(((Number) caseIdObj).longValue());
+                }
+            } else {
+                Object kbIdObj = metadata.get("kb_id");
+                if (kbIdObj instanceof Number) {
+                    kbIds.add(((Number) kbIdObj).longValue());
+                }
+            }
+        }
 
-        // 批量查询知识库获取原始文件名和标签（一次查询，不逐条查）
+        // 批量查询知识库
         Map<Long, KnowledgeBaseEntity> kbMap = new HashMap<>();
         if (!kbIds.isEmpty()) {
             List<KnowledgeBaseEntity> kbs = knowledgeBaseRepository.findAllById(kbIds);
@@ -284,25 +301,61 @@ public class RagChatSessionService {
             }
         }
 
+        // 批量查询案例
+        Map<Long, CaseEntity> caseMap = new HashMap<>();
+        if (!caseIds.isEmpty()) {
+            List<CaseEntity> cases = caseRepository.findAllById(caseIds);
+            for (CaseEntity c : cases) {
+                caseMap.put(c.getId(), c);
+            }
+        }
+
         // 构建来源引用（顺序与 docs 一致）
         return docs.stream()
-            .map(doc -> {
-                Object kbIdObj = doc.getMetadata() != null ? doc.getMetadata().get("kb_id") : null;
-                Long kbId = kbIdObj instanceof Number ? ((Number) kbIdObj).longValue() : null;
-                KnowledgeBaseEntity kb = kbId != null ? kbMap.get(kbId) : null;
-                String docName = kb != null ? kb.getOriginalFilename() : "未知文档";
-                String text = doc.getText();
-                String snippet = text != null && text.length() > 200 ? text.substring(0, 200) + "..." : text;
-                Double score = doc.getScore();
-                String service = kb != null ? kb.getService() : null;
-                String environment = kb != null ? kb.getEnvironment() : null;
-                String versionLabel = kb != null ? kb.getVersionLabel() : null;
-                Integer versionNo = kb != null ? kb.getVersionNo() : null;
-                String documentKey = kb != null ? kb.getDocumentKey() : null;
-                String sectionTitle = extractSectionTitle(text);
-                return new SourceReference(kbId, docName, snippet, score, service, environment, versionLabel, versionNo, documentKey, sectionTitle);
-            })
+            .map(doc -> buildSingleSourceReference(doc, kbMap, caseMap))
             .toList();
+    }
+
+    private SourceReference buildSingleSourceReference(Document doc,
+                                                       Map<Long, KnowledgeBaseEntity> kbMap,
+                                                       Map<Long, CaseEntity> caseMap) {
+        Map<String, Object> metadata = doc.getMetadata();
+        String sourceType = metadata != null ? (String) metadata.get("source_type") : null;
+        String text = doc.getText();
+        String snippet = text != null && text.length() > 200 ? text.substring(0, 200) + "..." : text;
+        Double score = doc.getScore();
+        String sectionTitle = extractSectionTitle(text);
+
+        if ("CASE".equals(sourceType)) {
+            // 案例来源
+            Object caseIdObj = metadata != null ? metadata.get("case_id_long") : null;
+            Long caseId = caseIdObj instanceof Number ? ((Number) caseIdObj).longValue() : null;
+            CaseEntity caseEntity = caseId != null ? caseMap.get(caseId) : null;
+            String caseTitle = caseEntity != null ? caseEntity.getTitle() : "未知案例";
+            String service = caseEntity != null ? caseEntity.getService() : null;
+            String environment = caseEntity != null ? caseEntity.getEnvironment() : null;
+            return new SourceReference(
+                null, caseTitle, snippet, score, service, environment,
+                null, null, null, sectionTitle,
+                "CASE", caseId, caseTitle
+            );
+        }
+
+        // 知识库来源（默认）
+        Object kbIdObj = metadata != null ? metadata.get("kb_id") : null;
+        Long kbId = kbIdObj instanceof Number ? ((Number) kbIdObj).longValue() : null;
+        KnowledgeBaseEntity kb = kbId != null ? kbMap.get(kbId) : null;
+        String docName = kb != null ? kb.getOriginalFilename() : "未知文档";
+        String service = kb != null ? kb.getService() : null;
+        String environment = kb != null ? kb.getEnvironment() : null;
+        String versionLabel = kb != null ? kb.getVersionLabel() : null;
+        Integer versionNo = kb != null ? kb.getVersionNo() : null;
+        String documentKey = kb != null ? kb.getDocumentKey() : null;
+        return new SourceReference(
+            kbId, docName, snippet, score, service, environment,
+            versionLabel, versionNo, documentKey, sectionTitle,
+            "KB", null, null
+        );
     }
 
     /**

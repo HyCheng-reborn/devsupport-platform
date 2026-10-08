@@ -426,24 +426,54 @@ public class KnowledgeBaseQueryService {
         return question == null ? "" : question.trim();
     }
 
-//    向量检索
+//    向量检索（知识库 + 案例合并）
     private List<Document> retrieveRelevantDocs(QueryContext queryContext, List<Long> knowledgeBaseIds) {
         for (String candidateQuery : queryContext.candidateQueries()) {
             if (candidateQuery.isBlank()) {
                 continue;
             }
-            List<Document> docs = vectorService.similaritySearch(
+            // 1. 知识库向量检索
+            List<Document> kbDocs = vectorService.similaritySearch(
                 candidateQuery,
                 knowledgeBaseIds,
                 queryContext.searchParams().topK(),
                 queryContext.searchParams().minScore()
             );
-            log.info("检索候选 query='{}'，命中 {} 条", candidateQuery, docs.size());
-            if (hasEffectiveHit(docs)) {
-                return docs;
+            log.info("检索候选 query='{}'，KB 命中 {} 条", candidateQuery, kbDocs.size());
+
+            // 2. 案例向量检索（已发布案例参与检索）
+            List<Document> caseDocs = vectorService.searchCaseVectors(
+                candidateQuery,
+                Math.max(queryContext.searchParams().topK() / 2, 2),
+                queryContext.searchParams().minScore()
+            );
+            log.info("检索候选 query='{}'，案例命中 {} 条", candidateQuery, caseDocs.size());
+
+            // 3. 合并结果（KB 在前，案例在后；去重）
+            List<Document> merged = mergeResults(kbDocs, caseDocs, queryContext.searchParams().topK());
+
+            if (hasEffectiveHit(merged)) {
+                return merged;
             }
         }
         return List.of();
+    }
+
+    /**
+     * 合并知识库与案例检索结果，按 KB 优先、案例补充的顺序排列，总数不超过 topK。
+     */
+    private List<Document> mergeResults(List<Document> kbDocs, List<Document> caseDocs, int topK) {
+        List<Document> merged = new ArrayList<>(kbDocs);
+        Set<String> seenIds = kbDocs.stream()
+            .map(Document::getId)
+            .collect(Collectors.toSet());
+        for (Document caseDoc : caseDocs) {
+            if (!seenIds.contains(caseDoc.getId()) && merged.size() < topK) {
+                merged.add(caseDoc);
+                seenIds.add(caseDoc.getId());
+            }
+        }
+        return merged;
     }
 
     private SearchParams resolveSearchParams(String question) {
