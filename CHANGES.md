@@ -1,3 +1,9 @@
+**2026-10-08 -- Stage 4 验收证据补齐：真实失败路径 + 合并路径 + 版本匹配**
+- 真实向量删除失败测试（@MockitoSpyBean VectorRepository + doThrow）
+- KB/案例合并测试改为调用 KnowledgeBaseQueryService.retrieveAndMerge()
+- affected_versions 精确匹配测试（匹配可检索 / 不匹配不可检索）
+- 集成测试合计 20 个全部通过
+
 **2026-10-08 -- Stage 4 最终验收：affected_versions 过滤 + fail-closed + 事务边界 + 失败路径测试**
 - affected_versions 真正参与检索过滤，versionLabel 从会话上下文传递
 - 待清理案例 ID 查询失败时案例检索 fail-closed（返回空列表）

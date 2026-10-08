@@ -16,8 +16,11 @@ import interview.guide.modules.knowledgebase.model.RagChatSessionEntity;
 import interview.guide.modules.knowledgebase.repository.KnowledgeBaseRepository;
 import interview.guide.modules.knowledgebase.repository.RagChatMessageRepository;
 import interview.guide.modules.knowledgebase.repository.RagChatSessionRepository;
+import interview.guide.modules.knowledgebase.service.KnowledgeBaseQueryService;
 import interview.guide.modules.knowledgebase.service.KnowledgeBaseVectorService;
+import interview.guide.modules.knowledgebase.repository.VectorRepository;
 import interview.guide.modules.caselibrary.model.CaseRequests.CaseUpdateRequest;
+import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -40,6 +43,7 @@ import org.springframework.test.annotation.DirtiesContext.ClassMode;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -52,6 +56,9 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doThrow;
 
 /**
  * 案例库集成测试
@@ -95,6 +102,9 @@ class CaseLibraryIntegrationTest {
   @MockitoBean
   LlmProviderRegistry llmProviderRegistry;
 
+  @MockitoSpyBean
+  VectorRepository vectorRepositorySpy;
+
   @Autowired CaseDraftService draftService;
   @Autowired CaseReviewService reviewService;
   @Autowired CaseLifecycleService lifecycleService;
@@ -104,8 +114,10 @@ class CaseLibraryIntegrationTest {
   @Autowired RagChatMessageRepository messageRepository;
   @Autowired VectorStore vectorStore;
   @Autowired KnowledgeBaseVectorService vectorService;
+  @Autowired KnowledgeBaseQueryService queryService;
   @Autowired KnowledgeBaseRepository knowledgeBaseRepository;
   @Autowired JdbcTemplate jdbcTemplate;
+  @Autowired EntityManager entityManager;
 
   // ─────────── 确定性 Embedding 配置 ───────────
 
@@ -215,6 +227,35 @@ class CaseLibraryIntegrationTest {
 
   private CaseDTO createApproveCaseWithTags(String uniqueContent, String service, String environment) {
     CaseDTO draft = createDraftWithContentAndTags(uniqueContent, service, environment);
+    reviewService.submitForReview(draft.id(), "tester");
+    return reviewService.approve(draft.id(), "tester");
+  }
+
+  /**
+   * 创建草稿并填充可检索内容，同时设置 service / environment / affectedVersions 标签。
+   */
+  private CaseDTO createDraftWithContentAndVersion(String uniqueContent, String service,
+                                                    String environment, String affectedVersions) {
+    RagChatSessionEntity session = createSession("版本检索测试-" + uniqueContent);
+    RagChatMessageEntity msg = createMessage(session, RagChatMessageEntity.MessageType.ASSISTANT,
+        uniqueContent, 0);
+
+    CaseDTO draft = draftService.createDraft(session.getId(), msg.getId());
+
+    CaseUpdateRequest updateReq = new CaseUpdateRequest(
+        "案例标题-" + uniqueContent,
+        "问题描述：" + uniqueContent,
+        "根因分析：" + uniqueContent,
+        "解决步骤：" + uniqueContent,
+        "解决结果：" + uniqueContent,
+        affectedVersions, environment, service, null, null
+    );
+    return reviewService.updateCase(draft.id(), updateReq, "tester");
+  }
+
+  private CaseDTO createApproveCaseWithVersion(String uniqueContent, String service,
+                                                String environment, String affectedVersions) {
+    CaseDTO draft = createDraftWithContentAndVersion(uniqueContent, service, environment, affectedVersions);
     reviewService.submitForReview(draft.id(), "tester");
     return reviewService.approve(draft.id(), "tester");
   }
@@ -577,43 +618,66 @@ class CaseLibraryIntegrationTest {
     }
 
     @Test
-    @DisplayName("废弃后状态持久化且向量清理标记正确清除")
+    @DisplayName("向量删除真实失败时废弃状态仍持久化，vectorCleanupPending=true")
     void deprecate_vectorDeletionFails_statusPersisted_vectorCleanupPending() {
       // 1. 创建并批准（向量存在）
-      String uniqueContent = "deprecate_phase_test_juliet_8010";
+      String uniqueContent = "deprecate_fail_test_juliet_8010";
       CaseDTO published = createApproveCaseWithTags(uniqueContent, "billing", "prod");
       assertThat(vectorCountForCase(published.id())).isGreaterThan(0);
 
-      // 2. 废弃 — 两阶段策略：Phase 1 标记 → Phase 2 删除向量 → 清除标记
-      CaseDTO deprecated = lifecycleService.deprecate(published.id(), "tester");
+      // 2. 配置 spy：deleteByCaseId 真实抛异常（模拟向量删除失败）
+      doThrow(new RuntimeException("simulated vector deletion failure"))
+          .when(vectorRepositorySpy).deleteByCaseId(anyLong());
 
-      // 3. 验证最终状态：status=DEPRECATED, active=false
+      // 3. 废弃 — Phase 1 标记事务应成功提交，Phase 2 向量删除应失败
+      CaseDTO deprecated = lifecycleService.deprecate(published.id(), "tester");
       assertThat(deprecated.status()).isEqualTo(CaseStatus.DEPRECATED);
       assertThat(deprecated.active()).isFalse();
 
-      // 4. 向量删除成功，vectorCleanupPending 应已从 true → false
+      // 4. 清空持久化上下文后从 DB 重新读取，验证真实持久化状态（避免一级缓存假绿）
+      entityManager.clear();
       CaseEntity entity = caseRepository.findById(published.id()).orElseThrow();
-      assertThat(entity.getVectorCleanupPending())
-          .as("向量删除成功后 vectorCleanupPending 应为 false")
+      assertThat(entity.getStatus())
+          .as("废弃状态应已持久化为 DEPRECATED")
+          .isEqualTo(CaseStatus.DEPRECATED);
+      assertThat(entity.getActive())
+          .as("废弃后 active 应为 false")
           .isFalse();
-      assertThat(entity.getStatus()).isEqualTo(CaseStatus.DEPRECATED);
-      assertThat(entity.getActive()).isFalse();
+      assertThat(entity.getVectorCleanupPending())
+          .as("向量删除失败后 vectorCleanupPending 应为 true")
+          .isTrue();
 
-      // 5. 审计日志应包含 DEPRECATED
-      List<CaseAuditLogEntity> logs = auditLogRepository
-          .findByCaseIdOrderByCreatedAtDesc(published.id());
-      assertThat(logs).anyMatch(l -> "DEPRECATED".equals(l.getAction()));
+      // 5. 向量删除失败，向量仍物理存在（未被清理）
+      assertThat(vectorCountForCase(published.id()))
+          .as("向量删除失败时向量应仍存在于 vector_store")
+          .isGreaterThan(0);
 
-      // 6. 通过上下文检索不应命中
+      // 6. 验证检索排除该案例（vectorCleanupPending=true 被排除，不会召回脏向量）
       Map<String, String> contextFilter = Map.of("service", "billing");
-      List<Document> results = vectorService.searchCaseVectors(uniqueContent, contextFilter, List.of(), 10, 0.0);
+      List<Document> results = vectorService.searchCaseVectors(
+          uniqueContent, contextFilter, List.of(), 10, 0.0);
       assertThat(results)
-          .as("废弃案例不应被检索到")
+          .as("vectorCleanupPending=true 的案例不应被检索到")
           .noneMatch(doc -> {
             Object caseIdLong = doc.getMetadata().get("case_id_long");
             return caseIdLong != null &&
                 String.valueOf(caseIdLong).equals(String.valueOf(published.id()));
           });
+
+      // 7. 清理：重置 spy 为真实方法调用，然后重试向量清理
+      doCallRealMethod().when(vectorRepositorySpy).deleteByCaseId(anyLong());
+      boolean cleanupResult = lifecycleService.retryVectorCleanup(published.id());
+      assertThat(cleanupResult).isTrue();
+
+      // 8. 清空持久化上下文后验证 vectorCleanupPending=false 且向量已删除
+      entityManager.clear();
+      CaseEntity afterRetry = caseRepository.findById(published.id()).orElseThrow();
+      assertThat(afterRetry.getVectorCleanupPending())
+          .as("重试成功后 vectorCleanupPending 应为 false")
+          .isFalse();
+      assertThat(vectorCountForCase(published.id()))
+          .as("重试后向量应被删除")
+          .isZero();
     }
 
     @Test
@@ -710,7 +774,7 @@ class CaseLibraryIntegrationTest {
   class KbCaseMerge {
 
     @Test
-    @DisplayName("知识库和案例结果通过合并逻辑同时被检索到")
+    @DisplayName("知识库和案例结果通过真实检索合并链路同时被检索到")
     void kbAndCaseResults_merged() {
       // 1. 创建知识库文档并向量化
       KnowledgeBaseEntity kb = createKnowledgeBase("合并测试文档");
@@ -722,30 +786,16 @@ class CaseLibraryIntegrationTest {
       CaseDTO published = createApproveCaseWithTags(uniqueContent, "billing", "prod");
       assertThat(vectorCountForCase(published.id())).isGreaterThan(0);
 
-      // 3. 分别检索知识库和案例
-      List<Document> kbDocs = vectorService.similaritySearch(sharedKeyword, List.of(kb.getId()), 10, 0.0);
-      assertThat(kbDocs)
-          .as("知识库文档应被检索到")
-          .isNotEmpty();
-
+      // 3. 调用 KnowledgeBaseQueryService 真实合并链路（KB 检索 + 案例检索 + 合并）
       Map<String, String> contextFilter = Map.of("service", "billing");
-      List<Document> caseDocs = vectorService.searchCaseVectors(sharedKeyword, contextFilter, List.of(), 10, 0.0);
-      assertThat(caseDocs)
-          .as("案例应被检索到")
+      int topK = 20;
+      List<Document> merged = queryService.retrieveAndMerge(
+          sharedKeyword, List.of(kb.getId()), contextFilter, topK, 0.0);
+      assertThat(merged)
+          .as("真实合并链路应返回非空结果")
           .isNotEmpty();
 
-      // 4. 模拟 KnowledgeBaseQueryService.mergeResults 合并逻辑（KB 在前，案例补充，去重）
-      int topK = 20;
-      List<Document> merged = new ArrayList<>(kbDocs);
-      java.util.Set<String> seenIds = new java.util.LinkedHashSet<>(
-          kbDocs.stream().map(Document::getId).toList());
-      for (Document caseDoc : caseDocs) {
-        if (seenIds.add(caseDoc.getId()) && merged.size() < topK) {
-          merged.add(caseDoc);
-        }
-      }
-
-      // 5. 合并结果应同时包含 KB 来源和 CASE 来源
+      // 4. 合并结果应同时包含 KB 来源和 CASE 来源
       boolean hasKbSource = merged.stream()
           .anyMatch(doc -> {
             Object kbId = doc.getMetadata().get("kb_id");
@@ -764,7 +814,7 @@ class CaseLibraryIntegrationTest {
           .as("合并结果应包含 CASE 来源文档")
           .isTrue();
 
-      // 6. 验证来源类型标识
+      // 5. 验证来源类型标识
       Document kbDoc = merged.stream()
           .filter(doc -> String.valueOf(doc.getMetadata().get("kb_id"))
               .equals(String.valueOf(kb.getId())))
@@ -867,6 +917,64 @@ class CaseLibraryIntegrationTest {
           .noneMatch(doc ->
               String.valueOf(doc.getMetadata().get("case_id_long"))
                   .equals(String.valueOf(deprecated.id())));
+    }
+  }
+
+  // ─────────── affected_versions 精确匹配 ───────────
+
+  @Nested
+  @DisplayName("affected_versions 精确匹配")
+  class AffectedVersionsFilter {
+
+    @Test
+    @DisplayName("affected_versions 匹配时案例可检索")
+    void matchingVersion_caseRetrievable() {
+      // 1. 创建带 affectedVersions=v2.1 的案例并批准
+      String uniqueContent = "version_match_test_alpha_9001";
+      CaseDTO published = createApproveCaseWithVersion(uniqueContent, "billing", "prod", "v2.1");
+      assertThat(published.affectedVersions()).isEqualTo("v2.1");
+      assertThat(vectorCountForCase(published.id())).isGreaterThan(0);
+
+      // 2. 用匹配的版本号检索
+      Map<String, String> contextFilter = Map.of(
+          "service", "billing", "affected_versions", "v2.1");
+      List<Document> results = vectorService.searchCaseVectors(
+          uniqueContent, contextFilter, List.of(), 10, 0.0);
+
+      // 3. 应命中该案例
+      assertThat(results)
+          .as("版本匹配时案例应被检索到")
+          .isNotEmpty();
+      assertThat(results).anyMatch(doc -> {
+        Object caseIdLong = doc.getMetadata().get("case_id_long");
+        return caseIdLong != null &&
+            String.valueOf(caseIdLong).equals(String.valueOf(published.id()));
+      });
+    }
+
+    @Test
+    @DisplayName("affected_versions 不匹配时案例不可检索")
+    void nonMatchingVersion_caseNotRetrievable() {
+      // 1. 创建带 affectedVersions=v2.1 的案例并批准
+      String uniqueContent = "version_mismatch_test_beta_9002";
+      CaseDTO published = createApproveCaseWithVersion(uniqueContent, "billing", "prod", "v2.1");
+      assertThat(published.affectedVersions()).isEqualTo("v2.1");
+      assertThat(vectorCountForCase(published.id())).isGreaterThan(0);
+
+      // 2. 用不匹配的版本号检索
+      Map<String, String> contextFilter = Map.of(
+          "service", "billing", "affected_versions", "v3.0");
+      List<Document> results = vectorService.searchCaseVectors(
+          uniqueContent, contextFilter, List.of(), 10, 0.0);
+
+      // 3. 不应命中该案例
+      assertThat(results)
+          .as("版本不匹配时案例不应被检索到")
+          .noneMatch(doc -> {
+            Object caseIdLong = doc.getMetadata().get("case_id_long");
+            return caseIdLong != null &&
+                String.valueOf(caseIdLong).equals(String.valueOf(published.id()));
+          });
     }
   }
 }
