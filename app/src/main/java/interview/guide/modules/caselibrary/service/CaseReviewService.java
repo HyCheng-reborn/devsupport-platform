@@ -256,6 +256,9 @@ public class CaseReviewService {
         if (caseEntity.getEnvironment() != null) {
           metadata.put("environment", caseEntity.getEnvironment());
         }
+        if (caseEntity.getAffectedVersions() != null) {
+          metadata.put("affected_versions", caseEntity.getAffectedVersions());
+        }
         chunk.getMetadata().putAll(metadata);
       }
 

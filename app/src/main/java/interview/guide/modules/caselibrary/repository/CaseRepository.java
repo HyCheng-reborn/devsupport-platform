@@ -27,4 +27,12 @@ public interface CaseRepository extends JpaRepository<CaseEntity, Long> {
    * 根据服务标签查找案例
    */
   List<CaseEntity> findByService(String service);
+
+  /**
+   * 查找所有向量待清理的案例 ID（vector_cleanup_pending=true）。
+   * 用于案例向量检索时排除这些案例。
+   */
+  @org.springframework.data.jpa.repository.Query(
+    "SELECT c.id FROM CaseEntity c WHERE c.vectorCleanupPending = true")
+  List<Long> findIdsWithVectorCleanupPending();
 }

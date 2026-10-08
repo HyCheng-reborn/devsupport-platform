@@ -239,6 +239,8 @@ public class RagChatSessionService {
 
     /**
      * 获取流式回答（带多轮上下文）
+     * <p>
+     * 从会话关联的知识库中提取 service/environment 上下文，传递给案例检索实现范围隔离。
      *
      * @return 检索结果（包含流式响应和来源文档）
      */
@@ -250,8 +252,17 @@ public class RagChatSessionService {
         List<Message> history = queryProperties.getHistory().isEnabled()
             ? loadHistoryMessages(sessionId) : List.of();
 
+        // 从会话关联的 KB 中提取 service/environment 作为案例检索上下文
+        String service = null;
+        String environment = null;
+        if (session.getKnowledgeBases() != null && !session.getKnowledgeBases().isEmpty()) {
+            KnowledgeBaseEntity firstKb = session.getKnowledgeBases().iterator().next();
+            service = firstKb.getService();
+            environment = firstKb.getEnvironment();
+        }
+
         log.info("加载历史上下文: sessionId={}, historySize={}", sessionId, history.size());
-        return queryService.answerQuestionStream(kbIds, question, history);
+        return queryService.answerQuestionStream(kbIds, question, history, service, environment);
     }
 
     /** Markdown 标题匹配：# 、 ## 或 ### 开头的行 */

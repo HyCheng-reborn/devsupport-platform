@@ -171,7 +171,8 @@ public class KnowledgeBaseQueryService {
         countService.updateQuestionCounts(knowledgeBaseIds);
 
         QueryContext queryContext = buildQueryContext(question, List.of());
-        List<Document> relevantDocs = retrieveRelevantDocs(queryContext, knowledgeBaseIds);
+        // 非流式路径无上下文，案例检索被跳过
+        List<Document> relevantDocs = retrieveRelevantDocs(queryContext, knowledgeBaseIds, Map.of());
 
         if (!hasEffectiveHit(relevantDocs)) {
             return NO_RESULT_RESPONSE;
@@ -255,6 +256,22 @@ public class KnowledgeBaseQueryService {
      * @return 检索结果（包含流式响应和来源文档）
      */
     public RetrievalResult answerQuestionStream(List<Long> knowledgeBaseIds, String question, List<Message> history) {
+        return answerQuestionStream(knowledgeBaseIds, question, history, null, null);
+    }
+
+    /**
+     * 流式查询知识库（SSE，支持多轮上下文 + 案例检索范围隔离）
+     *
+     * @param knowledgeBaseIds 知识库ID列表
+     * @param question 用户问题
+     * @param history 历史对话消息（可选）
+     * @param service 会话关联的服务标签（可为 null）
+     * @param environment 会话关联的环境标签（可为 null）
+     * @return 检索结果（包含流式响应和来源文档）
+     */
+    public RetrievalResult answerQuestionStream(List<Long> knowledgeBaseIds, String question,
+                                                List<Message> history,
+                                                String service, String environment) {
         log.info("收到知识库流式提问: kbIds={}, question={}, historySize={}", knowledgeBaseIds, question,
                 history != null ? history.size() : 0);
         if (knowledgeBaseIds == null || knowledgeBaseIds.isEmpty() || normalizeQuestion(question).isBlank()) {
@@ -268,7 +285,8 @@ public class KnowledgeBaseQueryService {
             // 2. Query rewrite + 动态参数检索
             List<Message> effectiveHistory = sanitizeHistory(history);
             QueryContext queryContext = buildQueryContext(question, effectiveHistory);
-            List<Document> relevantDocs = retrieveRelevantDocs(queryContext, knowledgeBaseIds);
+            Map<String, String> caseContextFilter = buildCaseContextFilter(service, environment);
+            List<Document> relevantDocs = retrieveRelevantDocs(queryContext, knowledgeBaseIds, caseContextFilter);
 
             if (!hasEffectiveHit(relevantDocs)) {
                 return new RetrievalResult(Flux.just(NO_RESULT_RESPONSE), List.of());
@@ -427,7 +445,8 @@ public class KnowledgeBaseQueryService {
     }
 
 //    向量检索（知识库 + 案例合并）
-    private List<Document> retrieveRelevantDocs(QueryContext queryContext, List<Long> knowledgeBaseIds) {
+    private List<Document> retrieveRelevantDocs(QueryContext queryContext, List<Long> knowledgeBaseIds,
+                                                Map<String, String> caseContextFilter) {
         for (String candidateQuery : queryContext.candidateQueries()) {
             if (candidateQuery.isBlank()) {
                 continue;
@@ -441,9 +460,11 @@ public class KnowledgeBaseQueryService {
             );
             log.info("检索候选 query='{}'，KB 命中 {} 条", candidateQuery, kbDocs.size());
 
-            // 2. 案例向量检索（已发布案例参与检索）
+            // 2. 案例向量检索（带上下文过滤，无上下文时跳过）
             List<Document> caseDocs = vectorService.searchCaseVectors(
                 candidateQuery,
+                caseContextFilter,
+                List.of(),
                 Math.max(queryContext.searchParams().topK() / 2, 2),
                 queryContext.searchParams().minScore()
             );
@@ -539,6 +560,21 @@ public class KnowledgeBaseQueryService {
 
     private boolean hasEffectiveHit(List<Document> docs) {
         return docs != null && !docs.isEmpty();
+    }
+
+    /**
+     * 构建案例检索上下文过滤条件。
+     * service/environment 均为空时返回空 Map，触发“无上下文不召回”逻辑。
+     */
+    private Map<String, String> buildCaseContextFilter(String service, String environment) {
+        Map<String, String> filter = new HashMap<>();
+        if (service != null && !service.isBlank()) {
+            filter.put("service", service.trim());
+        }
+        if (environment != null && !environment.isBlank()) {
+            filter.put("environment", environment.trim());
+        }
+        return filter;
     }
 
     private String normalizeAnswer(String answer) {

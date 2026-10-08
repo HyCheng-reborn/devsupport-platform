@@ -32,6 +32,11 @@ public class CaseLifecycleService {
 
   /**
    * 废弃案例（PUBLISHED → DEPRECATED）
+   * <p>
+   * 向量清理采用“先标记后删除”策略：
+   * 1. 先设置 vectorCleanupPending=true（标记待清理）
+   * 2. 尝试删除向量
+   * 3. 成功则清除标记，失败则保留标记供后续重试
    *
    * @param caseId   案例ID
    * @param operator 操作者（来自 X-Operator header，默认 anonymous）
@@ -49,15 +54,20 @@ public class CaseLifecycleService {
 
     caseEntity.setStatus(CaseStatus.DEPRECATED);
     caseEntity.setActive(false);
+    // 先标记待清理，确保即使向量删除失败也不会被检索到
+    caseEntity.setVectorCleanupPending(true);
     CaseEntity saved = caseRepository.save(caseEntity);
 
     // 删除案例向量（废弃后不再参与检索）
     try {
       int deleted = vectorRepository.deleteByCaseId(caseId);
       log.info("废弃案例已清理向量: caseId={}, deletedRows={}", caseId, deleted);
+      // 向量删除成功，清除标记
+      saved.setVectorCleanupPending(false);
+      caseRepository.save(saved);
     } catch (Exception e) {
-      // 向量删除失败不阻断废弃流程，后续可补偿
-      log.warn("废弃案例向量删除失败，可后续补偿: caseId={}, error={}", caseId, e.getMessage(), e);
+      // 向量删除失败，保留 vectorCleanupPending=true 标记，后续可通过 retryVectorCleanup 补偿
+      log.warn("废弃案例向量删除失败，已标记待清理: caseId={}, error={}", caseId, e.getMessage(), e);
     }
 
     // 写入审计日志
@@ -72,6 +82,34 @@ public class CaseLifecycleService {
     auditLogRepository.save(auditLog);
 
     return caseLibraryMapper.toDTO(saved);
+  }
+
+  /**
+   * 重试向量清理：针对 vectorCleanupPending=true 的案例重新尝试删除向量。
+   *
+   * @param caseId 案例ID
+   * @return 是否清理成功
+   */
+  @Transactional
+  public boolean retryVectorCleanup(Long caseId) {
+    CaseEntity caseEntity = caseRepository.findById(caseId)
+      .orElseThrow(() -> new BusinessException(ErrorCode.CASE_NOT_FOUND));
+
+    if (!Boolean.TRUE.equals(caseEntity.getVectorCleanupPending())) {
+      log.info("案例无需向量清理: caseId={}", caseId);
+      return true;
+    }
+
+    try {
+      int deleted = vectorRepository.deleteByCaseId(caseId);
+      log.info("重试向量清理成功: caseId={}, deletedRows={}", caseId, deleted);
+      caseEntity.setVectorCleanupPending(false);
+      caseRepository.save(caseEntity);
+      return true;
+    } catch (Exception e) {
+      log.warn("重试向量清理失败: caseId={}, error={}", caseId, e.getMessage(), e);
+      return false;
+    }
   }
 
   /**

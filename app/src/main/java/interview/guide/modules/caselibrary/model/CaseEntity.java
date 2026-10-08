@@ -73,6 +73,10 @@ public class CaseEntity {
   @Builder.Default
   private Boolean active = false;
 
+  @Column(name = "vector_cleanup_pending", nullable = false)
+  @Builder.Default
+  private Boolean vectorCleanupPending = false;
+
   @Column(name = "created_by", length = 100)
   private String createdBy;
 

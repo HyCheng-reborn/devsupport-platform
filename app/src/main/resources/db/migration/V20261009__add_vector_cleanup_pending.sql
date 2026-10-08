@@ -1,0 +1,1 @@
+ALTER TABLE cases ADD COLUMN vector_cleanup_pending BOOLEAN NOT NULL DEFAULT FALSE;

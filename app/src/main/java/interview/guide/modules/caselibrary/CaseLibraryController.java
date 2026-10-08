@@ -16,7 +16,8 @@ import java.util.List;
 /**
  * 案例库 Controller
  * <p>
- * 当前项目无认证体系。X-Operator 仅用于审计追溯，不做硬鉴权。
+ * X-Operator 是调用方在请求头中提供的审计标签，不是身份认证。
+ * 当前项目无认证体系，该标签不可信为真实用户身份。
  * 状态机约束（合法转换检查）是唯一的操作保护机制。
  * 引入 Spring Security 后应将 approve/reject/deprecate 限制为 REVIEWER 角色。
  */

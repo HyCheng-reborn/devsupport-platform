@@ -3,6 +3,7 @@ package interview.guide.modules.knowledgebase.service;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
 import interview.guide.common.transaction.TransactionalExecutor;
+import interview.guide.modules.caselibrary.repository.CaseRepository;
 import interview.guide.modules.knowledgebase.repository.VectorRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
@@ -13,7 +14,9 @@ import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -38,22 +41,25 @@ public class KnowledgeBaseVectorService {
     private final TextSplitter textSplitter;
     private final VectorRepository vectorRepository;
     private final TransactionalExecutor transactionalExecutor;
+    private final CaseRepository caseRepository;
 
     @Autowired
     public KnowledgeBaseVectorService(
         VectorStore vectorStore,
         VectorRepository vectorRepository,
-        TransactionalExecutor transactionalExecutor
+        TransactionalExecutor transactionalExecutor,
+        CaseRepository caseRepository
     ) {
         this.vectorStore = vectorStore;
         this.vectorRepository = vectorRepository;
         this.transactionalExecutor = transactionalExecutor;
+        this.caseRepository = caseRepository;
         // 使用 TokenTextSplitter 默认配置，每个 chunk 约 800 tokens，基于标点边界切分（无重叠）
         this.textSplitter = TokenTextSplitter.builder().build();
     }
 
     KnowledgeBaseVectorService(VectorStore vectorStore, VectorRepository vectorRepository) {
-        this(vectorStore, vectorRepository, null);
+        this(vectorStore, vectorRepository, null, null);
     }
 
     /**
@@ -274,12 +280,53 @@ public class KnowledgeBaseVectorService {
      * @return 匹配的案例文档列表
      */
     public List<Document> searchCaseVectors(String query, int topK, double minScore) {
-        log.info("案例向量检索: query={}, topK={}, minScore={}", query, topK, minScore);
+        // 无上下文时不执行全局案例召回
+        log.info("案例向量检索（无上下文过滤，跳过）: query={}", query);
+        return List.of();
+    }
+
+    /**
+     * 按上下文过滤搜索已发布案例的向量。
+     * <p>
+     * contextFilter 可包含 service / environment 键，用于限定检索范围；
+     * excludeCaseIds 用于排除 vector_cleanup_pending=true 的案例。
+     * 若 contextFilter 为空（无 service 且无 environment），不执行全局召回，返回空列表。
+     *
+     * @param query          查询文本
+     * @param contextFilter  上下文过滤条件（service/environment），为空时不召回
+     * @param excludeCaseIds 需排除的案例 ID 列表（待清理向量）
+     * @param topK           返回条数
+     * @param minScore       最低相似度阈值
+     * @return 匹配的案例文档列表
+     */
+    public List<Document> searchCaseVectors(String query, Map<String, String> contextFilter,
+                                            List<Long> excludeCaseIds, int topK, double minScore) {
+        // 无上下文 = 不全局召回案例
+        if (contextFilter == null || contextFilter.isEmpty()) {
+            log.info("案例向量检索（无上下文过滤，跳过）: query={}", query);
+            return List.of();
+        }
+
+        // 合并外部排除列表与 vectorCleanupPending=true 的案例 ID
+        List<Long> effectiveExcludes = new ArrayList<>(
+            excludeCaseIds != null ? excludeCaseIds : List.of());
+        if (caseRepository != null) {
+            try {
+                List<Long> pendingIds = caseRepository.findIdsWithVectorCleanupPending();
+                effectiveExcludes.addAll(pendingIds);
+            } catch (Exception e) {
+                log.warn("查询 vectorCleanupPending 案例失败，跳过排除: {}", e.getMessage());
+            }
+        }
+
+        log.info("案例向量检索: query={}, contextFilter={}, excludeCaseIds={}, topK={}, minScore={}",
+            query, contextFilter, effectiveExcludes, topK, minScore);
         try {
+            String filterExpression = buildCaseFilterExpression(contextFilter, effectiveExcludes);
             SearchRequest.Builder builder = SearchRequest.builder()
                 .query(query)
                 .topK(Math.max(topK, 1))
-                .filterExpression("source_type == 'CASE'");
+                .filterExpression(filterExpression);
 
             if (minScore > 0) {
                 builder.similarityThreshold(minScore);
@@ -297,5 +344,41 @@ public class KnowledgeBaseVectorService {
             log.warn("案例向量检索失败，跳过案例检索: {}", e.getMessage(), e);
             return List.of();
         }
+    }
+
+    /**
+     * 构建案例检索的过滤表达式。
+     * 基础条件：source_type == 'CASE'，按 contextFilter 追加 service/environment，
+     * 按 excludeCaseIds 排除待清理案例。
+     */
+    private String buildCaseFilterExpression(Map<String, String> contextFilter,
+                                             List<Long> excludeCaseIds) {
+        List<String> conditions = new ArrayList<>();
+        conditions.add("source_type == 'CASE'");
+
+        String service = contextFilter.get("service");
+        if (service != null && !service.isBlank()) {
+            conditions.add("service == '" + escapeFilterValue(service) + "'");
+        }
+        String environment = contextFilter.get("environment");
+        if (environment != null && !environment.isBlank()) {
+            conditions.add("environment == '" + escapeFilterValue(environment) + "'");
+        }
+
+        if (excludeCaseIds != null && !excludeCaseIds.isEmpty()) {
+            String excluded = excludeCaseIds.stream()
+                .map(String::valueOf)
+                .collect(Collectors.joining(", "));
+            conditions.add("case_id_long not in [" + excluded + "]");
+        }
+
+        return String.join(" and ", conditions);
+    }
+
+    /**
+     * 转义过滤表达式中的单引号，防止注入。
+     */
+    private String escapeFilterValue(String value) {
+        return value.replace("'", "\\'");
     }
 }

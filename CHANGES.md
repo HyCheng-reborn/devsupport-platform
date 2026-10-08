@@ -1,3 +1,11 @@
+**2026-10-08 -- Stage 4 范围隔离 + 废弃一致性 + X-Operator 审计标签澄清**
+- 案例检索按 service/environment 上下文过滤，无上下文不全局召回
+- 案例向量 metadata 携带 affected_versions
+- deprecate 采用先标记后删除策略（vectorCleanupPending）+ retryVectorCleanup 补偿
+- 案例检索自动排除 vectorCleanupPending=true 的案例
+- X-Operator 明确为审计标签非身份认证
+- 集成测试：范围隔离(3) + 废弃一致性(3) + KB/案例合并(1)
+
 **2026-10-08 -- Stage 4 验收缺口修复：案例检索接入 + 操作者追溯 + 版本语义澄清**
 - 案例检索接入：approve 触发向量化（TokenTextSplitter + vector_store 共用表），deprecate 删除向量（VectorRepository.deleteByCaseId），检索链路合并案例结果（searchCaseVectors + mergeResults）
 - SourceReference 扩展 sourceType/caseId/caseTitle
