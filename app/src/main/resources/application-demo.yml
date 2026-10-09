@@ -6,16 +6,20 @@
 #   或设置环境变量：SPRING_PROFILES_ACTIVE=demo
 #
 # 作用：
-#   1. 激活 DemoResumeGradingService（@Profile("demo")），返回固定的逼真简历分析结果，
-#      替代真实的 ResumeGradingService（@Profile("!demo")），演示时不产生任何真实 LLM 调用与费用。
-#   2. 为无 API Key 的本机提供占位默认值，保证 Spring 上下文可正常启动。
+#   1. 激活 DemoResumeGradingService（@Profile("demo")），返回固定的逼真简历分析结果。
+#   2. 激活 DemoChatModel（@Profile("demo")），返回基于关键词匹配的预定义排查建议模板。
+#   3. 激活 DemoEmbeddingModel（@Profile("demo")），返回基于内容 hash 的确定性 1024 维向量。
+#   4. LlmProviderRegistry 在 demo 模式下使用 Demo 实现，不连接真实 Provider。
+#   5. LlmProviderBootstrapService 在 demo 模式下跳过 Provider 初始化。
+#   6. LlmEmbeddingConfig 在 demo 模式下不创建，使用 DemoEmbeddingModel 替代。
+#   7. 为无 API Key 的本机提供占位默认值，保证 Spring 上下文可正常启动。
 #
 # 说明：
 #   - 数据库、Redis、存储等配置沿用 application.yml 的环境变量注入，无需在此重复覆盖。
 #   - 下方 api-key 使用 ${AI_BAILIAN_API_KEY:<占位值>} 形式：
 #     若已配置真实环境变量则优先使用真实值；否则回退到非空占位值，
 #     以满足 QwenAsrService/QwenTtsService 的 @PostConstruct 非空校验（语音功能不在本次演示范围）。
-#     简历分析走 DemoResumeGradingService，不会真正调用这些 API。
+#     所有 AI 功能走 Demo 实现，不会真正调用这些 API。
 
 app:
   ai:

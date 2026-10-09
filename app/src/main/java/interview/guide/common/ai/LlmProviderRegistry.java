@@ -30,9 +30,11 @@ import org.springframework.ai.openai.OpenAiEmbeddingOptions;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -57,6 +59,8 @@ public class LlmProviderRegistry {
     private final ToolCallingManager toolCallingManager;
     private final ObservationRegistry observationRegistry;
     private final ToolCallback interviewSkillsToolCallback;
+    private final Environment environment;
+    private final boolean demoProfileActive;
     private static final Map<String, String> RECOMMENDED_EMBEDDING_MODELS = Map.of(
         "dashscope", "text-embedding-v3",
         "glm", "embedding-3",
@@ -73,7 +77,8 @@ public class LlmProviderRegistry {
             ApiKeyEncryptionService encryptionService,
             @Autowired(required = false) ToolCallingManager toolCallingManager,
             @Autowired(required = false) ObservationRegistry observationRegistry,
-            @Autowired(required = false) @Qualifier("interviewSkillsToolCallback") ToolCallback interviewSkillsToolCallback) {
+            @Autowired(required = false) @Qualifier("interviewSkillsToolCallback") ToolCallback interviewSkillsToolCallback,
+            Environment environment) {
         this.properties = properties;
         this.providerRepository = providerRepository;
         this.globalSettingRepository = globalSettingRepository;
@@ -81,14 +86,17 @@ public class LlmProviderRegistry {
         this.toolCallingManager = toolCallingManager;
         this.observationRegistry = observationRegistry;
         this.interviewSkillsToolCallback = interviewSkillsToolCallback;
+        this.environment = environment;
+        this.demoProfileActive = environment != null && Arrays.asList(environment.getActiveProfiles()).contains("demo");
     }
 
     public LlmProviderRegistry(
             LlmProviderProperties properties,
             ToolCallingManager toolCallingManager,
             ObservationRegistry observationRegistry,
-            ToolCallback interviewSkillsToolCallback) {
-        this(properties, null, null, null, toolCallingManager, observationRegistry, interviewSkillsToolCallback);
+            ToolCallback interviewSkillsToolCallback,
+            Environment environment) {
+        this(properties, null, null, null, toolCallingManager, observationRegistry, interviewSkillsToolCallback, environment);
     }
 
     /**
@@ -172,6 +180,11 @@ public class LlmProviderRegistry {
     }
 
     private ChatClient createChatClient(String providerId) {
+        if (demoProfileActive) {
+            log.info("[LlmProviderRegistry] Demo mode: creating demo ChatClient for provider: {}", providerId);
+            return createDemoChatClient();
+        }
+
         OpenAiChatModel chatModel = getChatModel(providerId);
 
         ChatClient.Builder builder = ChatClient.builder(chatModel);
@@ -187,7 +200,18 @@ public class LlmProviderRegistry {
         return builder.build();
     }
 
+    private ChatClient createDemoChatClient() {
+        // Demo 模式下使用 DemoChatModel，不挂任何 Advisor 或 Tool
+        DemoChatModel demoChatModel = new DemoChatModel();
+        return ChatClient.builder(demoChatModel).build();
+    }
+
     private ChatClient createPlainChatClient(String providerId) {
+        if (demoProfileActive) {
+            log.info("[LlmProviderRegistry] Demo mode: creating demo plain ChatClient for provider: {}", providerId);
+            return createDemoChatClient();
+        }
+
         OpenAiChatModel chatModel = getChatModel(providerId);
         ChatClient.Builder builder = ChatClient.builder(chatModel);
         buildSafeGuardAdvisor().ifPresent(advisor -> builder.defaultAdvisors(List.of(advisor)));
@@ -196,6 +220,11 @@ public class LlmProviderRegistry {
     }
 
     private ChatClient createVoiceChatClient(String providerId) {
+        if (demoProfileActive) {
+            log.info("[LlmProviderRegistry] Demo mode: creating demo voice ChatClient for provider: {}", providerId);
+            return createDemoChatClient();
+        }
+
         OpenAiChatModel chatModel = getChatModel(providerId);
 
         ChatClient.Builder builder = ChatClient.builder(chatModel);
@@ -216,6 +245,10 @@ public class LlmProviderRegistry {
 
     private OpenAiChatModel getChatModel(String providerId) {
         return chatModelCache.computeIfAbsent(providerId, id -> {
+            if (demoProfileActive) {
+                log.info("[LlmProviderRegistry] Demo mode: skipping real ChatModel creation for provider {}", id);
+                return null;
+            }
             log.info("[LlmProviderRegistry] Creating new ChatModel for provider: {}", id);
             return buildChatModel(id);
         });
@@ -242,6 +275,11 @@ public class LlmProviderRegistry {
     }
 
     private EmbeddingModel createEmbeddingModel(String providerId) {
+        if (demoProfileActive) {
+            log.info("[LlmProviderRegistry] Demo mode: skipping real EmbeddingModel creation for provider {}", providerId);
+            return new DemoEmbeddingModel();
+        }
+
         ProviderSnapshot config = loadProviderOrThrow(providerId);
         if (!config.supportsEmbedding() || isBlank(config.embeddingModel())) {
             throw new BusinessException(ErrorCode.PROVIDER_CONFIG_READ_FAILED,

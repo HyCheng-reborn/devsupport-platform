@@ -8,9 +8,11 @@ import org.springframework.ai.embedding.EmbeddingRequest;
 import org.springframework.ai.embedding.EmbeddingResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 
 @Configuration
 @Slf4j
+@Profile("!demo")
 public class LlmEmbeddingConfig {
 
   @Bean

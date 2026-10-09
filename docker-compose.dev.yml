@@ -55,8 +55,26 @@ services:
       timeout: 3s
       retries: 5
 
-# 首次启动后，浏览器访问 http://localhost:9001
-# 使用 ${RUSTFS_ACCESS_KEY} / ${RUSTFS_SECRET_KEY} 登录，手动创建名为 interview-guide 的 bucket
+  # RustFS 兼容 MinIO/S3 API，复用 minio/mc 工具自动创建 bucket
+  createbuckets:
+    image: minio/mc
+    depends_on:
+      rustfs:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      set -eu;
+      /usr/bin/mc alias set myrustfs http://rustfs:9000 $${RUSTFS_ACCESS_KEY} $${RUSTFS_SECRET_KEY} &&
+      (
+        /usr/bin/mc ls myrustfs/interview-guide > /dev/null 2>&1 ||
+        /usr/bin/mc mb myrustfs/interview-guide
+      ) &&
+      /usr/bin/mc anonymous set public myrustfs/interview-guide &&
+      /usr/bin/mc ls myrustfs/interview-guide
+      "
+    environment:
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-rustfsadmin}
 
 volumes:
   postgres_data:
