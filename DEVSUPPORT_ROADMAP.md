@@ -173,7 +173,11 @@ Resume、Interview、VoiceInterview、InterviewSchedule 属于原上游项目遗
     - **新旧有效分母对比**：旧方案所有发布案例均计入分母（包括 SELF 自命中），10/10 通过；新方案只有 evidenceSource="SOURCE" 的案例计入分母，SELF/MISSING/NULL 跳过。
     - **测试**：7/7 隔离集成测试通过（`CaseRegressionIsolationIntegrationTest`），57/57 evalregression 测试通过。覆盖：真实 KB 来源证据可命中并通过、自身 CASE 向量不可通过、SELF/MISSING/NULL 均跳过不计入分母、混合来源只保留 KB gold、废弃案例与范围隔离。
     - **迁移影响**：V20261012——case_regression_runs 新增 evaluated_count 列，回填 evidence_source 旧数据（SOURCE/SELF/MISSING）。
-  - **未验证边界与已知限制**：真实付费 embedding（DashScope text-embedding-v3）下语义检索质量/排序/top-K 精度未验证（确定性常量向量使相似度并列，仅证明管线正确 + 自身证据可召回 + 判定/落库/废弃排除逻辑正确）；聊天 assistant 消息→createDraft 离线闭环未验证（需 LLM，未付费跑）；全量后端非全绿（10 个 Voice Redis 遗留保留）；H1/L4（approve() @Transactional 内调 EmbeddingModel 外部 HTTP，改动前既存技术债、本次仅延续，建议移出事务或改 Redis Stream 异步）；M1（回归复用全局 KB retrieveAndMerge，kbIds 传空→KB 分支不带过滤，已用默认 topK 提升 + 上限钳制缓解挤出假失败）；M3（要点被物理切分到不相邻 chunk 仍可能假失败，空白归一只解决 \n 拼接）；L1（无 FAILED 终态，13003 暂未使用）；L3（逐项结果未快照 expectedEvidence，UI 经实时 items 反查，案例重发布产生新 Document UUID 会使历史高亮漂移，但 passed 布尔已落库、结论不受影响）；project 维度案例过滤延期（schema 级缺口，另立切片）。
+  - **⚠️ KB-only 检索彻底排除 CASE 分支（2026-10-09）**：
+    - **问题**：来源证据隔离修复（6addb86）后，`retrieveAndMerge(..., requireKbOnly=true)` 的 KB 分支确实只查 source_type='KB'，但 `retrieveAndMerge()` 仍无条件调用 `searchCaseVectors()` 并合并 CASE 结果，回归评测不是严格的 KB-only。
+    - **修复**：`KnowledgeBaseQueryService.retrieveAndMerge()` 在 `requireKbOnly=true` 时跳过整个 CASE 分支（不调用 `searchCaseVectors()`，不合并 CASE 结果），只提供 KB 分支检索路径。
+    - **测试**：9/9 隔离集成测试通过（`CaseRegressionIsolationIntegrationTest`，新增 2 个 CASE 向量排除测试）。回归评测现在是严格的 KB-only 回归，不会合并任何 CASE 向量。
+  - **未验证边界与已知限制**：真实付费 embedding（DashScope text-embedding-v3）下语义检索质量/排序/top-K 精度未验证（确定性常量向量使相似度并列，仅证明管线正确 + 自身证据可召回 + 判定/落库/废弃排除逻辑正确）；聊天 assistant 消息→createDraft 离线闭环未验证（需 LLM，未付费跑）；全量后端非全绿（10 个 Voice Redis 遗留保留）；H1/L4（approve() @Transactional 内调 EmbeddingModel 外部 HTTP，改动前既存技术债、本次仅延续，建议移出事务或改 Redis Stream 异步）；M3（要点被物理切分到不相邻 chunk 仍可能假失败，空白归一只解决 \n 拼接）；L1（无 FAILED 终态，13003 暂未使用）；L3（逐项结果未快照 expectedEvidence，UI 经实时 items 反查，案例重发布产生新 Document UUID 会使历史高亮漂移，但 passed 布尔已落库、结论不受影响）；project 维度案例过滤延期（schema 级缺口，另立切片）。
 
 ### 阶段 6：可靠性、部署与简历级交付
 

@@ -3,7 +3,7 @@
 > 本项目（远程仓库 `HyCheng-reborn/devsupport-platform`，本地目录名仍为 `interview-guide`）的进度事实源。
 > **跨机器 remote 别名映射（读文档前先对齐，避免 `origin` 误读）**：本机 `devsupport` = `HyCheng-reborn/devsupport-platform`（推送目标），本机 `origin` = `Snailclimb/interview-guide`（上游，**勿推**）；另一台验证机（批次 C/D 补验）的 `origin` = `HyCheng-reborn/devsupport-platform`，故其文档/提交记录里的「push 到 `origin/master`」等同于本机的「push 到 `devsupport/master`」。判断实际目标仓库一律以 remote URL 为准，不要只看别名。
 > 新会话接手时先读本文件，再读「交接区」列出的文件。
-> 最近更新：**2026-10-09 来源证据隔离修复完成 — SELF/MISSING/NULL evidenceSource 统一跳过评测 + KB-only 检索 + V20261012 迁移回填 + 7/7 隔离集成测试通过 + 57/57 evalregression 测试通过；新旧有效分母对比：旧方案 10/10（含 SELF 自命中）→ 新方案仅 evidenceSource="SOURCE" 计入分母**。前一轮：Stage 5 首切片数据泄漏修复（5/5 隔离 + 55/55 evalregression）。
+> 最近更新：**2026-10-09 KB-only 检索彻底排除 CASE 分支完成 — `retrieveAndMerge(requireKbOnly=true)` 跳过整个 CASE 分支 + 9/9 隔离集成测试通过（新增 2 个 CASE 向量排除测试）；回归评测现在是严格的 KB-only 回归，不会合并任何 CASE 向量**。前一轮：来源证据隔离修复（SELF/MISSING/NULL 跳过 + KB-only 检索 + V20261012 迁移 + 7/7 隔离 + 57/57 evalregression）。
 
 ## 0. 维护规则
 
@@ -55,7 +55,11 @@
     - **新旧有效分母对比**：旧方案所有发布案例均计入分母（包括 SELF 自命中），10/10 通过；新方案只有 evidenceSource="SOURCE" 的案例计入分母，SELF/MISSING/NULL 跳过。
     - **测试**：7/7 隔离集成测试通过（`CaseRegressionIsolationIntegrationTest`），57/57 evalregression 测试通过。覆盖：真实 KB 来源证据可命中并通过、自身 CASE 向量不可通过、SELF/MISSING/NULL 均跳过不计入分母、混合来源只保留 KB gold、废弃案例与范围隔离。
     - **迁移影响**：V20261012——case_regression_runs 新增 evaluated_count 列，回填 evidence_source 旧数据（SOURCE/SELF/MISSING）。
-  - **已知限制/延期**：H1/L4（approve() @Transactional 内调 EmbeddingModel HTTP，改动前既存技术债、本次延续，建议移出事务或改 Redis Stream 异步）；M1（回归复用全局 KB retrieveAndMerge，kbIds 空→KB 分支不带过滤，已用默认 topK 提升+上限钳制缓解）；M3（要点跨不相邻 chunk 仍可能假失败）；L1（无 FAILED 终态，13003 未用）；L3（逐项结果未快照 expectedEvidence，重发布致历史高亮漂移，passed 已落库不受影响）；project 维度案例过滤延期（schema 级缺口，另立切片）。
+  - **⚠️ KB-only 检索彻底排除 CASE 分支（2026-10-09）**：
+    - **问题**：来源证据隔离修复后，`retrieveAndMerge(requireKbOnly=true)` 仍无条件调用 `searchCaseVectors()` 并合并 CASE 结果，回归评测不是严格的 KB-only。
+    - **修复**：`KnowledgeBaseQueryService.retrieveAndMerge()` 在 `requireKbOnly=true` 时跳过整个 CASE 分支，只提供 KB 分支检索路径。
+    - **测试**：9/9 隔离集成测试通过（`CaseRegressionIsolationIntegrationTest`，新增 2 个 CASE 向量排除测试）。回归评测现在是严格的 KB-only 回归，不会合并任何 CASE 向量。
+  - **已知限制/延期**：H1/L4（approve() @Transactional 内调 EmbeddingModel HTTP，改动前既存技术债、本次延续，建议移出事务或改 Redis Stream 异步）；M3（要点跨不相邻 chunk 仍可能假失败）；L1（无 FAILED 终态，13003 未用）；L3（逐项结果未快照 expectedEvidence，重发布致历史高亮漂移，passed 已落库不受影响）；project 维度案例过滤延期（schema 级缺口，另立切片）。
 
 - **DevSupport 阶段 4 验收证据补齐（commit `353b8a8`，2026-10-08）** — 状态 `已完成（源码实现+自动化验证已完成，真实付费模型端到端未验证）`。
   - 真实向量删除失败路径测试：`@MockitoSpyBean VectorRepository` + `doThrow` 让 `deleteByCaseId()` 失败 → 验证 DB 持久化 status=DEPRECATED/active=false/vectorCleanupPending=true → 检索不命中

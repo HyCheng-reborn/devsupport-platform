@@ -504,6 +504,164 @@ class CaseRegressionIsolationIntegrationTest {
     }
   }
 
+  // ═══════════════ 6. CASE 向量不进入回归快照（requireKbOnly 隔离） ═══════════════
+
+  @Nested
+  @DisplayName("requireKbOnly=true 时 CASE 向量不进入回归快照")
+  class CaseVectorExclusionTests {
+
+    @Test
+    @DisplayName("KB 证据命中时，另一已发布案例的 CASE 向量即使包含缺失要点也不进入回归快照")
+    void caseVectors_excludedFromRegressionSnapshot_whenKbEvidenceHits() {
+      // ── 1. 上传 KB 文档并向量化，获得 KB chunk IDs ──
+      // KB 内容包含案例的全部解决要点，确保逐字包含判定通过
+      String token = "kb_only_excl_010";
+      String kbContent = "网关超时排查手册：重启服务 " + token + ";扩容连接池 " + token + ";服务恢复正常 " + token;
+      List<String> kbChunkIds = createAndVectorizeKB("KB-only 排除测试知识库", kbContent);
+      assertThat(kbChunkIds).isNotEmpty();
+
+      // ── 2. 创建来源会话 + 消息（sourceChunkIds = KB chunk IDs）──
+      RagChatSessionEntity session = createSession("KB-only 排除测试会话-" + token);
+      RagChatMessageEntity msg = createMessageWithChunkIds(session,
+          "KB-only 排除测试消息-" + token, kbChunkIds);
+
+      // ── 3. 从消息创建案例草稿 → 填充 → 提交 → 审核发布 ──
+      CaseDTO draft = draftService.createDraft(session.getId(), msg.getId());
+      CaseUpdateRequest updateReq = new CaseUpdateRequest(
+          "网关超时排查 " + token,
+          "生产网关频繁超时 " + token,
+          "连接池耗尽导致请求堆积 " + token,
+          "重启服务 " + token + ";扩容连接池 " + token,
+          "服务恢复正常 " + token,
+          null, "prod", "gateway", null, null);
+      reviewService.updateCase(draft.id(), updateReq, "tester");
+      reviewService.submitForReview(draft.id(), "tester");
+      CaseDTO publishedA = reviewService.approve(draft.id(), "tester");
+      assertThat(publishedA.status()).isEqualTo(CaseStatus.PUBLISHED);
+
+      // ── 4. 验证回归项标记为 SOURCE，期望证据 = KB chunk IDs ──
+      CaseRegressionItemEntity itemA = itemRepository.findByCaseId(publishedA.id()).orElseThrow();
+      assertThat(itemA.getEvidenceSource()).isEqualTo("SOURCE");
+      List<String> expectedEvidence = jsonCodec.toStringList(itemA.getExpectedEvidence());
+      assertThat(expectedEvidence)
+          .containsExactlyInAnyOrderElementsOf(kbChunkIds);
+
+      // ── 5. 创建另一个已发布案例 B（不同 service），其内容包含部分要点 ──
+      // 案例 B 的 resolutionSteps 包含 "重启服务" 和 "扩容连接池" 等要点片段
+      String tokenB = "kb_only_excl_011";
+      CaseDTO publishedB = createApprovedCaseWithSourceChunks(tokenB, "auth-service", "staging",
+          kbChunkIds);
+      assertThat(publishedB.status()).isEqualTo(CaseStatus.PUBLISHED);
+
+      // ── 6. 验证案例 B 的 CASE 向量已写入 vector_store ──
+      Integer caseBVectorCount = jdbcTemplate.queryForObject(
+          "SELECT COUNT(*) FROM vector_store WHERE metadata->>'source_type' = 'CASE' "
+              + "AND metadata->>'case_id_long' = ?",
+          Integer.class, publishedB.id().toString());
+      assertThat(caseBVectorCount)
+          .as("案例 B 发布后应有 CASE 向量")
+          .isGreaterThan(0);
+
+      // 获取案例 B 的 CASE chunk IDs
+      List<String> caseBChunkIds = jdbcTemplate.queryForList(
+          "SELECT id FROM vector_store WHERE metadata->>'source_type' = 'CASE' "
+              + "AND metadata->>'case_id_long' = ?",
+          String.class, publishedB.id().toString());
+      assertThat(caseBChunkIds)
+          .as("案例 B 的 CASE chunk IDs 应非空")
+          .isNotEmpty();
+
+      // ── 7. 运行回归评测（requireKbOnly=true 路径） ──
+      RegressionRunDetailDTO detail = runService.runRegression(LARGE_TOPK);
+      assertThat(detail.status()).isEqualTo(RegressionRunStatus.COMPLETED.name());
+
+      // ── 8. 获取案例 A 的评测结果 ──
+      RegressionResultDTO resultA = detail.results().stream()
+          .filter(r -> r.itemId().equals(itemA.getId()))
+          .findFirst().orElseThrow();
+
+      // ── 关键断言 (a)：retrievedEvidenceIds 只包含 KB chunk ID ──
+      assertThat(resultA.retrievedEvidenceIds())
+          .as("requireKbOnly=true 时 retrievedEvidenceIds 应包含 KB chunk IDs")
+          .containsAnyElementsOf(kbChunkIds);
+      assertThat(resultA.retrievedEvidenceIds())
+          .as("requireKbOnly=true 时 retrievedEvidenceIds 不应包含任何 CASE chunk ID")
+          .doesNotContainAnyElementsOf(caseBChunkIds);
+
+      // ── 关键断言 (b)：topK 快照中不含 CASE 来源文档 ──
+      assertThat(resultA.topKSnapshot())
+          .as("回归快照中不应包含 CASE 来源的文档")
+          .noneMatch(entry -> {
+            // 快照条目 ID 不应出现在 CASE chunk IDs 中
+            return caseBChunkIds.contains(entry.evidenceId());
+          });
+
+      // ── 关键断言 (c)：KB 证据命中 + 要点全部包含 → passed=true ──
+      assertThat(resultA.passed())
+          .as("KB 证据命中且要点全部包含时应通过")
+          .isTrue();
+      assertThat(resultA.missingKeyPoints())
+          .as("不应有缺失要点")
+          .isEmpty();
+    }
+
+    @Test
+    @DisplayName("requireKbOnly=true 时 vector_store 中全部 CASE 向量均被过滤")
+    void allCaseVectors_filteredOut_whenRequireKbOnly() {
+      // ── 1. 创建 KB 文档并向量化 ──
+      // KB 内容需包含所有案例的解决要点，确保逐字包含判定通过
+      String token = "kb_filter_012";
+      String tokenB1 = "kb_filter_013";
+      String tokenB2 = "kb_filter_014";
+      String kbContent = "数据库连接池排查：检查最大连接数 " + token + ";慢查询日志 " + token
+          + ";重启服务 " + tokenB1 + ";扩容连接池 " + tokenB1 + ";服务恢复正常 " + tokenB1
+          + ";重启服务 " + tokenB2 + ";扩容连接池 " + tokenB2 + ";服务恢复正常 " + tokenB2;
+      List<String> kbChunkIds = createAndVectorizeKB("KB 过滤测试知识库", kbContent);
+      assertThat(kbChunkIds).isNotEmpty();
+
+      // ── 2. 创建两个不同 service 的已发布案例（均带 CASE 向量）──
+      CaseDTO caseB1 = createApprovedCaseWithSourceChunks(tokenB1, "billing", "prod", kbChunkIds);
+      assertThat(caseB1.status()).isEqualTo(CaseStatus.PUBLISHED);
+
+      CaseDTO caseB2 = createApprovedCaseWithSourceChunks(tokenB2, "payment", "staging", kbChunkIds);
+      assertThat(caseB2.status()).isEqualTo(CaseStatus.PUBLISHED);
+
+      // ── 3. 确认两个案例的 CASE 向量均已写入 ──
+      Integer totalCaseVectors = jdbcTemplate.queryForObject(
+          "SELECT COUNT(*) FROM vector_store WHERE metadata->>'source_type' = 'CASE'",
+          Integer.class);
+      assertThat(totalCaseVectors)
+          .as("vector_store 中应有 CASE 向量")
+          .isGreaterThan(0);
+
+      // 获取全部 CASE chunk IDs
+      List<String> allCaseChunkIds = jdbcTemplate.queryForList(
+          "SELECT id FROM vector_store WHERE metadata->>'source_type' = 'CASE'",
+          String.class);
+      assertThat(allCaseChunkIds).isNotEmpty();
+
+      // ── 4. 运行回归评测 ──
+      RegressionRunDetailDTO detail = runService.runRegression(LARGE_TOPK);
+      assertThat(detail.status()).isEqualTo(RegressionRunStatus.COMPLETED.name());
+
+      // ── 5. 遍历所有结果，断言没有任何 retrievedEvidenceIds 包含 CASE chunk ID ──
+      for (RegressionResultDTO result : detail.results()) {
+        assertThat(result.retrievedEvidenceIds())
+            .as("itemId=%d 的 retrievedEvidenceIds 不应包含任何 CASE chunk ID",
+                result.itemId())
+            .doesNotContainAnyElementsOf(allCaseChunkIds);
+      }
+
+      // ── 6. 验证所有 SOURCE 案例均通过（KB 证据命中）──
+      long passedCount = detail.results().stream()
+          .filter(RegressionResultDTO::passed)
+          .count();
+      assertThat(passedCount)
+          .as("所有 SOURCE 证据案例应通过")
+          .isEqualTo((long) detail.evaluatedCount());
+    }
+  }
+
   // ═══════════════ 5. service/environment 范围与废弃案例测试 ═══════════════
 
   @Nested

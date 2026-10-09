@@ -1,3 +1,17 @@
+**2026-10-09 -- 阶段 5 案例驱动回归评测 — KB-only 检索彻底排除 CASE 分支（2026-10-09）**
+
+**问题**：来源证据隔离修复（6addb86）后，回归评测仍会把其他 CASE 向量合入结果。`CaseRegressionRunService` 调用 `retrieveAndMerge(..., requireKbOnly=true)` 确实让 KB 检索分支只查 source_type='KB'；但 `KnowledgeBaseQueryService.retrieveAndMerge()` 仍无条件调用 `searchCaseVectors()` 并合并结果。它排除了当前被测案例，却没有排除其他 CASE 向量。那些案例内容可能补足回归要点，使评测不再是严格的 KB-only 回归。
+
+**修复**：
+- `KnowledgeBaseQueryService.retrieveAndMerge()` 在 `requireKbOnly=true` 时跳过 CASE 分支（不调用 `searchCaseVectors()`，不合并 CASE 结果）
+- 提供真正的 KB-only 检索路径：只执行 KB 分支（`similaritySearch` with `source_type='KB'`）
+
+**测试**：
+- 9/9 隔离集成测试通过（CaseRegressionIsolationIntegrationTest，新增 2 个 CASE 向量排除测试）
+- 覆盖：KB 证据命中时另一已发布案例的 CASE 向量不进入回归快照、requireKbOnly=true 时所有 CASE 向量均被过滤
+
+**迁移影响**：无新增迁移
+
 **2026-10-09 -- 阶段 5 案例驱动回归评测 — 来源证据隔离修复（KB-only 检索 + 跳过无效证据来源）**
 
 **问题**：首切片（1be6dd7）存在来源证据隔离问题：

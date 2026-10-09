@@ -574,8 +574,14 @@ public class KnowledgeBaseQueryService {
                                            int topK, double minScore,
                                            List<Long> excludeCaseIds,
                                            boolean requireKbOnly) {
+        // KB 分支：始终执行
         List<Document> kbDocs = vectorService.similaritySearch(
             query, knowledgeBaseIds, topK, minScore, requireKbOnly);
+
+        // CASE 分支：仅在 requireKbOnly=false 时执行，确保真正的 KB-only 检索路径
+        if (requireKbOnly) {
+            return mergeResults(kbDocs, List.of(), topK);
+        }
         List<Document> caseDocs = vectorService.searchCaseVectors(
             query, caseContextFilter, excludeCaseIds, Math.max(topK / 2, 2), minScore);
         return mergeResults(kbDocs, caseDocs, topK);
