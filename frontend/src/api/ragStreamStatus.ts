@@ -67,6 +67,27 @@ export function sourcesDisplayMode(status: MessageStatus | null | undefined): So
 }
 
 /**
+ * Demo 模板响应标识前缀，与后端 DemoChatModel.DEMO_MARKER 保持一致。
+ */
+const DEMO_MARKER_PREFIX = '[Demo 模板响应';
+
+/**
+ * 来源面板标题文案：
+ * - Demo 模板回答（内容含 `[Demo 模板响应` 标识）：来源仅是检索结果快照，未参与生成，
+ *   必须明确提示，避免误导用户以为回答由这些来源生成。
+ * - 真实回答：按原有 grounded / degraded 文案展示。
+ */
+export function sourcesHeaderLabel(
+  content: string | null | undefined,
+  opts: { grounded: boolean; degradedLabel: string },
+): string {
+  if (typeof content === 'string' && content.includes(DEMO_MARKER_PREFIX)) {
+    return '检索结果快照，未用于生成此 Demo 模板回答：';
+  }
+  return opts.grounded ? '引用来源：' : opts.degradedLabel;
+}
+
+/**
  * 选择最终写入消息的来源：NO_RESULTS 一律为空，避免无依据回答带来源。
  */
 export function selectSourcesForStatus<T>(sources: T[] | undefined, status: MessageStatus | undefined): T[] {

@@ -5,6 +5,7 @@ import {
   resolveFinalStatus,
   selectSourcesForStatus,
   sourcesDisplayMode,
+  sourcesHeaderLabel,
 } from './ragStreamStatus.ts';
 
 test('parseDoneStatus 解析服务端确认的五种最终状态（含 INSUFFICIENT_INFO）', () => {
@@ -55,4 +56,42 @@ test('selectSourcesForStatus 无结果一律清空来源，其余保留', () => 
   assert.deepEqual(selectSourcesForStatus(src, 'NO_RESULTS'), []);
   assert.deepEqual(selectSourcesForStatus(src, undefined), src);
   assert.deepEqual(selectSourcesForStatus(undefined, 'COMPLETED'), []);
+});
+
+test('sourcesHeaderLabel: Demo 模板回答显示“检索结果快照”，避免误导为由来源生成', () => {
+  const demoContent = '[Demo 模板响应 — 非真实 AI 生成]\n端口占用排查步骤……';
+  assert.equal(
+    sourcesHeaderLabel(demoContent, { grounded: true, degradedLabel: '降级：' }),
+    '检索结果快照，未用于生成此 Demo 模板回答：',
+  );
+  // Demo 标识处于降级状态时仍优先显示 Demo 快照文案
+  assert.equal(
+    sourcesHeaderLabel(demoContent, { grounded: false, degradedLabel: '降级：' }),
+    '检索结果快照，未用于生成此 Demo 模板回答：',
+  );
+});
+
+test('sourcesHeaderLabel: 真实回答保持原有 grounded / degraded 文案', () => {
+  const realContent = '根据知识库，连接池耗尽时需检查最大连接数。';
+  assert.equal(
+    sourcesHeaderLabel(realContent, { grounded: true, degradedLabel: '检索到的参考文档：' }),
+    '引用来源：',
+  );
+  assert.equal(
+    sourcesHeaderLabel(realContent, { grounded: false, degradedLabel: '检索到的参考文档：' }),
+    '检索到的参考文档：',
+  );
+  // 空内容 / undefined 不会误判为 Demo
+  assert.equal(
+    sourcesHeaderLabel('', { grounded: true, degradedLabel: 'D：' }),
+    '引用来源：',
+  );
+  assert.equal(
+    sourcesHeaderLabel(undefined, { grounded: true, degradedLabel: 'D：' }),
+    '引用来源：',
+  );
+  assert.equal(
+    sourcesHeaderLabel(null, { grounded: false, degradedLabel: 'D：' }),
+    'D：',
+  );
 });

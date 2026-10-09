@@ -18,7 +18,7 @@ import {
   type SourceReference,
   type MessageStatus,
 } from '../api/ragChat';
-import { selectSourcesForStatus, sourcesDisplayMode } from '../api/ragStreamStatus';
+import { selectSourcesForStatus, sourcesDisplayMode, sourcesHeaderLabel } from '../api/ragStreamStatus';
 import { toSourceTagView } from '../utils/sourceDisplay';
 import CodeBlock from '../components/CodeBlock';
 import { ROUTES } from '../constants/routes';
@@ -410,7 +410,10 @@ export default function ChatSessionDetailPage() {
                                 </div>
                               )}
                               <div className="text-xs text-gray-500 dark:text-slate-400 mb-1">
-                                {isGrounded ? '引用来源：' : '检索到的参考文档（仅供参考）：'}
+                                {sourcesHeaderLabel(msg.content, {
+                                  grounded: isGrounded,
+                                  degradedLabel: '检索到的参考文档（仅供参考）：',
+                                })}
                               </div>
                               {msg.sources.slice(0, 5).map((src, i) => {
                                 const view = toSourceTagView(src);

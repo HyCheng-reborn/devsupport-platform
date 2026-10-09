@@ -188,7 +188,7 @@ eval/datasets/           # 评测语料与冻结产物
 
 | 特性 | Demo Profile | 完整部署（需 API Key） |
 |------|--------------|------------------------|
-| 向量化 | 确定性常量向量 | 真实 DashScope Embedding |
+| 向量化 | 确定性哈希向量（非语义向量） | 真实 DashScope Embedding |
 | LLM 回答 | 模板响应 | 真实 LLM 生成 |
 | 适用场景 | 功能演示、开发测试 | 生产环境 |
 | 费用 | 零付费 | 需付费 API Key |

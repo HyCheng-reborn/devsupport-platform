@@ -5,7 +5,7 @@ import remarkGfm from 'remark-gfm';
 import {Virtuoso, type VirtuosoHandle} from 'react-virtuoso';
 import {knowledgeBaseApi, type KnowledgeBaseItem, type SortOption} from '../api/knowledgebase';
 import {ragChatApi, type RagChatSessionListItem, type SourceReference, type MessageStatus} from '../api/ragChat';
-import {selectSourcesForStatus, sourcesDisplayMode} from '../api/ragStreamStatus';
+import {selectSourcesForStatus, sourcesDisplayMode, sourcesHeaderLabel} from '../api/ragStreamStatus';
 import {formatDateOnly} from '../utils/date';
 import {toSourceTagView} from '../utils/sourceDisplay';
 import DeleteConfirmDialog from '../components/DeleteConfirmDialog';
@@ -613,7 +613,10 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
                                     return (
                                       <div className={`mt-2 border-t pt-2 ${isGrounded ? 'border-gray-200 dark:border-slate-600' : 'border-amber-200 dark:border-amber-700/50'}`}>
                                         <div className="text-xs text-gray-500 dark:text-slate-400 mb-1">
-                                          {isGrounded ? '引用来源：' : '检索到的参考文档（本条回答未成功生成，仅供参考）：'}
+                                          {sourcesHeaderLabel(msg.content, {
+                                            grounded: isGrounded,
+                                            degradedLabel: '检索到的参考文档（本条回答未成功生成，仅供参考）：',
+                                          })}
                                         </div>
                                         {msg.sources.slice(0, 5).map((src, i) => {
                                           const view = toSourceTagView(src);
