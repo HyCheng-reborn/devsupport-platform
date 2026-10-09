@@ -35,6 +35,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -324,7 +325,7 @@ class CaseLibraryServiceTest {
     }
 
     @Test
-    @DisplayName("PUBLISHED → DEPRECATED + active=false")
+    @DisplayName("PUBLISHED → DEPRECATED + active=false（两阶段废弃：Phase1 标记 + Phase3 清除标记，save 两次）")
     void deprecate_shouldSetInactive() {
       CaseEntity caseEntity = buildCase(1L, CaseStatus.PUBLISHED);
       caseEntity.setActive(true);
@@ -342,9 +343,16 @@ class CaseLibraryServiceTest {
       assertThat(result.status()).isEqualTo(CaseStatus.DEPRECATED);
       assertThat(result.active()).isFalse();
 
+      // 两阶段废弃：Phase1 在独立事务内标记 DEPRECATED/active=false/vectorCleanupPending=true 保存一次；
+      // 向量删除成功后 Phase3 经 runRequiresNew 清除 vectorCleanupPending 再保存一次，故 save 共两次
+      verify(vectorRepository).deleteByCaseId(1L);
       ArgumentCaptor<CaseEntity> entityCaptor = ArgumentCaptor.forClass(CaseEntity.class);
-      verify(caseRepository).save(entityCaptor.capture());
-      assertThat(entityCaptor.getValue().getActive()).isFalse();
+      verify(caseRepository, times(2)).save(entityCaptor.capture());
+      // 两次捕获均为同一被 mutate 的实例，最终状态应为已废弃、停用、且向量清理标记已清除
+      CaseEntity captured = entityCaptor.getValue();
+      assertThat(captured.getStatus()).isEqualTo(CaseStatus.DEPRECATED);
+      assertThat(captured.getActive()).isFalse();
+      assertThat(captured.getVectorCleanupPending()).isFalse();
 
       ArgumentCaptor<CaseAuditLogEntity> logCaptor = ArgumentCaptor.forClass(CaseAuditLogEntity.class);
       verify(auditLogRepository).save(logCaptor.capture());
