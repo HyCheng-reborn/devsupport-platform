@@ -78,7 +78,7 @@ public abstract class AbstractStreamConsumer<T> {
                     consumerName,
                     AsyncTaskStreamConstants.BATCH_SIZE,
                     AsyncTaskStreamConstants.POLL_INTERVAL_MS,
-                    AsyncTaskStreamConstants.PENDING_IDLE_TIMEOUT_MS,
+                    pendingIdleTimeoutMs(),
                     AsyncTaskStreamConstants.PENDING_CLAIM_BATCH_SIZE,
                     this::processMessage
                 );
@@ -207,6 +207,14 @@ public abstract class AbstractStreamConsumer<T> {
     protected abstract void markFailed(T payload, String error);
 
     protected abstract void retryMessage(T payload, int retryCount);
+
+    /**
+     * Pending 消息空闲超时时间（毫秒），超过该时间的 pending 消息可被当前消费者 autoClaim 回收。
+     * 子类可覆写以自定义超时（如测试场景使用短超时）。
+     */
+    protected long pendingIdleTimeoutMs() {
+        return AsyncTaskStreamConstants.PENDING_IDLE_TIMEOUT_MS;
+    }
 
     /**
      * 在 shouldSkip 之后、tryMarkProcessing 之前调用。

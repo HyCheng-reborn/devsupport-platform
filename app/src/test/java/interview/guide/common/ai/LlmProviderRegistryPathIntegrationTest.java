@@ -83,7 +83,7 @@ class LlmProviderRegistryPathIntegrationTest {
     properties.setProviders(providers);
     properties.setDefaultProvider("probe");
     ToolCallingManager toolCallingManager = DefaultToolCallingManager.builder().build();
-    return new LlmProviderRegistry(properties, toolCallingManager, null, null);
+    return new LlmProviderRegistry(properties, toolCallingManager, null, null, null);
   }
 
   @Test
