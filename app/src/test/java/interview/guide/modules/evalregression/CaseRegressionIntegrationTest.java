@@ -22,6 +22,7 @@ import interview.guide.modules.knowledgebase.repository.KnowledgeBaseRepository;
 import interview.guide.modules.knowledgebase.repository.RagChatMessageRepository;
 import interview.guide.modules.knowledgebase.repository.RagChatSessionRepository;
 import interview.guide.modules.knowledgebase.service.KnowledgeBaseVectorService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -131,6 +132,26 @@ class CaseRegressionIntegrationTest {
   @Autowired RagChatMessageRepository messageRepository;
   @Autowired JdbcTemplate jdbcTemplate;
 
+  /**
+   * 每个测试前清理回归相关表数据，避免跨测试数据泄漏。
+   */
+  @BeforeEach
+  void cleanRegressionTables() {
+    jdbcTemplate.execute("DELETE FROM case_regression_results");
+    jdbcTemplate.execute("DELETE FROM case_regression_runs");
+    jdbcTemplate.execute("DELETE FROM case_regression_items");
+    jdbcTemplate.execute("DELETE FROM case_audit_logs");
+    jdbcTemplate.execute("DELETE FROM cases");
+    jdbcTemplate.execute("DELETE FROM rag_chat_messages");
+    jdbcTemplate.execute("DELETE FROM rag_chat_sessions");
+    jdbcTemplate.execute("DELETE FROM knowledge_bases");
+    try {
+      jdbcTemplate.execute("DELETE FROM vector_store");
+    } catch (Exception ignored) {
+      // vector_store 表可能尚未创建
+    }
+  }
+
   // ─────────── 确定性 Embedding 配置（与既有集成测试同一实现）───────────
 
   static float[] deterministicVector() {
@@ -192,8 +213,27 @@ class CaseRegressionIntegrationTest {
    * <p>解决步骤 / 结果均为单行分号分隔文本，使派生要点为原文连续子串，逐字包含判定稳定。
    */
   private CaseDTO createApprovedCase(String token, String service, String environment) {
+    return createApprovedCase(token, service, environment, null);
+  }
+
+  /**
+   * 创建 → 填充可检索内容（含 service/environment 标签）→ 提交 → 审核发布，
+   * 发布路径会触发向量化并调用 upsertOnPublish 生成回归项。
+   * 支持指定 sourceChunkIds，用于模拟带来源 KB chunk 的案例。
+   */
+  private CaseDTO createApprovedCase(String token, String service, String environment,
+                                      List<String> sourceChunkIds) {
     RagChatSessionEntity session = createSession("回归测试会话-" + token);
-    RagChatMessageEntity msg = createMessage(session, "回归测试消息-" + token);
+    // 设置消息的 sourceChunkIds（模拟控制器 KB-only 过滤后的结果）
+    RagChatMessageEntity message = new RagChatMessageEntity();
+    message.setSession(session);
+    message.setType(RagChatMessageEntity.MessageType.ASSISTANT);
+    message.setContent("回归测试消息-" + token);
+    message.setMessageOrder(0);
+    if (sourceChunkIds != null && !sourceChunkIds.isEmpty()) {
+      message.setSourceChunkIds(jsonCodec.toJson(sourceChunkIds));
+    }
+    RagChatMessageEntity msg = messageRepository.save(message);
     CaseDTO draft = draftService.createDraft(session.getId(), msg.getId());
 
     CaseUpdateRequest updateReq = new CaseUpdateRequest(
@@ -229,36 +269,41 @@ class CaseRegressionIntegrationTest {
   class PublishThenRegressionPasses {
 
     @Test
-    @DisplayName("上传 KB → 审核发布案例 → runRegression：回归项通过且自身证据被召回")
+    @DisplayName("上传 KB → 审核发布案例（带来源 KB chunk）→ runRegression：回归项通过且 KB 证据被召回")
     void approvedCase_regressionPasses() {
-      // 1. 上传并向量化一个知识库文档
+      // 1. 上传并向量化一个知识库文档，获得 KB chunk IDs
       KnowledgeBaseEntity kb = createKnowledgeBase("回归测试知识库");
-      vectorService.vectorizeAndStore(kb.getId(),
-          "网关超时排查手册：重启网关服务、扩容连接池上限、观察水位恢复。");
-
-      // 2. 审核发布案例（approve 触发向量化 + upsertOnPublish）
       String token = "reg_pass_alpha_7001";
-      CaseDTO published = createApprovedCase(token, "gateway", "prod");
+      String kbContent = "网关超时排查手册：重启网关服务;扩容连接池上限 " + token + ";服务恢复正常水位 " + token;
+      vectorService.vectorizeAndStore(kb.getId(), kbContent);
+
+      // 获取 KB chunk IDs（promoteVectorJob 后 kb_id 为最终值）
+      List<String> kbChunkIds = jdbcTemplate.queryForList(
+          "SELECT id FROM vector_store WHERE metadata->>'kb_id' = ?",
+          String.class, kb.getId().toString());
+
+      // 2. 审核发布案例（带来源 KB chunk IDs，模拟真实来源会话流程）
+      CaseDTO published = createApprovedCase(token, "gateway", "prod", kbChunkIds);
       assertThat(published.status()).isEqualTo(CaseStatus.PUBLISHED);
 
-      // 3. 回归项已生成，active=true，绑定自身证据与 embedding 元数据
+      // 3. 回归项已生成，active=true，evidenceSource=SOURCE
       CaseRegressionItemEntity item = itemRepository.findByCaseId(published.id()).orElseThrow();
       assertThat(item.getActive()).isTrue();
-      assertThat(item.getEmbeddingModel()).isEqualTo(embeddingMetadataResolver.resolveModelName());
+      assertThat(item.getEvidenceSource()).isEqualTo("SOURCE");
       List<String> expectedEvidence = jsonCodec.toStringList(item.getExpectedEvidence());
-      assertThat(expectedEvidence).as("发布应绑定案例自身向量证据 ID").isNotEmpty();
+      assertThat(expectedEvidence).as("发布应绑定来源 KB chunk ID").isNotEmpty();
 
       // 4. 运行回归（大 topK 保证确定性召回全部文档）
       RegressionRunDetailDTO detail = runService.runRegression(LARGE_TOPK);
       assertThat(detail.status()).isEqualTo(RegressionRunStatus.COMPLETED.name());
 
-      // 5. 该案例对应逐项结果通过，且自身证据 ID ∈ retrievedEvidenceIds
+      // 5. 该案例对应逐项结果通过，且 KB 证据 ID ∈ retrievedEvidenceIds
       RegressionResultDTO result = detail.results().stream()
           .filter(r -> r.itemId().equals(item.getId()))
           .findFirst().orElseThrow();
-      assertThat(result.passed()).as("发布案例的回归项应通过").isTrue();
+      assertThat(result.passed()).as("SOURCE 证据案例应通过").isTrue();
       assertThat(result.retrievedEvidenceIds())
-          .as("目标案例自身证据应出现在召回集合中")
+          .as("来源 KB chunk 应出现在召回集合中")
           .containsAnyElementsOf(expectedEvidence);
       assertThat(result.missingKeyPoints()).isEmpty();
     }
@@ -355,9 +400,18 @@ class CaseRegressionIntegrationTest {
     @Test
     @DisplayName("case_regression_runs 一行汇总 + case_regression_results 逐项行，字段一致")
     void runAndResultsPersisted() {
+      // 创建 KB 并获得 chunk IDs，使案例有 SOURCE 证据
+      KnowledgeBaseEntity kb = createKnowledgeBase("报告测试知识库");
       String token = "reg_report_foxtrot_7006";
-      CaseDTO published = createApprovedCase(token, "gateway", "prod");
+      String kbContent = "网关排查：重启网关服务;扩容连接池上限 " + token + ";服务恢复正常水位 " + token;
+      vectorService.vectorizeAndStore(kb.getId(), kbContent);
+      List<String> kbChunkIds = jdbcTemplate.queryForList(
+          "SELECT id FROM vector_store WHERE metadata->>'kb_id' = ?",
+          String.class, kb.getId().toString());
+
+      CaseDTO published = createApprovedCase(token, "gateway", "prod", kbChunkIds);
       CaseRegressionItemEntity item = itemRepository.findByCaseId(published.id()).orElseThrow();
+      assertThat(item.getEvidenceSource()).isEqualTo("SOURCE");
 
       RegressionRunDetailDTO detail = runService.runRegression(LARGE_TOPK);
       Long runId = detail.id();

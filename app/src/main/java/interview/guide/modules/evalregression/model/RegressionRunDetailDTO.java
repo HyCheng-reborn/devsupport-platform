@@ -14,6 +14,7 @@ public record RegressionRunDetailDTO(
   Integer passed,
   Integer failed,
   Integer skipped,
+  Integer evaluatedCount,
   String triggerSource,
   String embeddingModel,
   String status,

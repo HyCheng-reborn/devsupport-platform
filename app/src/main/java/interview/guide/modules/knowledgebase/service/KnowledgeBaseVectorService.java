@@ -120,6 +120,7 @@ public class KnowledgeBaseVectorService {
             chunk.getMetadata().put(METADATA_KB_ID, pendingKbId);
             chunk.getMetadata().put(METADATA_TARGET_KB_ID, knowledgeBaseId.toString());
             chunk.getMetadata().put(METADATA_VECTOR_JOB_ID, jobId);
+            chunk.getMetadata().put("source_type", "KB");
         });
     }
     
@@ -132,6 +133,24 @@ public class KnowledgeBaseVectorService {
      * @return 相关文档列表
      */
     public List<Document> similaritySearch(String query, List<Long> knowledgeBaseIds, int topK, double minScore) {
+        return similaritySearch(query, knowledgeBaseIds, topK, minScore, false);
+    }
+
+    /**
+     * 基于多个知识库进行相似度搜索，支持 KB-only 过滤。
+     * <p>
+     * 当 {@code requireKbOnly} 为 true 时，在 filterExpression 中限制 {@code source_type = 'KB'}，
+     * 确保 CASE 向量不进入检索结果。用于回归评测隔离。
+     *
+     * @param query            查询文本
+     * @param knowledgeBaseIds 知识库ID列表（如果为空则搜索所有）
+     * @param topK             返回top K个结果
+     * @param minScore         最低相似度阈值
+     * @param requireKbOnly    是否仅检索 KB 来源向量
+     * @return 相关文档列表
+     */
+    public List<Document> similaritySearch(String query, List<Long> knowledgeBaseIds, int topK,
+                                           double minScore, boolean requireKbOnly) {
         log.info("向量相似度搜索: query={}, kbIds={}, topK={}, minScore={}",
             query, knowledgeBaseIds, topK, minScore);
         
@@ -146,6 +165,8 @@ public class KnowledgeBaseVectorService {
 
             if (knowledgeBaseIds != null && !knowledgeBaseIds.isEmpty()) {
                 builder.filterExpression(buildKbFilterExpression(knowledgeBaseIds));
+            } else if (requireKbOnly) {
+                builder.filterExpression("source_type == 'KB'");
             }
 
             List<Document> results = vectorStore.similaritySearch(builder.build());
@@ -163,11 +184,12 @@ public class KnowledgeBaseVectorService {
             
         } catch (Exception e) {
             log.warn("向量搜索前置过滤失败，回退到本地过滤: {}", e.getMessage());
-            return similaritySearchFallback(query, knowledgeBaseIds, topK, minScore);
+            return similaritySearchFallback(query, knowledgeBaseIds, topK, minScore, requireKbOnly);
         }
     }
 
-    private List<Document> similaritySearchFallback(String query, List<Long> knowledgeBaseIds, int topK, double minScore) {
+    private List<Document> similaritySearchFallback(String query, List<Long> knowledgeBaseIds, int topK,
+                                                     double minScore, boolean requireKbOnly) {
         try {
             // 回退检索仍保留 topK/minScore，避免兜底路径引入过多弱相关命中
             SearchRequest.Builder builder = SearchRequest.builder()
@@ -185,6 +207,10 @@ public class KnowledgeBaseVectorService {
             if (knowledgeBaseIds != null && !knowledgeBaseIds.isEmpty()) {
                 allResults = allResults.stream()
                     .filter(doc -> isDocInKnowledgeBases(doc, knowledgeBaseIds))
+                    .collect(Collectors.toList());
+            } else if (requireKbOnly) {
+                allResults = allResults.stream()
+                    .filter(doc -> "KB".equals(doc.getMetadata().get("source_type")))
                     .collect(Collectors.toList());
             }
 

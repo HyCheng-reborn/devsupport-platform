@@ -143,9 +143,10 @@ public class RagChatController {
         String sourceChunkIdsJson = null;
         try {
             sourcesJson = objectMapper.writeValueAsString(sources);
-            // 提取非 null 的 chunkId 列表，冗余存储便于案例草稿继承
+            // 提取非 null 的 chunkId 列表，仅保留 KB 来源，冗余存储便于案例草稿继承
             sourceChunkIdsJson = objectMapper.writeValueAsString(
                 sources.stream()
+                    .filter(s -> "KB".equals(s.sourceType()))
                     .map(SourceReference::chunkId)
                     .filter(java.util.Objects::nonNull)
                     .toList());

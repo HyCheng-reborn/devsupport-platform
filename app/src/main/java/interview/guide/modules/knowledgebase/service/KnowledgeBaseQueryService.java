@@ -551,8 +551,31 @@ public class KnowledgeBaseQueryService {
                                            Map<String, String> caseContextFilter,
                                            int topK, double minScore,
                                            List<Long> excludeCaseIds) {
+        return retrieveAndMerge(query, knowledgeBaseIds, caseContextFilter, topK, minScore, excludeCaseIds, false);
+    }
+
+    /**
+     * 执行“知识库检索 + 案例检索 + 合并”的真实链路，支持排除指定案例 ID 和 KB-only 过滤。
+     * <p>
+     * 当 {@code requireKbOnly} 为 true 时，KB 检索路径限制 {@code source_type = 'KB'}，
+     * 确保 CASE 向量不进入回归评测结果。
+     *
+     * @param query             检索关键词
+     * @param knowledgeBaseIds  知识库 ID 列表
+     * @param caseContextFilter 案例检索上下文过滤（service/environment/affected_versions）
+     * @param topK              合并后返回的最大文档数
+     * @param minScore          相似度阈值
+     * @param excludeCaseIds    需排除的案例 ID 列表（被测案例自身）
+     * @param requireKbOnly     是否仅检索 KB 来源向量
+     * @return KB 优先、案例补充的合并结果
+     */
+    public List<Document> retrieveAndMerge(String query, List<Long> knowledgeBaseIds,
+                                           Map<String, String> caseContextFilter,
+                                           int topK, double minScore,
+                                           List<Long> excludeCaseIds,
+                                           boolean requireKbOnly) {
         List<Document> kbDocs = vectorService.similaritySearch(
-            query, knowledgeBaseIds, topK, minScore);
+            query, knowledgeBaseIds, topK, minScore, requireKbOnly);
         List<Document> caseDocs = vectorService.searchCaseVectors(
             query, caseContextFilter, excludeCaseIds, Math.max(topK / 2, 2), minScore);
         return mergeResults(kbDocs, caseDocs, topK);

@@ -1,3 +1,32 @@
+**2026-10-09 -- 阶段 5 案例驱动回归评测 — 来源证据隔离修复（KB-only 检索 + 跳过无效证据来源）**
+
+**问题**：首切片（1be6dd7）存在来源证据隔离问题：
+- SELF 和 MISSING 证据来源的案例仍可作为有效回归通过项
+- source_chunk_ids 可能包含非 KB 来源的 chunk ID
+- 回归检索未真正排除 CASE 向量（knowledgeBaseIds 为空时 similaritySearch 无过滤搜索全向量表）
+
+**修复**：
+- SELF/MISSING/NULL evidenceSource 统一跳过评测，不计入 evaluatedCount 分母
+- source_chunk_ids 只保存 sourceType="KB" 的 chunk ID（RagChatController 提取时过滤）
+- 回归检索新增 requireKbOnly 参数，限制 source_type='KB'
+- V20261012 迁移回填旧数据 evidence_source
+- 修复 KnowledgeBaseVectorService.applyPendingMetadata() 缺少 source_type=KB metadata 的缺陷
+
+**测试**：
+- 7/7 隔离集成测试通过（CaseRegressionIsolationIntegrationTest）
+- 57/57 evalregression 测试通过
+- 覆盖：真实 KB 来源证据可命中并通过、自身 CASE 向量不可通过、SELF/MISSING/NULL 均跳过不计入分母、混合来源只保留 KB gold、废弃案例与范围隔离
+
+**迁移影响**：
+- V20261012：case_regression_runs 新增 evaluated_count 列，回填 evidence_source 旧数据
+- 旧数据自动标记为 SOURCE/SELF/MISSING，无需手动迁移
+
+**新旧有效分母对比**：
+- 旧方案：所有发布案例均计入分母（包括 SELF 自命中），10/10 通过
+- 新方案：只有 evidenceSource="SOURCE" 的案例计入分母，SELF/MISSING/NULL 跳过
+
+**主要文件**：`V20261012__backfill_regression_item_evidence_source.sql`、`CaseRegressionRunService.java`、`CaseRegressionRunEntity.java`、`RegressionRunSummaryDTO.java`、`RegressionRunDetailDTO.java`、`KnowledgeBaseVectorService.java`、`KnowledgeBaseQueryService.java`、`RagChatController.java`、`CaseRegressionIsolationIntegrationTest.java`、`CaseRegressionIntegrationTest.java`、`CaseRegressionRunServiceTest.java`
+
 **2026-10-09 -- 阶段 5 案例驱动回归评测 — 数据泄漏修复（来源证据持久化 + 隔离评测）**
 
 **问题**：首切片（ba9ec83）存在数据泄漏，被测案例的向量在搜索集合中，且查询源自案例自身内容，导致案例"自我命中"，10/10 结果只能证明管线可运行，不能证明知识库检索回归有效。

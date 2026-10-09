@@ -43,6 +43,11 @@ public class CaseRegressionRunEntity {
   @Builder.Default
   private Integer skipped = 0;
 
+  /** 实际评测数（totalItems - skipped），排除不可评测的项 */
+  @Column(name = "evaluated_count", nullable = false)
+  @Builder.Default
+  private Integer evaluatedCount = 0;
+
   @Column(name = "trigger_source", length = 50)
   private String triggerSource;
 
