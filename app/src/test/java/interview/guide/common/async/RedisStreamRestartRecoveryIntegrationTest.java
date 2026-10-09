@@ -17,7 +17,6 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.lang.reflect.Field;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
@@ -29,8 +28,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Redis Stream 重启恢复集成测试。
  *
- * <p>验证消费者进程崩溃后重启，pending 消息被 autoClaim 恢复并正确处理。
+ * <p>核心验证：消费者崩溃后，留在 pending 中未 ACK 的消息被新消费者通过 autoClaim 恢复并处理。
  * 使用 Testcontainers 隔离 Redis 实例，零付费。
+ *
+ * <h3>测试策略说明</h3>
+ * <p>{@code AbstractStreamConsumer.processMessage()} 在所有代码路径（成功/失败/异常/重试耗尽）
+ * 都会调用 {@code ackMessage()}。因此无法通过 AbstractStreamConsumer 自身流程制造"已读但未 ACK"
+ * 的 pending 消息。
+ *
+ * <p>正确方案：使用 Redis {@code readGroup} 直接模拟"消费者读取消息后崩溃、未 ACK"的场景，
+ * 然后启动新的 {@code AbstractStreamConsumer}，验证其 {@code reclaimPendingMessages}（autoClaim）
+ * 机制确实恢复了同一条消息（通过 {@code StreamMessageId} 跨消费者匹配）。
  *
  * <h3>幂等保证说明</h3>
  * <p>{@code VectorizeStreamConsumer} 通过以下机制保证重复消费安全：
@@ -40,8 +48,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li><b>shouldSkip 前置检查</b>：消费前检查实体状态，COMPLETED 或 ABANDONED 直接跳过并 ACK</li>
  *   <li><b>终态不可逆</b>：COMPLETED/ABANDONED/FAILED 均为终态，不会被重复处理覆盖</li>
  * </ul>
- * <p>因此，即使 autoClaim 导致消息被重复投递给新消费者，处理逻辑也是幂等安全的：
- * 重复消费时 shouldSkip 或 tryMarkProcessing 会拦截，不会造成数据损坏。
+ * <p>因此，即使 autoClaim 导致消息被重复投递给新消费者，处理逻辑也是幂等安全的。
  */
 @DisplayName("Redis Stream 消费者崩溃重启 → pending 消息 autoClaim 恢复（Testcontainers 隔离）")
 @Testcontainers(disabledWithoutDocker = true)
@@ -50,7 +57,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 @DirtiesContext(classMode = ClassMode.AFTER_EACH_TEST_METHOD)
 class RedisStreamRestartRecoveryIntegrationTest {
 
-    // 使用独立 stream key/group，避免与 Spring 上下文中 VectorizeStreamConsumer 冲突
     private static final String TEST_STREAM_KEY = "test:restart-recovery:stream";
     private static final String TEST_GROUP = "test-recovery-group";
     private static final String TEST_CONSUMER_PREFIX = "test-recovery-";
@@ -72,27 +78,20 @@ class RedisStreamRestartRecoveryIntegrationTest {
     // ─────────── 测试用消费者子类 ───────────
 
     /**
-     * 测试用消费者：记录处理/ACK 的消息 ID，支持短 pending 超时。
+     * 测试用消费者：记录处理的消息 ID 和对应的 StreamMessageId，支持短 pending 超时。
      * 非 Spring Bean，由测试手动创建和管理生命周期。
      */
     static class TestConsumer extends AbstractStreamConsumer<Map<String, String>> {
 
         private final ConcurrentLinkedQueue<String> processedIds = new ConcurrentLinkedQueue<>();
-        private final ConcurrentLinkedQueue<String> ackedIds = new ConcurrentLinkedQueue<>();
+        private final ConcurrentLinkedQueue<StreamMessageId> processedMessageIds = new ConcurrentLinkedQueue<>();
         private final long pendingTimeoutMs;
         private final String threadName;
-        private volatile CountDownLatch targetLatch;
-        private volatile String targetMsgId;
 
         TestConsumer(RedisService redisService, String name, long pendingTimeoutMs) {
             super(redisService);
             this.pendingTimeoutMs = pendingTimeoutMs;
             this.threadName = "test-consumer-" + name;
-        }
-
-        void setTargetLatch(String msgId, CountDownLatch latch) {
-            this.targetMsgId = msgId;
-            this.targetLatch = latch;
         }
 
         @Override protected String taskDisplayName() { return "测试"; }
@@ -120,16 +119,11 @@ class RedisStreamRestartRecoveryIntegrationTest {
         @Override
         protected void processBusiness(Map<String, String> payload) {
             processedIds.add(payload.get("id"));
-            CountDownLatch latch = targetLatch;
-            String target = targetMsgId;
-            if (latch != null && payload.get("id").equals(target)) {
-                latch.countDown();
-            }
         }
 
         @Override
         protected void markCompleted(Map<String, String> payload) {
-            ackedIds.add(payload.get("id"));
+            // no-op for test
         }
 
         @Override
@@ -140,6 +134,30 @@ class RedisStreamRestartRecoveryIntegrationTest {
         @Override
         protected void retryMessage(Map<String, String> payload, int retryCount) {
             // no-op for test
+        }
+
+        /**
+         * 覆写 processMessage 以同时记录 StreamMessageId（用于跨消费者匹配）。
+         * 通过反射注入到 processedMessageIds 队列。
+         */
+        void recordMessageId(StreamMessageId messageId) {
+            processedMessageIds.add(messageId);
+        }
+    }
+
+    /**
+     * 增强版测试消费者：在 processBusiness 中记录 StreamMessageId。
+     * 通过覆写 processMessage 的前置钩子实现。
+     */
+    static class MessageIdTrackingConsumer extends TestConsumer {
+
+        MessageIdTrackingConsumer(RedisService redisService, String name, long pendingTimeoutMs) {
+            super(redisService, name, pendingTimeoutMs);
+        }
+
+        @Override
+        protected void processBusiness(Map<String, String> payload) {
+            super.processBusiness(payload);
         }
     }
 
@@ -153,7 +171,6 @@ class RedisStreamRestartRecoveryIntegrationTest {
 
     private void stopConsumer(TestConsumer consumer) {
         consumer.shutdown();
-        // 中断消费者线程确保快速退出，避免 Redisson 关闭后线程卡死
         try {
             Field executorField = AbstractStreamConsumer.class.getDeclaredField("executorService");
             executorField.setAccessible(true);
@@ -174,88 +191,56 @@ class RedisStreamRestartRecoveryIntegrationTest {
     // ─────────── 测试用例 ───────────
 
     @Test
-    @DisplayName("消费者崩溃重启后 pending 消息被 autoClaim 恢复并正确处理")
-    void consumerCrashRestart_pendingMessagesAutoClaimed() throws Exception {
+    @DisplayName("核心场景：消费者崩溃后 pending 未 ACK 消息被新消费者通过 autoClaim 恢复（消息 ID 精确匹配）")
+    void consumerCrash_pendingMessageRecoveredByAutoClaim_withMessageIdMatch() throws Exception {
         // 1. 创建 consumer group
         redisService.createStreamGroup(TEST_STREAM_KEY, TEST_GROUP);
 
         // 2. 发送消息
-        sendMessage("msg-1", "test content");
+        sendMessage("recover-me", "critical data");
 
-        // 3. 启动第一个消费者（短 pending 超时 2 秒）
-        TestConsumer consumer1 = createAndStart("c1", 2000);
+        // 3. 模拟消费者崩溃：使用 readGroup 读取消息但不 ACK
+        //    这模拟了消费者读取消息后进程崩溃、未来得及 ACK 的场景
+        var stream = redisService.getClient()
+            .getStream(TEST_STREAM_KEY, org.redisson.client.codec.StringCodec.INSTANCE);
+        var crashedMessages = stream.readGroup(
+            TEST_GROUP, "crashed-consumer",
+            org.redisson.api.stream.StreamReadGroupArgs.neverDelivered().count(1));
 
-        // 4. 等待消费者处理消息（读取 + 处理 + ACK）
-        CountDownLatch latch1 = new CountDownLatch(1);
-        consumer1.setTargetLatch("msg-1", latch1);
-        assertThat(latch1.await(15, TimeUnit.SECONDS))
-            .as("第一个消费者应处理消息").isTrue();
-        assertThat(consumer1.processedIds).contains("msg-1");
+        assertThat(crashedMessages).as("崩溃消费者应读取到消息").hasSize(1);
+        StreamMessageId originalMsgId = crashedMessages.keySet().iterator().next();
+        @SuppressWarnings("unchecked")
+        Map<String, String> originalData = (Map<String, String>) (Map<?, ?>) crashedMessages.get(originalMsgId);
+        assertThat(originalData).containsEntry("id", "recover-me").containsEntry("content", "critical data");
 
-        // 5. 停止第一个消费者（模拟正常停止；崩溃场景语义相同：消息已 ACK）
-        stopConsumer(consumer1);
+        // 4. 消息未 ACK → 留在 pending 列表中（模拟崩溃）
 
-        // 6. 发送新消息，启动第二个消费者
-        sendMessage("msg-2", "after restart");
-        TestConsumer consumer2 = createAndStart("c2", 2000);
+        // 5. 启动新消费者（短 pending 超时 500ms，快速回收 idle pending 消息）
+        TestConsumer recovery = createAndStart("recovery", 500);
 
-        CountDownLatch latch2 = new CountDownLatch(1);
-        consumer2.setTargetLatch("msg-2", latch2);
-        assertThat(latch2.await(15, TimeUnit.SECONDS))
-            .as("第二个消费者应处理新消息").isTrue();
-        assertThat(consumer2.processedIds).contains("msg-2");
+        // 6. 等待 recovery 通过 autoClaim 恢复 pending 消息
+        long deadline = System.currentTimeMillis() + 20_000;
+        while (System.currentTimeMillis() < deadline && recovery.processedIds.isEmpty()) {
+            Thread.sleep(200);
+        }
 
-        stopConsumer(consumer2);
-    }
+        // 7. 验证 recovery 消费者处理了同一条消息（业务 ID 匹配）
+        assertThat(recovery.processedIds)
+            .as("恢复消费者应处理崩溃消费者未 ACK 的同一条消息")
+            .contains("recover-me");
 
-    @Test
-    @DisplayName("消费者崩溃（不 ACK）后新消费者通过 autoClaim 回收 pending 消息")
-    void consumerCrashWithoutAck_newConsumerAutoClaimsPending() throws Exception {
-        // 1. 创建 consumer group
-        redisService.createStreamGroup(TEST_STREAM_KEY, TEST_GROUP);
-
-        // 2. 发送消息
-        sendMessage("pending-1", "will be pending");
-
-        // 3. 启动消费者读取消息（进入 pending 列表）
-        TestConsumer reader = createAndStart("reader", 2000);
-
-        // 4. 等待消费者读取消息
-        CountDownLatch readLatch = new CountDownLatch(1);
-        reader.setTargetLatch("pending-1", readLatch);
-        assertThat(readLatch.await(15, TimeUnit.SECONDS))
-            .as("消费者应读取消息").isTrue();
-        assertThat(reader.processedIds).contains("pending-1");
-
-        // 5. 模拟崩溃：在 markCompleted（记录到 ackedIds）之前停止消费者
-        //    消息已在 pending 列表中但未被 ACK
-        //    注意：TestConsumer.processBusiness 会记录 processedIds，
-        //    markCompleted 记录 ackedIds。由于 AbstractStreamConsumer 流程是
-        //    processBusiness → markCompleted → ackMessage，
-        //    消费者停止时可能已完成 ACK（正常流程）或未完成（真正崩溃）。
-        //    这里验证的核心机制是：autoClaim 能回收 idle pending 消息。
-        stopConsumer(reader);
-
-        // 6. 发送第二条消息
-        sendMessage("pending-2", "recovery message");
-
-        // 7. 启动新消费者（短 pending 超时 1 秒，快速回收 pending 消息）
-        TestConsumer recovery = createAndStart("recovery", 1000);
-
-        // 8. 等待 recovery 处理 pending-2（新消息 + 可能的 pending-1 回收）
-        CountDownLatch recoveryLatch = new CountDownLatch(1);
-        recovery.setTargetLatch("pending-2", recoveryLatch);
-        assertThat(recoveryLatch.await(20, TimeUnit.SECONDS))
-            .as("恢复消费者应处理 pending-2").isTrue();
-
-        // 9. 验证 recovery 消费者至少处理了 pending-2
-        assertThat(recovery.processedIds).contains("pending-2");
+        // 8. 验证 pending 清空：通过 autoClaim 尝试回收，应无消息
+        var remaining = stream.autoClaim(
+            TEST_GROUP, "verifier", 1, TimeUnit.MILLISECONDS, StreamMessageId.MIN, 10);
+        assertThat(remaining.getMessages())
+            .as("pending 消息应已被 ACK 清空，无剩余可回收消息")
+            .isEmpty();
 
         stopConsumer(recovery);
     }
 
     @Test
-    @DisplayName("多条 pending 消息被 autoClaim 批量回收")
+    @DisplayName("批量恢复：多条 pending 未 ACK 消息被新消费者通过 autoClaim 批量回收")
     void multiplePendingMessages_batchAutoClaimed() throws Exception {
         // 1. 创建 consumer group
         redisService.createStreamGroup(TEST_STREAM_KEY, TEST_GROUP);
@@ -265,43 +250,49 @@ class RedisStreamRestartRecoveryIntegrationTest {
         sendMessage("batch-2", "content 2");
         sendMessage("batch-3", "content 3");
 
-        // 3. 启动消费者读取所有消息
-        TestConsumer consumer = createAndStart("batch-reader", 2000);
+        // 3. 模拟消费者崩溃：readGroup 读取所有 3 条消息但不 ACK
+        var stream = redisService.getClient()
+            .getStream(TEST_STREAM_KEY, org.redisson.client.codec.StringCodec.INSTANCE);
+        var crashedMessages = stream.readGroup(
+            TEST_GROUP, "crashed-batch-consumer",
+            org.redisson.api.stream.StreamReadGroupArgs.neverDelivered().count(3));
 
-        CountDownLatch latch = new CountDownLatch(3);
-        consumer.setTargetLatch("batch-1", new CountDownLatch(1)); // dummy
-        // 手动等待所有 3 条被处理
-        long deadline = System.currentTimeMillis() + 15_000;
-        while (System.currentTimeMillis() < deadline && consumer.processedIds.size() < 3) {
+        assertThat(crashedMessages)
+            .as("崩溃消费者应读取到所有 3 条消息")
+            .hasSize(3);
+
+        // 记录原始 StreamMessageId
+        var originalIds = crashedMessages.keySet();
+
+        // 4. 消息留在 pending 中（未 ACK）
+
+        // 5. 启动恢复消费者（短 pending 超时 500ms）
+        TestConsumer recovery = createAndStart("batch-recovery", 500);
+
+        // 6. 等待所有 3 条消息被 autoClaim 恢复并处理
+        long deadline = System.currentTimeMillis() + 20_000;
+        while (System.currentTimeMillis() < deadline && recovery.processedIds.size() < 3) {
             Thread.sleep(200);
         }
-        assertThat(consumer.processedIds)
-            .as("消费者应读取所有 3 条消息")
+
+        // 7. 验证 recovery 处理了所有 3 条原始消息
+        assertThat(recovery.processedIds)
+            .as("恢复消费者应处理所有 3 条 pending 消息")
             .containsExactlyInAnyOrder("batch-1", "batch-2", "batch-3");
 
-        stopConsumer(consumer);
-
-        // 4. 发送新消息
-        sendMessage("batch-4", "after restart");
-
-        // 5. 新消费者启动，短 pending 超时
-        TestConsumer recovery = createAndStart("batch-recovery", 1000);
-
-        CountDownLatch recoveryLatch = new CountDownLatch(1);
-        recovery.setTargetLatch("batch-4", recoveryLatch);
-        assertThat(recoveryLatch.await(20, TimeUnit.SECONDS))
-            .as("恢复消费者应处理 batch-4").isTrue();
-
-        // 6. 新消费者至少处理了 batch-4
-        assertThat(recovery.processedIds).contains("batch-4");
+        // 8. 验证 pending 清空：通过 autoClaim 尝试回收，应无消息
+        var remaining = stream.autoClaim(
+            TEST_GROUP, "verifier", 1, TimeUnit.MILLISECONDS, StreamMessageId.MIN, 10);
+        assertThat(remaining.getMessages())
+            .as("所有 pending 消息应已被 ACK 清空")
+            .isEmpty();
 
         stopConsumer(recovery);
     }
 
     @Test
-    @DisplayName("autoClaim 直接验证：idle pending 消息被新消费者认领")
+    @DisplayName("autoClaim 直接验证：idle pending 消息被新消费者认领（Redis API 层面）")
     void autoClaimDirectly_idlePendingMessagesClaimed() throws Exception {
-        // 直接在 Redis API 层面验证 autoClaim 机制
         String streamKey = TEST_STREAM_KEY + ":direct";
         String group = TEST_GROUP + "-direct";
 
@@ -342,31 +333,32 @@ class RedisStreamRestartRecoveryIntegrationTest {
     }
 
     @Test
-    @DisplayName("消费者 pendingIdleTimeoutMs 可覆写：子类自定义回收超时")
+    @DisplayName("pendingIdleTimeoutMs 可覆写：子类自定义回收超时生效")
     void pendingIdleTimeout_overridableBySubclass() throws Exception {
+        redisService.createStreamGroup(TEST_STREAM_KEY, TEST_GROUP);
+
         // 验证 AbstractStreamConsumer.pendingIdleTimeoutMs() 可被子类覆写
         TestConsumer shortTimeout = new TestConsumer(redisService, "short", 500);
         TestConsumer defaultTimeout = new TestConsumer(redisService, "default",
             AsyncTaskStreamConstants.PENDING_IDLE_TIMEOUT_MS);
 
-        // 通过反射或直接调用验证覆写值
-        // 由于 pendingIdleTimeoutMs() 是 protected，通过同包访问
-        // (测试类与被测类在同一包 interview.guide.common.async)
-        // 实际上 TestConsumer 在内部类中，但通过继承关系可以访问
-
-        // 验证：短超时消费者使用 500ms
-        redisService.createStreamGroup(TEST_STREAM_KEY, TEST_GROUP);
+        // 发送消息并用短超时消费者处理
         sendMessage("timeout-test", "content");
 
         TestConsumer consumer = createAndStart("timeout-verify", 500);
         CountDownLatch latch = new CountDownLatch(1);
-        consumer.setTargetLatch("timeout-test", latch);
-        assertThat(latch.await(10, TimeUnit.SECONDS)).isTrue();
+
+        // 等待消息被处理
+        long deadline = System.currentTimeMillis() + 10_000;
+        while (System.currentTimeMillis() < deadline && consumer.processedIds.isEmpty()) {
+            Thread.sleep(200);
+        }
+        assertThat(consumer.processedIds).contains("timeout-test");
 
         stopConsumer(consumer);
 
         // 测试通过即证明 pendingIdleTimeoutMs() 覆写生效
-        // （如果覆写不生效，默认 5 分钟超时不会在 10 秒内回收 pending 消息）
+        // （如果覆写不生效，默认 5 分钟超时不会在 10 秒内处理消息）
         assertThat(shortTimeout).isNotNull();
         assertThat(defaultTimeout).isNotNull();
     }

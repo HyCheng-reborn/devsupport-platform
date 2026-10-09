@@ -97,13 +97,17 @@ graph TB
 ### 方式 A：Demo Profile（零付费，推荐新人体验）
 
 ```bash
-# 1. 启动依赖服务
+# 1. 创建环境配置（POSTGRES_PASSWORD 为最小必需项，demo 模式不需要 AI API Key）
+cp .env.example .env
+# 编辑 .env，设置 POSTGRES_PASSWORD 为强密码
+
+# 2. 启动依赖服务
 docker compose -f docker-compose.dev.yml up -d
 
-# 2. 启动后端（demo profile 使用确定性向量和模板响应）
+# 3. 启动后端（demo profile 使用确定性向量和模板响应）
 ./gradlew :app:bootRun --args='--spring.profiles.active=demo'
 
-# 3. 启动前端
+# 4. 启动前端
 cd frontend && pnpm run dev
 ```
 
