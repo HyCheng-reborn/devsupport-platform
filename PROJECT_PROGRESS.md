@@ -3,7 +3,7 @@
 > 本项目（远程仓库 `HyCheng-reborn/devsupport-platform`，本地目录名仍为 `interview-guide`）的进度事实源。
 > **跨机器 remote 别名映射（读文档前先对齐，避免 `origin` 误读）**：本机 `devsupport` = `HyCheng-reborn/devsupport-platform`（推送目标），本机 `origin` = `Snailclimb/interview-guide`（上游，**勿推**）；另一台验证机（批次 C/D 补验）的 `origin` = `HyCheng-reborn/devsupport-platform`，故其文档/提交记录里的「push 到 `origin/master`」等同于本机的「push 到 `devsupport/master`」。判断实际目标仓库一律以 remote URL 为准，不要只看别名。
 > 新会话接手时先读本文件，再读「交接区」列出的文件。
-> 最近更新：**2026-10-08 Stage 4 验收证据补齐（commit `353b8a8`）— 真实删除失败路径测试 + KB/案例合并走 retrieveAndMerge + affected_versions 精确匹配测试（集成测试 20/20 PASS）**。前一轮：Stage 4 验收缺口修复（范围隔离 + 废弃一致性 + fail-closed）。
+> 最近更新：**2026-10-09 Stage 5 首切片「案例驱动的回归评测（确定性版）」离线验证通过 — 新增 `evalregression` 模块 + Flyway `V20261010` 三表 + 案例生命周期联动 + 前端回归面板/评测页区块/案例徽标；后端定点 92 全绿、前端 build+单测 7/7+E2E 15/15、真实运行时离线闭环走通（9 次 embedding 全命中本地桩、零付费）+ 浏览器契约走查；全量后端 741/728 passed/10 failed（Voice Redis 遗留）/3 skipped**。前一轮：Stage 4 验收证据补齐（commit `353b8a8`）。
 
 ## 0. 维护规则
 
@@ -30,6 +30,18 @@
 - **P1-C**（当前阶段）：真实 pgvector + 真实 Embedding 的 **L1 向量检索组件基线**，明确不含查询改写、动态 topK/阈值（这三项生产里都开着，见 §3.4）。
 
 ## 2. 已完成且有证据
+
+- **DevSupport 阶段 5 首切片：案例驱动的回归评测（确定性版）（2026-10-09）** — 状态 `离线通过（源码实现+自动化+真实运行时离线闭环验证已完成，真实付费 embedding 语义质量未验证）`。
+  - **后端模块**：新增 `interview.guide.modules.evalregression`——3 实体（CaseRegressionItemEntity/RunEntity/ResultEntity）+ `RegressionRunStatus` + 6 record DTO（RegressionItemDTO/RegressionResultDTO/RegressionRunDetailDTO/RegressionRunRequest/RegressionRunSummaryDTO/TopKSnapshotEntry）+ 3 repository + 4 服务（RegressionJsonCodec/EmbeddingMetadataResolver/CaseRegressionItemService/CaseRegressionRunService）+ `CaseRegressionController` + MapStruct `CaseRegressionMapper`。
+  - **迁移**：Flyway `V20261010` 建 case_regression_items/runs/results 三表（case_id REFERENCES cases(id)；item_id 刻意不加 FK，容忍回归项变动后历史结果留存；删冗余索引）；ErrorCode 13001/13002/13003。
+  - **生命周期联动**：`CaseReviewService.vectorizeCaseContent` 返回证据 ID 列表，approve→`upsertOnPublish`；`CaseLifecycleService.deprecate`→`deactivateOnDeprecate`。
+  - **确定性判定（零付费）**：query=title+problemDescription；keyPoints 从 resolutionSteps/resolutionResult 派生；passed=期望证据 ID 命中 top-K 召回 且 keyPoints 逐字包含（空白归一后）；查询 embedding 用应用当前 EmbeddingModel（demo/test 确定性）。审查后修复：默认 topK 5→20 + 上限钳制 200；keyPoint 空白归一。
+  - **端点**：`GET /api/eval/regression/items`、`POST /api/eval/regression/runs`、`GET /api/eval/regression/runs`、`GET /api/eval/regression/runs/{id}`，统一 `Result<T>`。
+  - **前端**：`CaseRegressionPanel` + `EvalResultsPage` 回归区块 + `CaseDetailPage` PUBLISHED「已纳入回归评测」徽标 + `api/eval.ts` 4 函数 + `types/eval.ts` + `utils/regression.ts`；E2E `case-regression.spec.ts`(10)，并修复 `case-library.spec.ts` 过宽 mock 路由。
+  - **测试统计**：后端定点 evalregression 单测 46 + 集成 4、caselibrary 单测 22 + 集成 20 = **92 全绿**；compileJava/compileTestJava exit 0。全量后端 **741 tests / 728 passed / 10 failed（全为 VoiceInterviewIntegrationTest 连本机 Redis:6379 遗留，非本次、未修复未扩大）/ 3 skipped（Voice @Disabled）**，DevSupport 主线 **343 全绿**，V20261010 已在 Testcontainers pgvector/pg16 真实应用成功。前端 build exit 0；单测 regression **7/7**；Playwright case-regression **10/10** + case-library **5/5**。
+  - **真实运行时与浏览器验证**：bootRun + docker compose 真实 PG/pgvector+Redis+RustFS + 真实 Flyway + 真实 OpenAI SDK HTTP embedding 打到**本地确定性桩** + 真实 pgvector 检索 + REST + 落库 + Vite 前端/代理：publish→生成回归项→运行通过→废弃→排除 完整闭环走通，**9 次 embedding 调用全命中 127.0.0.1、零付费**；浏览器真实数据走查（回归项/历史/详情/逐项字段/召回快照/新运行落库/案例徽标条件渲染均正确，无 console/网络错误）。
+  - **未验证边界**：真实付费 embedding（DashScope text-embedding-v3）下语义检索质量/排序/top-K 精度未验证（确定性常量向量使相似度并列，仅证明管线正确 + 自身证据可召回 + 判定/落库/废弃排除逻辑正确）；聊天 assistant 消息→createDraft 离线闭环未验证（需 LLM）；全量后端非全绿（10 Voice Redis 遗留）。
+  - **已知限制/延期**：H1/L4（approve() @Transactional 内调 EmbeddingModel HTTP，改动前既存技术债、本次延续，建议移出事务或改 Redis Stream 异步）；M1（回归复用全局 KB retrieveAndMerge，kbIds 空→KB 分支不带过滤，已用默认 topK 提升+上限钳制缓解）；M3（要点跨不相邻 chunk 仍可能假失败）；L1（无 FAILED 终态，13003 未用）；L3（逐项结果未快照 expectedEvidence，重发布致历史高亮漂移，passed 已落库不受影响）；project 维度案例过滤延期（schema 级缺口，另立切片）。
 
 - **DevSupport 阶段 4 验收证据补齐（commit `353b8a8`，2026-10-08）** — 状态 `已完成（源码实现+自动化验证已完成，真实付费模型端到端未验证）`。
   - 真实向量删除失败路径测试：`@MockitoSpyBean VectorRepository` + `doThrow` 让 `deleteByCaseId()` 失败 → 验证 DB 持久化 status=DEPRECATED/active=false/vectorCleanupPending=true → 检索不命中

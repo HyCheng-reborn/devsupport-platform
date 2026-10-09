@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { loadEvalSummaries, type EvalDatasetSummary, type EvalMetricAtK } from '../api/eval';
+import CaseRegressionPanel from '../components/CaseRegressionPanel';
 
 // ── 工具函数 ──────────────────────────────────────────
 
@@ -294,6 +295,11 @@ export default function EvalResultsPage() {
         ))}
       </div>
 
+      {/* 案例回归评测区块 */}
+      <div className="mt-8">
+        <CaseRegressionPanel />
+      </div>
+
       {/* 底部注脚 */}
       <motion.p
         initial={{ opacity: 0 }}
@@ -301,7 +307,7 @@ export default function EvalResultsPage() {
         transition={{ duration: 0.3, delay: 0.5 }}
         className="mt-8 text-center text-xs text-slate-400 dark:text-slate-500"
       >
-        评测数据来自 eval/datasets/ 目录 · 构建时静态加载 · 无外部 API 调用
+        离线评测数据来自 eval/datasets/ 目录（构建时静态加载）· 案例回归评测数据来自后端 /api/eval/regression/*
       </motion.p>
     </div>
   );

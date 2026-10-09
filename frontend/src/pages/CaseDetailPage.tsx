@@ -11,6 +11,7 @@ import {
   XCircle,
   Archive,
   AlertCircle,
+  RefreshCw,
 } from 'lucide-react';
 import { casesApi } from '../api/cases';
 import type { CaseItem, CaseUpdateRequest } from '../types/cases';
@@ -174,6 +175,15 @@ export default function CaseDetailPage() {
               <span className={`px-2 py-0.5 rounded-full text-xs font-medium flex-shrink-0 ${caseStatusStyles[caseItem.status]}`}>
                 {caseStatusLabels[caseItem.status]}
               </span>
+              {caseItem.status === 'PUBLISHED' && (
+                <span
+                  title="已发布案例自动纳入案例回归评测数据集"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium flex-shrink-0 bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  已纳入回归评测
+                </span>
+              )}
             </div>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
               创建于 {new Date(caseItem.createdAt).toLocaleDateString('zh-CN')} · 版本 {caseItem.versionNo}

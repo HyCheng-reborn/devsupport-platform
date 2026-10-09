@@ -2,7 +2,7 @@
 
 > 本文件是 DevSupport 平台的主线事实源。后续 Agent 执行任何开发任务前，必须先阅读本文件了解产品定位、当前进展和执行边界。
 >
-> 核实基线：HEAD `cd900da`，分支 `master`，核实日期 2026-10-04。
+> 核实基线：分支 `review/devsupport-stage1-stage2-20261004`（阶段 5 首切片提交前的父提交为 `a823dd4`），核实日期 2026-10-09。
 >
 > 分工声明：本文件管方向与阶段验收；`PROJECT_PROGRESS.md` 管逐轮实施证据；`CHANGES.md` 管变更流水。三者不重复记录。
 
@@ -49,16 +49,16 @@ Resume、Interview、VoiceInterview、InterviewSchedule 属于原上游项目遗
 
 状态词七档：**未开始 / 实现中 / 代码完成 / 离线验证通过 / 本地集成通过 / 付费外部验证通过 / 完成**。
 
-> 以下状态为核对时的本机快照（2026-10-04）。
+> 以下状态为核对时的本机快照（2026-10-09）。
 
 | 阶段 | 状态 | 仓库证据 | 限制 |
 |------|------|---------|------|
 | 阶段 0：主线护栏 | 已完成 | 本文件落地 + 4 个 Resume demo 遗留文件已提交（`ea8fc22`）；路线图状态与工作区事实核对一致 | — |
 | 阶段 1：主界面与上下文 | 已完成（DevSupport 主线相关全绿；全量后端仍非全绿，剩余为 Voice Redis 环境阻塞） | 四导航重建 + 上下文贯通 + 检索范围一致性修正 + 最终验收 + ListFiltering 漂移修复；DevSupport 主线相关测试全绿（上下文/会话/来源/**知识库列表筛选**单测 + `RagChatSseIntegrationTest`、`KnowledgeBaseRepositoryIntegrationTest`、`RateLimitIntegrationTest` 经 Testcontainers 真实 PostgreSQL 通过 + 新增 mock 浏览器 E2E `chat-scope.spec.ts` 通过）；全量后端 579 tests / 10 failed / 3 skipped（BUILD FAILED，剩余 10 全为 `VoiceInterviewIntegrationTest` 环境阻塞） | project/version 数据模型缺失，UI 已禁用；service/environment 为精确匹配（区分大小写）非 `LOWER(...)`；曾有 2 个 `KnowledgeBaseListServiceTest$ListFiltering` 属主线知识库列表筛选测试漂移（本轮已修 stub，不能称“无主线失败”）；Voice 集成 10 个为 Redis 环境阻塞，非 DevSupport 主线 |
 | 阶段 2：文档中心 | 验收通过（并发安全 + 异步状态机 + ABANDONED 状态；源码实现+自动化验证已完成，真实付费模型端到端未验证） | 迁移 `V20261005` + `V20261006`（conflict 列 + normalized_version_label + 部分唯一索引 uq_kb_active_version）+ `V20261007`（ADOPTING/ABANDONED CHECK 约束）；上传→S3 对象+PG 元数据→Redis Stream 生产/消费异步 COMPLETED→按项目/环境/版本检索→新版本停用旧版本并删向量（`KnowledgeBaseUploadPipelineIntegrationTest` 真实 RustFS+Redis+pgvector+确定性 embedding 实测；`KnowledgeBaseLifecycleIntegrationTest`）；**版本冲突治理**：同 documentKey + 同规范化 versionLabel + 不同 fileHash → 标记 VERSION_CONFLICT，不投递向量化；**并发冲突归属修复**：获胜方 active 不变，失败方存为独立冲突候选（不覆盖/不丢弃）；**adopt 异步状态机**：CONFLICT→ADOPTING→向量化→promote→COMPLETED，失败回退 CONFLICT，旧版本始终 active；**ABANDONED 状态替代 FAILED**：放弃记录不显示重试按钮；冲突解决 API `POST /{id}/adopt`（采用冲突版本）/ `POST /{id}/abandon`（放弃冲突版本）；前端冲突筛选复选框 + 采用/放弃按钮（确认弹窗+loading+反馈）；PG 部分唯一索引保证同 key+label 只允许一个 active 行；文档中心 处理中/待处理/可检索/失败(重试)/已停用/版本冲突 + 停用 + 采用/放弃操作（`kbStatus` + Playwright E2E `kb-doc-center.spec.ts` mock）；**检索来源标注版本**（`SourceReference` 扩展 versionLabel/versionNo/documentKey，排查会话来源面板展示紫色版本标签）；**文档中心支持按 project/docType/version 筛选**（后端 API 支持 project/docType/version 查询参数；前端 client-side 过滤）；全量后端 **626 tests / 613 passed / 10 failed（全为 `VoiceInterviewIntegrationTest` Redis 环境阻塞）/ 3 skipped**，DevSupport 相关全绿 | 保留 fileHash 全局唯一 → 同一文件跨项目独立归属仍不支持（已知边界）；排查会话 ContextSelector 暂只暴露 service/environment；真实付费模型端到端与生产部署未验证 |
-| 阶段 3：排查会话闭环 | 实现中（结构化回答骨架 + 来源章节定位 + 版本冲突提示 + INSUFFICIENT_INFO 拒答细化；源码实现+自动化验证已完成，真实付费模型端到端未验证） | Prompt 定义 8 段结构化回答骨架；`SourceReference` 新增 `sectionTitle` 从文档 heading 提取；`MessageStatus` 新增 `INSUFFICIENT_INFO` 拒答细化；前端来源面板显示文档名>章节标题；前端多版本来源时显示冲突提示条；前端 INSUFFICIENT_INFO 展示追问式提示；后端测试：骨架 SSE、INSUFFICIENT_INFO 判定、sectionTitle 提取；前端测试：sectionTitle 映射、insufficient 模式、冲突提示 E2E。全量后端 **650 tests / 637 passed / 10 failed（Voice Redis 遗留）/ 3 skipped**，DevSupport 相关全绿 | 结构化回答骨架已定义但 Prompt 调优未受控实验；真实付费模型端到端未验证 |
+| 阶段 3：排查会话闭环 | 实现中（结构化回答骨架 + 来源章节定位 + 版本冲突提示 + INSUFFICIENT_INFO 拒答细化；源码+自动化完成，真实付费模型端到端验证待授权（挂起）） | Prompt 定义 8 段结构化回答骨架；`SourceReference` 新增 `sectionTitle` 从文档 heading 提取；`MessageStatus` 新增 `INSUFFICIENT_INFO` 拒答细化；前端来源面板显示文档名>章节标题；前端多版本来源时显示冲突提示条；前端 INSUFFICIENT_INFO 展示追问式提示；后端测试：骨架 SSE、INSUFFICIENT_INFO 判定、sectionTitle 提取；前端测试：sectionTitle 映射、insufficient 模式、冲突提示 E2E。全量后端 **650 tests / 637 passed / 10 failed（Voice Redis 遗留）/ 3 skipped**，DevSupport 相关全绿 | 结构化回答骨架已定义但 Prompt 调优未受控实验；真实付费模型端到端未验证 |
 | 阶段 4：案例库审核发布 | 已完成（源码实现+自动化验证已完成，真实付费模型端到端未验证） | DB 迁移 `V20261008`+`V20261009`；CaseStatus 枚举；CaseDraftService/CaseReviewService/CaseLifecycleService；CaseLibraryController 8 端点；前端案例列表+详情+生成按钮；案例检索接入（approve 向量化、deprecate 删向量、检索合并）；范围过滤（service/environment/affected_versions 精确匹配，无上下文不全局召回）；废弃一致性（两阶段事务 + vectorCleanupPending + fail-closed + retryVectorCleanup）；X-Operator 审计标签（非身份认证）；后端 22 单测 + 20 集成测试（含真实删除失败路径、KB/案例合并走 retrieveAndMerge、affected_versions 匹配/不匹配）；前端 3 单测 + 5 E2E。集成测试 20/20 PASS（commit `353b8a8`）。全量后端 **682 tests / 669 passed / 10 failed（Voice Redis 遗留）/ 3 skipped**，DevSupport 相关全绿 | 案例范围仅支持 service/environment + affected_versions 精确匹配；project 维度暂不参与过滤（字段可空无一致性保证，延期）；affected_versions 语义对齐依赖人工维护 |
-| 阶段 5：可评测检索优化 | 阶段 5 未开始；既有 P1-C 真实评测已完成 | P1-C L1 两次真实评测（baseline Hit@5=93.75%, MRR@5=77.81%; heading-aware MRR@5=0.8542）— 付费外部验证通过（口径限定：heading-aware 非受控单变量 A/B，不可宣称因果提升）；Hybrid/RRF/Rerank/案例回归评测均未开始 | 阶段 5 主体工作未开始；P1-C baseline 已冻结可复现 |
+| 阶段 5：可评测检索优化 | 案例驱动回归评测确定性首版已实现（零付费：确定性证据 ID 命中 + keyPoints 逐字包含判定），离线验证通过；Hybrid/RRF/Rerank 未开始（需付费对照授权）；既有 P1-C 真实评测已完成 | 新增 `interview.guide.modules.evalregression` 模块（3 实体 + `RegressionRunStatus` + 6 record DTO + 3 repository + 4 服务 + `CaseRegressionController` + MapStruct `CaseRegressionMapper`）+ Flyway `V20261010` 三表（case_regression_items/runs/results）+ ErrorCode 13001/13002/13003 + 案例生命周期联动（approve→`upsertOnPublish`、deprecate→`deactivateOnDeprecate`）+ `/api/eval/regression/*` 端点；前端 `CaseRegressionPanel` + `EvalResultsPage` 回归区块 + `CaseDetailPage` 已纳入回归徽标。测试：后端定点 evalregression 单测 46 + 集成 4、caselibrary 单测 22 + 集成 20 = 92 全绿；前端 build exit 0、单测 regression 7/7、Playwright case-regression 10/10 + case-library 5/5；真实运行时离线闭环（bootRun + docker compose 真实 PG/pgvector+Redis+RustFS + 真实 Flyway + OpenAI SDK HTTP embedding 打到本地确定性桩 + 真实 pgvector 检索 + REST + 落库 + Vite）publish→生成回归项→运行通过→废弃→排除 走通，9 次 embedding 全命中 127.0.0.1、零付费；浏览器真实数据契约走查通过。全量后端 **741 tests / 728 passed / 10 failed（全为 `VoiceInterviewIntegrationTest` 连本机 Redis:6379 遗留，非本次）/ 3 skipped**，DevSupport 主线 343 全绿，V20261010 已在 Testcontainers pgvector/pg16 真实应用成功。P1-C L1 两次真实评测（baseline Hit@5=93.75%, MRR@5=77.81%; heading-aware MRR@5=0.8542）付费外部验证通过（heading-aware 非受控单变量 A/B，不可宣称因果提升） | **真实付费 embedding（DashScope text-embedding-v3）下语义检索质量/排序/top-K 精度未验证**（确定性常量向量使相似度并列，仅证明管线正确 + 自身证据可召回 + 判定/落库/废弃排除逻辑正确）；聊天 assistant 消息→createDraft 离线闭环未验证（需 LLM，未付费跑）；全量后端非全绿（10 个 Voice Redis 遗留失败保留）；H1/L4（approve() @Transactional 内调 EmbeddingModel 外部 HTTP，改动前既存技术债、本次仅延续，建议移出事务或改 Redis Stream 异步）；M1（回归复用全局 KB retrieveAndMerge，kbIds 传空→KB 分支不带过滤，已用默认 topK 5→20 提升 + 上限钳制 200 缓解挤出假失败）；M3（要点被物理切分到不相邻 chunk 仍可能假失败，空白归一只解决 \n 拼接）；L1（无 FAILED 终态，13003 暂未使用）；L3（逐项结果未快照 expectedEvidence，UI 经实时 items 反查，案例重发布产生新 Document UUID 会使历史高亮漂移，但 passed 布尔已落库、结论不受影响）；project 维度案例过滤延期（schema 级缺口，另立切片） |
 | 阶段 6：可靠性与部署 | 未开始 | demo profile 模式已在 Resume 验证 | Compose 全栈未实测 |
 
 ---
@@ -154,6 +154,14 @@ Resume、Interview、VoiceInterview、InterviewSchedule 属于原上游项目遗
 - **⚠️ 口径护栏**：heading-aware 结果**不是受控单变量 A/B**，不可宣称切分带来因果提升。
 - **预期交付物**：稳定 benchmark、版本化索引/语料、可比较检索策略、真实报告与错误案例。
 - **验收标准**：基线可重复；每项策略有单变量对照与成本/延迟记录；索引绑定 embedding_model、dimension、index_version、chunk_strategy_version；无答案题不通过编造答案提升指标。所有真实付费评测均需单独授权。
+- **阶段 5 首切片完成记录（2026-10-09）：案例驱动的回归评测（确定性版）**：
+  - **后端**：新增 `interview.guide.modules.evalregression`——3 实体（CaseRegressionItemEntity/RunEntity/ResultEntity）+ `RegressionRunStatus` + 6 record DTO（RegressionItemDTO/RegressionResultDTO/RegressionRunDetailDTO/RegressionRunRequest/RegressionRunSummaryDTO/TopKSnapshotEntry）+ 3 repository + 4 服务（RegressionJsonCodec/EmbeddingMetadataResolver/CaseRegressionItemService/CaseRegressionRunService）+ `CaseRegressionController` + MapStruct `CaseRegressionMapper`；Flyway `V20261010` 建 case_regression_items/runs/results 三表（case_id REFERENCES cases(id)，item_id 刻意不加 FK 以容忍回归项变动后历史结果留存）；ErrorCode 13001/13002/13003。
+  - **生命周期联动**：`CaseReviewService.vectorizeCaseContent` 返回证据 ID 列表，approve→`upsertOnPublish`；`CaseLifecycleService.deprecate`→`deactivateOnDeprecate`。
+  - **端点**：`GET /api/eval/regression/items`、`POST /api/eval/regression/runs`、`GET /api/eval/regression/runs`、`GET /api/eval/regression/runs/{id}`，统一 `Result<T>`。
+  - **确定性判定（零付费）**：query 由 title+problemDescription 拼接；keyPoints 从 resolutionSteps/resolutionResult 派生；passed = 期望证据 ID 命中 top-K 召回 且 keyPoints 在召回内容中逐字包含（空白归一后）；查询 embedding 用应用当前配置的 EmbeddingModel（demo/test 为确定性）。审查后低风险修复：默认 topK 5→20 且上限钳制 200；keyPoint 包含判定空白归一；V20261010 补 case_id 外键、删冗余索引、item_id 注明刻意不加 FK。
+  - **前端**：`CaseRegressionPanel` + `EvalResultsPage` 回归区块 + `CaseDetailPage` 的 PUBLISHED「已纳入回归评测」徽标 + `api/eval.ts` 4 函数 + `types/eval.ts` + `utils/regression.ts`；E2E `case-regression.spec.ts`(10)，并修复既有 `case-library.spec.ts` 的过宽 mock 路由。
+  - **测试与验证**：后端定点 evalregression 单测 46 + 集成 4、caselibrary 单测 22 + 集成 20 = 92 全绿；compileJava/compileTestJava exit 0；全量后端 741 tests / 728 passed / 10 failed（全为 VoiceInterviewIntegrationTest 连本机 Redis:6379 遗留失败，非本次、未修复未扩大）/ 3 skipped（Voice @Disabled），DevSupport 主线 343 全绿，V20261010 已在 Testcontainers pgvector/pg16 真实应用成功。前端 build exit 0；单测 regression 7/7；Playwright case-regression 10/10 + case-library 5/5。真实运行时离线验证（bootRun + docker compose 真实 PG/pgvector+Redis+RustFS + 真实 Flyway + 真实 OpenAI SDK HTTP embedding 打到本地确定性桩 + 真实 pgvector 检索 + REST + 落库 + Vite 前端/代理）：publish→生成回归项→运行通过→废弃→排除 完整闭环走通，9 次 embedding 调用全命中 127.0.0.1、零付费；浏览器真实数据走查（回归项/历史/详情/逐项字段/召回快照/新运行落库/案例徽标条件渲染均正确，无 console/网络错误）。
+  - **未验证边界与已知限制**：真实付费 embedding（DashScope text-embedding-v3）下语义检索质量/排序/top-K 精度未验证（确定性常量向量使相似度并列，仅证明管线正确 + 自身证据可召回 + 判定/落库/废弃排除逻辑正确）；聊天 assistant 消息→createDraft 离线闭环未验证（需 LLM，未付费跑）；全量后端非全绿（10 个 Voice Redis 遗留保留）；H1/L4（approve() @Transactional 内调 EmbeddingModel 外部 HTTP，改动前既存技术债、本次仅延续，建议移出事务或改 Redis Stream 异步）；M1（回归复用全局 KB retrieveAndMerge，kbIds 传空→KB 分支不带过滤，已用默认 topK 提升 + 上限钳制缓解挤出假失败）；M3（要点被物理切分到不相邻 chunk 仍可能假失败，空白归一只解决 \n 拼接）；L1（无 FAILED 终态，13003 暂未使用）；L3（逐项结果未快照 expectedEvidence，UI 经实时 items 反查，案例重发布产生新 Document UUID 会使历史高亮漂移，但 passed 布尔已落库、结论不受影响）；project 维度案例过滤延期（schema 级缺口，另立切片）。
 
 ### 阶段 6：可靠性、部署与简历级交付
 
@@ -183,14 +191,12 @@ Resume、Interview、VoiceInterview、InterviewSchedule 属于原上游项目遗
 
 ## 6. 当前唯一的下一步
 
-**阶段 0 已完成（2026-10-04）。** 下一阶段为 **阶段 1：主界面与项目/环境/版本上下文**。
+**阶段 5 首切片「案例驱动的回归评测（确定性版）」已完成（2026-10-09，离线验证通过）。** 下一步二选一，均需用户/审查确认后再启动，不擅自扩大范围：
 
-理由：
+- **阶段 5 主体：Hybrid Retrieval（向量 + BM25）/ RRF 融合 / Reranker 对照实验**——受 §8.3「未授权不跑付费 LLM/Embedding」门槛约束，需单独付费对照授权后方可执行；回归评测确定性框架已就绪，可作为检索策略变更前后对比的载体。
+- **补齐 project 维度案例过滤**——schema 级缺口（cases/KB 的 project 字段可空且无一致性保证），需迁移 + 实体 + 元数据 + 过滤四处联动，另立切片。
 
-- 工作区 4 个 Resume 遗留 demo 文件已作为独立提交保护（`ea8fc22`，标注"遗留模块维护"）。
-- 路线图、阶段状态表、未提交改动分类均已落地，新 Agent 可快速了解产品方向与边界。
-- 前端 `Layout.tsx` 新增的「简历管理」导航与新方案的四导航冲突，需在阶段 1 解决。
-- 根目录 13 张 `e2e-step*.png` 与 `test-resume-sample.txt` 已移入 `docs/evidence/`（gitignored），不再污染工作区。
+理由：核心闭环（文档中心 → 排查会话 → 案例库 → 评测结果）四导航已连通，回归评测把「排查会话 → 案例库 → 评测结果」串成可判定通过/失败的确定性闭环；进一步检索质量优化需付费授权，或先补数据模型缺口，两者都不应擅自启动。
 
 ---
 

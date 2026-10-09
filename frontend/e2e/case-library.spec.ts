@@ -34,8 +34,16 @@ function caseItem(over: Record<string, unknown>) {
   };
 }
 
+// 仅拦截真实案例 API（pathname 以 /api/cases 为边界）。
+// 避免过宽 glob（如 `**/api/cases**`）在 dev server 模式下误伤 Vite 源码
+// 模块请求 /src/api/cases.ts（URL 含子串 /api/cases），导致动态导入拿到
+// application/json 而白屏。
+function isCasesApi(url: URL): boolean {
+  return url.pathname === '/api/cases' || url.pathname.startsWith('/api/cases/');
+}
+
 async function mockCasesListApi(page: Page, items: Record<string, unknown>[]) {
-  await page.route('**/api/cases**', (r) => {
+  await page.route(isCasesApi, (r) => {
     if (r.request().method() === 'GET') {
       return r.fulfill(ok(items.map((i) => caseItem(i))));
     }

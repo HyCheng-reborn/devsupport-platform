@@ -3,7 +3,17 @@
  *
  * 使用 Vite import.meta.glob 将 eval JSON 文件作为静态模块加载，
  * 不经过 public/ 目录，构建时即可确定文件是否存在。
+ *
+ * 另含案例回归评测（/api/eval/regression/*）的远程端点客户端，复用 request.ts 实例。
  */
+
+import { request } from './request';
+import type {
+  RegressionItemDTO,
+  RegressionRunDetailDTO,
+  RegressionRunRequest,
+  RegressionRunSummaryDTO,
+} from '../types/eval';
 
 // ── 类型定义 ──────────────────────────────────────────
 
@@ -238,4 +248,38 @@ export function loadEvalSummaries(): EvalDatasetSummary[] {
  */
 export function hasEvalData(): boolean {
   return Object.keys(evalModules).length > 0;
+}
+
+// ── 案例回归评测远程端点 ──────────────────────────────
+
+/**
+ * 获取全部回归项。
+ * GET /api/eval/regression/items
+ */
+export function getRegressionItems(): Promise<RegressionItemDTO[]> {
+  return request.get<RegressionItemDTO[]>('/api/eval/regression/items');
+}
+
+/**
+ * 触发一轮回归运行（可选 topK）。
+ * POST /api/eval/regression/runs
+ */
+export function runRegression(body?: RegressionRunRequest): Promise<RegressionRunDetailDTO> {
+  return request.post<RegressionRunDetailDTO>('/api/eval/regression/runs', body ?? {});
+}
+
+/**
+ * 获取回归运行历史列表。
+ * GET /api/eval/regression/runs
+ */
+export function getRegressionRuns(): Promise<RegressionRunSummaryDTO[]> {
+  return request.get<RegressionRunSummaryDTO[]>('/api/eval/regression/runs');
+}
+
+/**
+ * 获取某次运行详情（含逐项结果）。
+ * GET /api/eval/regression/runs/{id}
+ */
+export function getRegressionRunDetail(id: number): Promise<RegressionRunDetailDTO> {
+  return request.get<RegressionRunDetailDTO>(`/api/eval/regression/runs/${id}`);
 }

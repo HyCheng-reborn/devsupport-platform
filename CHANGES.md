@@ -1,3 +1,16 @@
+**2026-10-09 -- Stage 5 首切片：案例驱动的回归评测（确定性版）— 后端模块 + 迁移 + 生命周期联动 + 前端面板/徽标 + 测试 + 真实运行时/浏览器验证**
+- 后端新增 `interview.guide.modules.evalregression`：3 实体（CaseRegressionItemEntity/RunEntity/ResultEntity）+ `RegressionRunStatus` + 6 record DTO + 3 repository + 4 服务（RegressionJsonCodec/EmbeddingMetadataResolver/CaseRegressionItemService/CaseRegressionRunService）+ `CaseRegressionController` + MapStruct `CaseRegressionMapper`
+- Flyway `V20261010`：case_regression_items/runs/results 三表（case_id REFERENCES cases(id)；item_id 刻意不加 FK，容忍回归项变动后历史结果留存；删冗余索引）
+- ErrorCode 新增 13001（无可用回归项）/13002（回归运行不存在）/13003（回归运行失败，暂未使用）
+- 生命周期联动：`CaseReviewService.vectorizeCaseContent` 返回证据 ID 列表，approve→`upsertOnPublish`；`CaseLifecycleService.deprecate`→`deactivateOnDeprecate`
+- 确定性判定（零付费）：query=title+problemDescription；keyPoints 从 resolutionSteps/resolutionResult 派生；passed=期望证据 ID 命中 top-K 召回 且 keyPoints 逐字包含（空白归一后）；审查后修复默认 topK 5→20 + 上限钳制 200
+- 端点：`GET /api/eval/regression/items`、`POST /api/eval/regression/runs`、`GET /api/eval/regression/runs`、`GET /api/eval/regression/runs/{id}`，统一 `Result<T>`
+- 前端：`CaseRegressionPanel` + `EvalResultsPage` 回归区块 + `CaseDetailPage` PUBLISHED「已纳入回归评测」徽标 + `api/eval.ts` 4 函数 + `types/eval.ts` + `utils/regression.ts`；E2E `case-regression.spec.ts`(10)，修复 `case-library.spec.ts` 过宽 mock 路由
+- 测试：后端定点 evalregression 单测 46 + 集成 4、caselibrary 单测 22 + 集成 20 = 92 全绿；前端 build exit 0、单测 regression 7/7、Playwright case-regression 10/10 + case-library 5/5；全量后端 **741 tests / 728 passed / 10 failed（全为 VoiceInterviewIntegrationTest 连本机 Redis 遗留，非本次）/ 3 skipped**，DevSupport 主线 343 全绿，V20261010 已在 Testcontainers pgvector/pg16 真实应用成功
+- 验证：真实运行时离线闭环（bootRun + docker compose 真实 PG/pgvector+Redis+RustFS + 真实 Flyway + OpenAI SDK HTTP embedding 打到本地确定性桩 + 真实 pgvector 检索 + REST + 落库 + Vite）publish→生成回归项→运行通过→废弃→排除 走通，9 次 embedding 全命中 127.0.0.1、零付费；浏览器真实数据契约走查通过
+- 已知限制/延期：真实付费 embedding 语义检索质量/排序/top-K 精度未验证（确定性常量向量仅证明管线+判定+落库+废弃排除正确）；聊天→createDraft 离线闭环未验证（需 LLM）；H1/L4 approve() 事务内调 EmbeddingModel HTTP（既存技术债、本次延续）；M1 回归复用全局 KB retrieveAndMerge 不带 kbIds 过滤（默认 topK+上限钳制缓解）；M3 要点跨 chunk 仍可能假失败；L1 无 FAILED 终态、13003 未用；L3 逐项结果未快照 expectedEvidence、重发布致历史高亮漂移（passed 已落库不受影响）；project 维度案例过滤延期
+- 主要文件：`V20261010__create_case_regression_tables.sql`、`evalregression/**`、`CaseRegressionMapper.java`、`ErrorCode.java`、`CaseReviewService.java`、`CaseLifecycleService.java`、`CaseRegressionPanel.tsx`、`EvalResultsPage.tsx`、`CaseDetailPage.tsx`、`api/eval.ts`、`types/eval.ts`、`utils/regression.ts`、`case-regression.spec.ts`
+
 **2026-10-08 -- Stage 4 验收证据补齐：真实失败路径 + 合并路径 + 版本匹配**
 - 真实向量删除失败测试（@MockitoSpyBean VectorRepository + doThrow）
 - KB/案例合并测试改为调用 KnowledgeBaseQueryService.retrieveAndMerge()

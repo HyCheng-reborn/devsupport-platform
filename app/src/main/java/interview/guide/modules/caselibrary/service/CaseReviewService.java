@@ -11,6 +11,7 @@ import interview.guide.modules.caselibrary.model.CaseRequests.CaseUpdateRequest;
 import interview.guide.modules.caselibrary.model.CaseStatus;
 import interview.guide.modules.caselibrary.repository.CaseAuditLogRepository;
 import interview.guide.modules.caselibrary.repository.CaseRepository;
+import interview.guide.modules.evalregression.service.CaseRegressionItemService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
@@ -41,6 +42,7 @@ public class CaseReviewService {
   private final CaseLibraryMapper caseLibraryMapper;
   private final LlmProviderRegistry llmProviderRegistry;
   private final VectorStore vectorStore;
+  private final CaseRegressionItemService caseRegressionItemService;
 
   /**
    * 更新案例（仅 DRAFT 或 REJECTED 状态可编辑）
@@ -181,8 +183,11 @@ public class CaseReviewService {
       .build();
     auditLogRepository.save(auditLog);
 
-    // 向量化案例内容，写入 vector_store 供检索
-    vectorizeCaseContent(saved);
+    // 向量化案例内容，写入 vector_store 供检索；返回各 chunk 的证据 ID（Document ID）
+    List<String> evidenceIds = vectorizeCaseContent(saved);
+
+    // 发布成功后：由案例确定性生成 / 更新回归项（仅写库，不触发 embedding）
+    caseRegressionItemService.upsertOnPublish(saved, evidenceIds);
 
     return caseLibraryMapper.toDTO(saved);
   }
@@ -230,12 +235,14 @@ public class CaseReviewService {
    * 拼接 problemDescription + rootCause + resolutionSteps + resolutionResult（跳过 null），
    * 使用 TokenTextSplitter 分块后通过 EmbeddingModel 生成向量写入数据库。
    * metadata 包含 source_type=CASE、case_id、case_id_long、service、environment。
+   *
+   * @return 写入 vector_store 的各 chunk 证据 ID（Document ID）列表；内容为空时返回空列表
    */
-  private void vectorizeCaseContent(CaseEntity caseEntity) {
+  private List<String> vectorizeCaseContent(CaseEntity caseEntity) {
     String content = concatenateCaseContent(caseEntity);
     if (content.isBlank()) {
       log.warn("案例内容为空，跳过向量化: caseId={}", caseEntity.getId());
-      return;
+      return List.of();
     }
 
     try {
@@ -274,6 +281,9 @@ public class CaseReviewService {
 
       log.info("案例向量化完成: caseId={}, chunks={}, batches={}",
         caseEntity.getId(), totalChunks, batchCount);
+
+      // 返回写入向量库的 chunk 证据 ID，供回归项绑定期望证据
+      return chunks.stream().map(Document::getId).toList();
     } catch (Exception e) {
       log.error("案例向量化失败: caseId={}, error={}", caseEntity.getId(), e.getMessage(), e);
       throw new BusinessException(ErrorCode.KNOWLEDGE_BASE_VECTORIZATION_FAILED,

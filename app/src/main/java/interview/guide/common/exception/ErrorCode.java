@@ -88,7 +88,12 @@ public enum ErrorCode {
     CASE_NOT_FOUND(12001, "案例不存在"),
     CASE_INVALID_OPERATION(12002, "案例状态操作无效"),
     CASE_NOT_EDITABLE(12003, "案例当前状态不可编辑"),
-    CASE_MESSAGE_NOT_FOUND(12004, "消息不存在或不是 ASSISTANT 类型");
+    CASE_MESSAGE_NOT_FOUND(12004, "消息不存在或不是 ASSISTANT 类型"),
+
+    // ========== 案例回归评测模块错误 13xxx ==========
+    EVAL_REGRESSION_NO_ITEMS(13001, "无可用回归项"),
+    EVAL_REGRESSION_RUN_NOT_FOUND(13002, "回归运行不存在"),
+    EVAL_REGRESSION_RUN_FAILED(13003, "回归运行失败");
 
     private final Integer code;
     private final String message;

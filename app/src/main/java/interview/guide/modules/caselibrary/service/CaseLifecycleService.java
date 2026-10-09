@@ -10,6 +10,7 @@ import interview.guide.modules.caselibrary.model.CaseEntity;
 import interview.guide.modules.caselibrary.model.CaseStatus;
 import interview.guide.modules.caselibrary.repository.CaseAuditLogRepository;
 import interview.guide.modules.caselibrary.repository.CaseRepository;
+import interview.guide.modules.evalregression.service.CaseRegressionItemService;
 import interview.guide.modules.knowledgebase.repository.VectorRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,6 +32,7 @@ public class CaseLifecycleService {
   private final CaseLibraryMapper caseLibraryMapper;
   private final VectorRepository vectorRepository;
   private final TransactionalExecutor transactionalExecutor;
+  private final CaseRegressionItemService caseRegressionItemService;
 
   /**
    * 废弃案例（PUBLISHED → DEPRECATED）
@@ -73,6 +75,9 @@ public class CaseLifecycleService {
         .remark("案例已废弃并停用")
         .build();
       auditLogRepository.save(auditLog);
+
+      // 同步停用对应回归项（仅写库，与废弃状态同一事务提交）
+      caseRegressionItemService.deactivateOnDeprecate(caseId);
 
       return entity;
     });

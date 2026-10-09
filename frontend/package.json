@@ -18,7 +18,8 @@
     "test:chat-scope": "node --test src/utils/chatScope.test.ts",
     "test:kb-status": "node --test src/utils/kbStatus.test.ts",
     "test:source-display": "node --test src/utils/sourceDisplay.test.ts",
-    "test:case-status": "node --test src/utils/caseStatus.test.ts"
+    "test:case-status": "node --test src/utils/caseStatus.test.ts",
+    "test:regression": "node --test src/utils/regression.test.ts"
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.1.18",

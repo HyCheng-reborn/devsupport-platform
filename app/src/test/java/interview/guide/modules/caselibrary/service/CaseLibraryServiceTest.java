@@ -11,6 +11,7 @@ import interview.guide.modules.caselibrary.model.CaseRequests.CaseUpdateRequest;
 import interview.guide.modules.caselibrary.model.CaseStatus;
 import interview.guide.modules.caselibrary.repository.CaseAuditLogRepository;
 import interview.guide.modules.caselibrary.repository.CaseRepository;
+import interview.guide.modules.evalregression.service.CaseRegressionItemService;
 import interview.guide.modules.knowledgebase.model.RagChatMessageEntity;
 import interview.guide.modules.knowledgebase.model.RagChatSessionEntity;
 import interview.guide.modules.knowledgebase.repository.RagChatMessageRepository;
@@ -56,6 +57,7 @@ class CaseLibraryServiceTest {
   @Mock private org.springframework.ai.vectorstore.VectorStore vectorStore;
   @Mock private VectorRepository vectorRepository;
   @Mock private TransactionalExecutor transactionalExecutor;
+  @Mock private CaseRegressionItemService caseRegressionItemService;
 
   private CaseDraftService draftService;
   private CaseReviewService reviewService;
@@ -65,7 +67,7 @@ class CaseLibraryServiceTest {
   void setUp() {
     draftService = new CaseDraftService(
         caseRepository, auditLogRepository, sessionRepository, messageRepository, caseLibraryMapper);
-    reviewService = new CaseReviewService(caseRepository, auditLogRepository, caseLibraryMapper, llmProviderRegistry, vectorStore);
+    reviewService = new CaseReviewService(caseRepository, auditLogRepository, caseLibraryMapper, llmProviderRegistry, vectorStore, caseRegressionItemService);
     // transactionalExecutor mock: 直接执行传入的 Runnable/Supplier
     lenient().when(transactionalExecutor.call(any())).thenAnswer(inv -> {
       java.util.function.Supplier<?> supplier = inv.getArgument(0);
@@ -76,7 +78,7 @@ class CaseLibraryServiceTest {
       action.run();
       return null;
     }).when(transactionalExecutor).runRequiresNew(any());
-    lifecycleService = new CaseLifecycleService(caseRepository, auditLogRepository, caseLibraryMapper, vectorRepository, transactionalExecutor);
+    lifecycleService = new CaseLifecycleService(caseRepository, auditLogRepository, caseLibraryMapper, vectorRepository, transactionalExecutor, caseRegressionItemService);
   }
 
   // ─────────── 辅助方法 ───────────
