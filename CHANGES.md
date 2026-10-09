@@ -1,3 +1,27 @@
+**2026-10-09 -- 阶段 5 收尾：文档校准与轻量回归验证**
+
+**文档校准**：
+- 修正 evalregression 测试数量：单测 46 + 集成 13 = 59（此前声称 50+7=57）
+- 修正两模块总计：101（此前声称 99）
+
+**轻量回归验证**：
+- evalregression 定点测试：59/59 通过
+- 前端 build：成功
+- 前端单元测试：123/123 通过
+- requireKbOnly 过滤条件审查：正常路径和 fallback 路径均正确保留 source_type=KB 条件
+
+**改动差异审查**：
+- 27 文件改动（+1218/-76），集中在 evalregression/knowledgebase/caselibrary 模块
+- 未触碰禁止区域（.env、Docker、评测基线、gradle wrapper、E2E 基线、master）
+- 无付费配置泄露
+
+**阶段 5 状态总结**：
+- ✅ 回归评测管线已验证（publish → 生成回归项 → run → 报告闭环）
+- ✅ KB-only 隔离已验证（requireKbOnly=true 时完全跳过 CASE 分支）
+- ⏳ 真实语义检索质量尚未验证（未运行真实付费 embedding）
+- 旧的 10/10 自命中结果标为历史管线验证，不作为质量基线
+- SOURCE/SELF/MISSING 统计：待运行时查询
+
 **2026-10-09 -- 阶段 5 案例驱动回归评测 — KB-only 检索彻底排除 CASE 分支（2026-10-09）**
 
 **问题**：来源证据隔离修复（6addb86）后，回归评测仍会把其他 CASE 向量合入结果。`CaseRegressionRunService` 调用 `retrieveAndMerge(..., requireKbOnly=true)` 确实让 KB 检索分支只查 source_type='KB'；但 `KnowledgeBaseQueryService.retrieveAndMerge()` 仍无条件调用 `searchCaseVectors()` 并合并结果。它排除了当前被测案例，却没有排除其他 CASE 向量。那些案例内容可能补足回归要点，使评测不再是严格的 KB-only 回归。

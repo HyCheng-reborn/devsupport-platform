@@ -38,7 +38,7 @@
   - **确定性判定（零付费）**：query=title+problemDescription；keyPoints 从 resolutionSteps/resolutionResult 派生；passed=期望证据 ID 命中 top-K 召回 且 keyPoints 逐字包含（空白归一后）；查询 embedding 用应用当前 EmbeddingModel（demo/test 确定性）。审查后修复：默认 topK 5→20 + 上限钳制 200；keyPoint 空白归一。
   - **端点**：`GET /api/eval/regression/items`、`POST /api/eval/regression/runs`、`GET /api/eval/regression/runs`、`GET /api/eval/regression/runs/{id}`，统一 `Result<T>`。
   - **前端**：`CaseRegressionPanel` + `EvalResultsPage` 回归区块 + `CaseDetailPage` PUBLISHED「已纳入回归评测」徽标 + `api/eval.ts` 4 函数 + `types/eval.ts` + `utils/regression.ts`；E2E `case-regression.spec.ts`(10)，并修复 `case-library.spec.ts` 过宽 mock 路由。
-  - **测试统计**：后端定点 evalregression 单测 50 + 集成 7、caselibrary 单测 22 + 集成 20 = **99 全绿**；compileJava/compileTestJava exit 0。全量后端 **741 tests / 728 passed / 10 failed（全为 VoiceInterviewIntegrationTest 连本机 Redis:6379 遗留，非本次、未修复未扩大）/ 3 skipped（Voice @Disabled）**，DevSupport 主线 **343 全绿**，V20261010 已在 Testcontainers pgvector/pg16 真实应用成功。前端 build exit 0；单测 regression **7/7**；Playwright case-regression **10/10** + case-library **5/5**。
+  - **测试统计**：后端定点 evalregression 单测 46 + 集成 13、caselibrary 单测 22 + 集成 20 = **101 全绿**；compileJava/compileTestJava exit 0。全量后端 **741 tests / 728 passed / 10 failed（全为 VoiceInterviewIntegrationTest 连本机 Redis:6379 遗留，非本次、未修复未扩大）/ 3 skipped（Voice @Disabled）**，DevSupport 主线 **343 全绿**，V20261010 已在 Testcontainers pgvector/pg16 真实应用成功。前端 build exit 0；单测 regression **7/7**；Playwright case-regression **10/10** + case-library **5/5**。
   - **真实运行时与浏览器验证**：bootRun + docker compose 真实 PG/pgvector+Redis+RustFS + 真实 Flyway + 真实 OpenAI SDK HTTP embedding 打到**本地确定性桩** + 真实 pgvector 检索 + REST + 落库 + Vite 前端/代理：publish→生成回归项→运行通过→废弃→排除 完整闭环走通，**9 次 embedding 调用全命中 127.0.0.1、零付费**；浏览器真实数据走查（回归项/历史/详情/逐项字段/召回快照/新运行落库/案例徽标条件渲染均正确，无 console/网络错误）。
   - **未验证边界**：真实付费 embedding（DashScope text-embedding-v3）下语义检索质量/排序/top-K 精度未验证（确定性常量向量使相似度并列，仅证明管线正确 + 自身证据可召回 + 判定/落库/废弃排除逻辑正确）；聊天 assistant 消息→createDraft 离线闭环未验证（需 LLM）；全量后端非全绿（10 Voice Redis 遗留）。
   - **⚠️ 数据泄漏修复（2026-10-09）**：
@@ -53,7 +53,7 @@
     - **问题**：数据泄漏修复后仍存在隔离缺口——SELF/MISSING 证据来源的案例仍计入有效分母、source_chunk_ids 可能包含非 KB 来源 chunk ID、回归检索在 knowledgeBaseIds 为空时未限制 source_type='KB'。
     - **修复**：SELF/MISSING/NULL evidenceSource 统一跳过评测，不计入 evaluatedCount 分母；source_chunk_ids 只保存 sourceType="KB" 的 chunk ID（RagChatController 提取时过滤）；回归检索新增 requireKbOnly 参数，限制 source_type='KB'；V20261012 迁移回填旧数据 evidence_source；修复 KnowledgeBaseVectorService.applyPendingMetadata() 缺少 source_type=KB metadata 的缺陷。
     - **新旧有效分母对比**：旧方案所有发布案例均计入分母（包括 SELF 自命中），10/10 通过；新方案只有 evidenceSource="SOURCE" 的案例计入分母，SELF/MISSING/NULL 跳过。
-    - **测试**：7/7 隔离集成测试通过（`CaseRegressionIsolationIntegrationTest`），57/57 evalregression 测试通过。覆盖：真实 KB 来源证据可命中并通过、自身 CASE 向量不可通过、SELF/MISSING/NULL 均跳过不计入分母、混合来源只保留 KB gold、废弃案例与范围隔离。
+    - **测试**：7/7 隔离集成测试通过（`CaseRegressionIsolationIntegrationTest`），59/59 evalregression 测试通过。覆盖：真实 KB 来源证据可命中并通过、自身 CASE 向量不可通过、SELF/MISSING/NULL 均跳过不计入分母、混合来源只保留 KB gold、废弃案例与范围隔离。
     - **迁移影响**：V20261012——case_regression_runs 新增 evaluated_count 列，回填 evidence_source 旧数据（SOURCE/SELF/MISSING）。
   - **⚠️ KB-only 检索彻底排除 CASE 分支（2026-10-09）**：
     - **问题**：来源证据隔离修复后，`retrieveAndMerge(requireKbOnly=true)` 仍无条件调用 `searchCaseVectors()` 并合并 CASE 结果，回归评测不是严格的 KB-only。
