@@ -18,12 +18,21 @@ import java.util.Set;
  * Demo profile 下的 ChatModel，返回预定义的排查建议模板。
  *
  * <p>仅用于本地演示，不调用任何真实 LLM API，零付费。
- * 基于问题关键词匹配 3-5 个模板响应，模拟真实的 RAG 问答输出。</p>
+ * 基于问题关键词匹配 3-5 个模板响应。</p>
+ *
+ * <p>所有模板响应均以 {@link #DEMO_MARKER} 开头，并明确标注为演示用途，
+ * 不使用「根据知识库文档」「根据检索结果」等暗示内容由检索证据动态生成的措辞，
+ * 以免与真实 RAG 输出混淆。</p>
  */
 @Component
 @Profile("demo")
 @Slf4j
 public class DemoChatModel implements ChatModel {
+
+  /**
+   * Demo 模板响应标识，附加在每个模板响应开头，便于在界面中识别。
+   */
+  static final String DEMO_MARKER = "[Demo 模板响应 — 非真实 AI 生成]";
 
   private static final Set<String> KEYWORD_PORT = Set.of("端口", "port", "8080", "启动");
   private static final Set<String> KEYWORD_DB = Set.of("数据库", "database", "postgres", "postgresql", "连接");
@@ -109,8 +118,8 @@ public class DemoChatModel implements ChatModel {
   }
 
   private String getPortResponse() {
-    return """
-        根据知识库文档，项目的后端服务默认端口配置如下：
+    return DEMO_MARKER + "\n\n" + """
+        以下为预定义演示模板（按关键词「端口」匹配返回），本回答为演示用途，并非由检索证据动态生成。项目后端服务默认端口配置示例如下：
 
         **后端端口**: 8080
         - 配置文件: `application.yml` 中的 `server.port: ${SERVER_PORT:8080}`
@@ -127,12 +136,12 @@ public class DemoChatModel implements ChatModel {
         ./gradlew :app:bootRun --args='--server.port=9090'
         ```
 
-        希望这能帮助你解决端口相关的问题！""";
+        （以上内容为演示模板，仅用于展示流程与数据链路。）""";
   }
 
   private String getDatabaseResponse() {
-    return """
-        根据知识库文档，项目数据库配置如下：
+    return DEMO_MARKER + "\n\n" + """
+        以下为预定义演示模板（按关键词「数据库」匹配返回），本回答为演示用途，并非由检索证据动态生成。项目数据库配置示例如下：
 
         **数据库**: PostgreSQL + pgvector
         - 向量维度: 1024
@@ -158,12 +167,14 @@ public class DemoChatModel implements ChatModel {
         如果遇到数据库连接问题，请检查：
         1. Docker 容器是否正常运行
         2. 环境变量是否正确配置
-        3. 端口是否被占用""";
+        3. 端口是否被占用
+
+        （以上内容为演示模板，仅用于展示流程与数据链路。）""";
   }
 
   private String getRedisResponse() {
-    return """
-        根据知识库文档，项目 Redis 配置如下：
+    return DEMO_MARKER + "\n\n" + """
+        以下为预定义演示模板（按关键词「Redis」匹配返回），本回答为演示用途，并非由检索证据动态生成。项目 Redis 配置示例如下：
 
         **Redis 用途**:
         - 缓存与异步任务
@@ -188,12 +199,14 @@ public class DemoChatModel implements ChatModel {
         如果 Redis 连接失败，请检查：
         1. Redis 容器是否正常运行
         2. 端口 6379 是否可访问
-        3. 是否需要密码认证""";
+        3. 是否需要密码认证
+
+        （以上内容为演示模板，仅用于展示流程与数据链路。）""";
   }
 
   private String getLlmResponse() {
-    return """
-        根据知识库文档，项目 AI/LLM 配置如下：
+    return DEMO_MARKER + "\n\n" + """
+        以下为预定义演示模板（按关键词「LLM/AI」匹配返回），本回答为演示用途，并非由检索证据动态生成。项目 AI/LLM 配置示例如下：
 
         **Spring AI 2.0.0 集成**:
         - 推荐 Provider: 阿里云 DashScope (通义千问)
@@ -217,12 +230,14 @@ public class DemoChatModel implements ChatModel {
         如果需要使用 Demo 模式（零付费），可以激活 demo profile：
         ```bash
         ./gradlew :app:bootRun --args='--spring.profiles.active=demo'
-        ```""";
+        ```
+
+        （以上内容为演示模板，仅用于展示流程与数据链路。）""";
   }
 
   private String getConfigResponse() {
-    return """
-        根据知识库文档，项目配置管理如下：
+    return DEMO_MARKER + "\n\n" + """
+        以下为预定义演示模板（按关键词「配置」匹配返回），本回答为演示用途，并非由检索证据动态生成。项目配置管理示例如下：
 
         **配置文件结构**:
         - `application.yml`: 主配置
@@ -245,12 +260,14 @@ public class DemoChatModel implements ChatModel {
         - `POSTGRES_PASSWORD`: 数据库密码
         - `SERVER_PORT`: 后端端口（默认 8080）
 
-        更多配置说明请参考 `SETUP_API_KEYS.md` 文档。""";
+        更多配置说明请参考 `SETUP_API_KEYS.md` 文档。
+
+        （以上内容为演示模板，仅用于展示流程与数据链路。）""";
   }
 
   private String getDefaultResponse() {
-    return """
-        根据知识库文档检索结果，我为您提供以下排查建议：
+    return DEMO_MARKER + "\n\n" + """
+        以下为预定义演示模板（未匹配到特定关键词时的默认回答），本回答为演示用途，并非由检索证据动态生成。以下为您提供通用排查建议示例：
 
         1. **检查环境配置**
            - 确认所有必需的服务已启动（PostgreSQL、Redis）
@@ -279,7 +296,7 @@ public class DemoChatModel implements ChatModel {
            cd frontend && pnpm run dev
            ```
 
-        如果您有更具体的问题，请提供更多细节，我会尽力帮助您！""";
+        如果您有更具体的问题，请提供更多细节。（本回答为演示模板，仅用于展示流程与数据链路。）""";
   }
 
   private String truncate(String text, int maxLength) {

@@ -101,8 +101,14 @@ class RedisStreamRestartRecoveryIntegrationTest {
         @Override protected String threadName() { return threadName; }
         @Override protected long pendingIdleTimeoutMs() { return pendingTimeoutMs; }
 
+        /**
+         * parsePayload 是 AbstractStreamConsumer.processMessage() 调用链中第一个拿到真实
+         * StreamMessageId 的可覆写钩子。在此捕获消费者实际处理的 StreamMessageId，
+         * 用于与崩溃消费者 readGroup 得到的原始 pending 消息 ID 做精确匹配断言。
+         */
         @Override
         protected Map<String, String> parsePayload(StreamMessageId messageId, Map<String, String> data) {
+            processedMessageIds.add(messageId);
             return data;
         }
 
@@ -134,30 +140,6 @@ class RedisStreamRestartRecoveryIntegrationTest {
         @Override
         protected void retryMessage(Map<String, String> payload, int retryCount) {
             // no-op for test
-        }
-
-        /**
-         * 覆写 processMessage 以同时记录 StreamMessageId（用于跨消费者匹配）。
-         * 通过反射注入到 processedMessageIds 队列。
-         */
-        void recordMessageId(StreamMessageId messageId) {
-            processedMessageIds.add(messageId);
-        }
-    }
-
-    /**
-     * 增强版测试消费者：在 processBusiness 中记录 StreamMessageId。
-     * 通过覆写 processMessage 的前置钩子实现。
-     */
-    static class MessageIdTrackingConsumer extends TestConsumer {
-
-        MessageIdTrackingConsumer(RedisService redisService, String name, long pendingTimeoutMs) {
-            super(redisService, name, pendingTimeoutMs);
-        }
-
-        @Override
-        protected void processBusiness(Map<String, String> payload) {
-            super.processBusiness(payload);
         }
     }
 
@@ -229,6 +211,12 @@ class RedisStreamRestartRecoveryIntegrationTest {
             .as("恢复消费者应处理崩溃消费者未 ACK 的同一条消息")
             .contains("recover-me");
 
+        // 7b. 精确匹配 StreamMessageId：恢复消费者实际处理的消息 ID 必须与崩溃消费者
+        //     readGroup 得到的原始 pending 消息 ID 完全一致，证明是同一条消息被 autoClaim 恢复。
+        assertThat(recovery.processedMessageIds)
+            .as("恢复消费者实际处理的 StreamMessageId 应与原始 readGroup pending 消息 ID 精确匹配")
+            .contains(originalMsgId);
+
         // 8. 验证 pending 清空：通过 autoClaim 尝试回收，应无消息
         var remaining = stream.autoClaim(
             TEST_GROUP, "verifier", 1, TimeUnit.MILLISECONDS, StreamMessageId.MIN, 10);
@@ -279,6 +267,12 @@ class RedisStreamRestartRecoveryIntegrationTest {
         assertThat(recovery.processedIds)
             .as("恢复消费者应处理所有 3 条 pending 消息")
             .containsExactlyInAnyOrder("batch-1", "batch-2", "batch-3");
+
+        // 7b. 精确匹配 StreamMessageId 集合：恢复消费者实际处理的消息 ID 集合必须与崩溃消费者
+        //     readGroup 得到的 3 条原始 pending 消息 ID 集合完全一致。
+        assertThat(recovery.processedMessageIds)
+            .as("恢复消费者实际处理的 StreamMessageId 集合应与原始 readGroup pending 消息 ID 集合精确匹配")
+            .containsExactlyInAnyOrderElementsOf(originalIds);
 
         // 8. 验证 pending 清空：通过 autoClaim 尝试回收，应无消息
         var remaining = stream.autoClaim(

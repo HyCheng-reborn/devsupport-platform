@@ -23,6 +23,12 @@
 
 app:
   ai:
+    rag:
+      search:
+        # Demo 模式使用确定性哈希向量，余弦相似度≈0，
+        # 将阈值降为 0 以确保检索始终返回结果，验证数据链路而非语义质量。
+        min-score-default: 0.0
+        min-score-short: 0.0
     providers:
       dashscope:
         # 占位默认值，避免缺少 AI_BAILIAN_API_KEY 时占位符解析失败导致启动中断

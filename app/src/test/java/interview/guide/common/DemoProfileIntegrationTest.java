@@ -6,10 +6,13 @@ import interview.guide.common.ai.LlmProviderRegistry;
 import interview.guide.infrastructure.file.FileStorageService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Profile;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -117,6 +120,55 @@ class DemoProfileIntegrationTest {
     assertThat(response.getResults()).isNotEmpty();
     String content = response.getResults().get(0).getOutput().getText();
     assertThat(content).containsIgnoringCase("postgres");
+  }
+
+  /**
+   * 覆盖 DemoChatModel 全部模板分支（端口/数据库/Redis/LLM/配置/默认），
+   * 每个触发问题按 {@code DemoChatModel} 的关键词匹配优先级设计，确保命中不同模板。
+   */
+  @ParameterizedTest(name = "模板响应「{0}」带有 Demo 标识且不含检索生成措辞")
+  @ValueSource(strings = {
+      "8080 端口启动",        // PORT 模板
+      "数据库连接",            // DB 模板
+      "redis 缓存",           // REDIS 模板
+      "AI 模型 embedding",    // LLM 模板
+      "配置 config yml",       // CONFIG 模板
+      "你好啊"                // DEFAULT 模板（无任何关键词命中）
+  })
+  @DisplayName("DemoChatModel 所有模板响应都带 Demo 标识且不含检索生成措辞")
+  void demoProfile_allTemplates_carryMarkerAndNoRetrievalWording(String question) {
+    ChatResponse response = demoChatModel.call(new Prompt(question));
+
+    assertThat(response).isNotNull();
+    assertThat(response.getResults()).isNotEmpty();
+    String content = response.getResults().get(0).getOutput().getText();
+
+    // 1. 每个模板响应都以 Demo 标识开头，界面上可识别
+    assertThat(content).startsWith("[Demo 模板响应");
+    // 2. 不含暗示回答由检索证据生成的措辞
+    assertThat(content)
+        .doesNotContain("根据知识库文档")
+        .doesNotContain("根据检索结果")
+        .doesNotContain("知识库文档检索结果");
+  }
+
+  @Test
+  @DisplayName("DemoChatModel 流式响应首块也带有 Demo 标识")
+  void demoProfile_stream_carriesMarker() {
+    ChatResponse firstChunk = demoChatModel.stream(new Prompt("8080 端口")).blockFirst();
+
+    assertThat(firstChunk).isNotNull();
+    String text = firstChunk.getResults().get(0).getOutput().getText();
+    assertThat(text).startsWith("[Demo 模板响应");
+  }
+
+  @Test
+  @DisplayName("DemoChatModel 仅在 demo profile 下激活，真实 profile 不受影响")
+  void demoChatModel_isIsolatedToDemoProfile() {
+    Profile profile = DemoChatModel.class.getAnnotation(Profile.class);
+
+    assertThat(profile).as("DemoChatModel 必须标注 @Profile 以隔离真实 LLM profile").isNotNull();
+    assertThat(profile.value()).containsExactly("demo");
   }
 
   @Test
