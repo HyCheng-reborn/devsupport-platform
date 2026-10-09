@@ -3,7 +3,7 @@
 > 本项目（远程仓库 `HyCheng-reborn/devsupport-platform`，本地目录名仍为 `interview-guide`）的进度事实源。
 > **跨机器 remote 别名映射（读文档前先对齐，避免 `origin` 误读）**：本机 `devsupport` = `HyCheng-reborn/devsupport-platform`（推送目标），本机 `origin` = `Snailclimb/interview-guide`（上游，**勿推**）；另一台验证机（批次 C/D 补验）的 `origin` = `HyCheng-reborn/devsupport-platform`，故其文档/提交记录里的「push 到 `origin/master`」等同于本机的「push 到 `devsupport/master`」。判断实际目标仓库一律以 remote URL 为准，不要只看别名。
 > 新会话接手时先读本文件，再读「交接区」列出的文件。
-> 最近更新：**2026-10-08 Stage 4 验收缺口修复 — 案例检索接入 + X-Operator 审计追溯 + versionNo 语义澄清（后端全量 682/669 passed/10 Voice 遗留/3 skipped；前端单测 96/96，build 通过）**。前一轮：Stage 4 案例库审核发布（后端全量 679/666 passed/10 Voice 遗留/3 skipped；前端单测 80/80，build 通过）。
+> 最近更新：**2026-10-08 Stage 4 验收证据补齐（commit `353b8a8`）— 真实删除失败路径测试 + KB/案例合并走 retrieveAndMerge + affected_versions 精确匹配测试（集成测试 20/20 PASS）**。前一轮：Stage 4 验收缺口修复（范围隔离 + 废弃一致性 + fail-closed）。
 
 ## 0. 维护规则
 
@@ -31,7 +31,14 @@
 
 ## 2. 已完成且有证据
 
-- **DevSupport 阶段 4 验收缺口修复：案例检索接入 + 操作者追溯 + 版本语义澄清（2026-10-08）** — 状态 `已完成（源码实现+自动化验证已完成，真实付费模型端到端未验证）`。
+- **DevSupport 阶段 4 验收证据补齐（commit `353b8a8`，2026-10-08）** — 状态 `已完成（源码实现+自动化验证已完成，真实付费模型端到端未验证）`。
+  - 真实向量删除失败路径测试：`@MockitoSpyBean VectorRepository` + `doThrow` 让 `deleteByCaseId()` 失败 → 验证 DB 持久化 status=DEPRECATED/active=false/vectorCleanupPending=true → 检索不命中
+  - KB/案例合并测试调用 `KnowledgeBaseQueryService.retrieveAndMerge()` → 断言同时包含 KB 和 CASE 来源
+  - affected_versions 精确匹配测试：版本匹配可检索 / 不匹配不可检索
+  - 集成测试合计 **20/20 PASS**（Testcontainers + 确定性 mock embedding，零付费 API）
+  - 案例范围实际支持 service/environment + affected_versions 精确匹配；project 维度暂不参与过滤（延期缺口）
+
+- **DevSupport 阶段 4 验收缺口修复：案例检索接入 + 操作者追溯 + 版本语义澄清（commit `c5a85b1`，2026-10-08）** — 状态 `已完成`。
   - 案例检索接入：approve 触发向量化（TokenTextSplitter + vector_store 共用表），deprecate 删除向量（VectorRepository.deleteByCaseId），检索链路合并案例结果（searchCaseVectors + mergeResults）。
   - SourceReference 扩展 sourceType/caseId/caseTitle。RagChatSessionService 处理 CASE 来源。
   - X-Operator 请求头审计追溯（无硬鉴权，状态机约束保护）。CaseReviewService/CaseLifecycleService 从请求头读取操作者写入审计日志。
