@@ -32,6 +32,7 @@ public interface CaseRegressionMapper {
   @Mapping(target = "caseStatus", source = "caseStatus")
   @Mapping(target = "expectedEvidence", source = "entity.expectedEvidence", qualifiedByName = "jsonToStringList")
   @Mapping(target = "keyPoints", source = "entity.keyPoints", qualifiedByName = "jsonToStringList")
+  @Mapping(target = "evidenceSource", source = "entity.evidenceSource")
   RegressionItemDTO toItemDTO(CaseRegressionItemEntity entity, String caseTitle, String caseStatus);
 
   RegressionRunSummaryDTO toRunSummaryDTO(CaseRegressionRunEntity entity);

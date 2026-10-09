@@ -107,7 +107,7 @@ class RagChatSessionServiceTest {
     when(messageRepository.save(any(RagChatMessageEntity.class))).thenReturn(msg);
 
     String sourcesJson = "[{\"kbId\":1,\"documentName\":\"test.pdf\"}]";
-    ragChatSessionService.completeStreamMessage(100L, "回答内容", MessageStatus.COMPLETED, sourcesJson);
+    ragChatSessionService.completeStreamMessage(100L, "回答内容", MessageStatus.COMPLETED, sourcesJson, null);
 
     assertThat(msg.getContent()).isEqualTo("回答内容");
     assertThat(msg.getCompleted()).isTrue();
@@ -123,7 +123,7 @@ class RagChatSessionServiceTest {
     when(messageRepository.findById(100L)).thenReturn(Optional.of(msg));
     when(messageRepository.save(any(RagChatMessageEntity.class))).thenReturn(msg);
 
-    ragChatSessionService.completeStreamMessage(100L, "错误信息", MessageStatus.MODEL_FAILED, null);
+    ragChatSessionService.completeStreamMessage(100L, "错误信息", MessageStatus.MODEL_FAILED, null, null);
 
     assertThat(msg.getStatus()).isEqualTo(MessageStatus.MODEL_FAILED);
     assertThat(msg.getCompleted()).isTrue();
@@ -138,7 +138,7 @@ class RagChatSessionServiceTest {
     when(messageRepository.findById(100L)).thenReturn(Optional.of(msg));
     when(messageRepository.save(any(RagChatMessageEntity.class))).thenReturn(msg);
 
-    ragChatSessionService.completeStreamMessage(100L, "部分内容", MessageStatus.CLIENT_DISCONNECTED, "[]");
+    ragChatSessionService.completeStreamMessage(100L, "部分内容", MessageStatus.CLIENT_DISCONNECTED, "[]", null);
 
     assertThat(msg.getStatus()).isEqualTo(MessageStatus.CLIENT_DISCONNECTED);
     assertThat(msg.getCompleted()).isTrue();
@@ -153,7 +153,7 @@ class RagChatSessionServiceTest {
     when(messageRepository.findById(100L)).thenReturn(Optional.of(msg));
     when(messageRepository.save(any(RagChatMessageEntity.class))).thenReturn(msg);
 
-    ragChatSessionService.completeStreamMessage(100L, "未找到相关信息", MessageStatus.NO_RESULTS, "[]");
+    ragChatSessionService.completeStreamMessage(100L, "未找到相关信息", MessageStatus.NO_RESULTS, "[]", null);
 
     assertThat(msg.getStatus()).isEqualTo(MessageStatus.NO_RESULTS);
     assertThat(msg.getCompleted()).isTrue();

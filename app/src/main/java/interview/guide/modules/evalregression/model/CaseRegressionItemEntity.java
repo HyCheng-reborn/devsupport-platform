@@ -52,6 +52,15 @@ public class CaseRegressionItemEntity {
   @Builder.Default
   private Boolean active = true;
 
+  /**
+   * 期望证据来源类型：
+   * SOURCE = 原始 KB chunk ID（来自来源会话）；
+   * MISSING = 无来源证据（旧案例或来源缺失），不可评测；
+   * SELF = 旧数据使用案例自身向量化的 chunk ID。
+   */
+  @Column(name = "evidence_source", length = 20)
+  private String evidenceSource;
+
   @Column(name = "created_at", nullable = false, updatable = false)
   private LocalDateTime createdAt;
 

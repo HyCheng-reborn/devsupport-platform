@@ -140,11 +140,19 @@ public class RagChatController {
         // 3. 构建来源列表（来源组装与数据库查询责任归入会话 Service）
         List<SourceReference> sources = sessionService.buildSourceReferences(result.sourceDocuments());
         String sourcesJson = null;
+        String sourceChunkIdsJson = null;
         try {
             sourcesJson = objectMapper.writeValueAsString(sources);
+            // 提取非 null 的 chunkId 列表，冗余存储便于案例草稿继承
+            sourceChunkIdsJson = objectMapper.writeValueAsString(
+                sources.stream()
+                    .map(SourceReference::chunkId)
+                    .filter(java.util.Objects::nonNull)
+                    .toList());
         } catch (Exception e) {
             log.warn("序列化来源信息失败: {}", e.getMessage());
             sourcesJson = "[]";
+            sourceChunkIdsJson = "[]";
         }
 
         // 4. 判断是否有检索到文档（供异常/取消路径决定来源是否保留）
@@ -155,6 +163,7 @@ public class RagChatController {
         //    用单次护栏协调「正常完成 / 模型错误 / 客户端取消」三条终止路径，避免重复写入与互相覆盖。
         StringBuilder fullContent = new StringBuilder();
         final String finalSourcesJson = sourcesJson;
+        final String finalSourceChunkIdsJson = sourceChunkIdsJson;
         final AtomicBoolean finalized = new AtomicBoolean(false);
 
         return result.contentStream()
@@ -175,8 +184,11 @@ public class RagChatController {
                     return Flux.empty();
                 }
                 try {
+                    // 无依据的拒答不保存来源 chunk IDs
+                    String persistedChunkIds = finalStatus == MessageStatus.NO_RESULTS
+                        ? "[]" : finalSourceChunkIdsJson;
                     sessionService.completeStreamMessage(
-                        messageId, fullContent.toString(), finalStatus, persistedSourcesJson);
+                        messageId, fullContent.toString(), finalStatus, persistedSourcesJson, persistedChunkIds);
                 } catch (Exception e) {
                     log.error("RAG 流式回答持久化失败，不向客户端宣告成功: sessionId={}, messageId={}",
                         sessionId, messageId, e);
@@ -198,14 +210,16 @@ public class RagChatController {
                 // 内容流本身出错（模型失败）；持久化失败已在上面拦截，护栏确保不重复写入
                 if (finalized.compareAndSet(false, true)) {
                     persistQuietly(messageId, fullContent.toString(), MessageStatus.MODEL_FAILED,
-                        hasDocuments ? finalSourcesJson : "[]", sessionId);
+                        hasDocuments ? finalSourcesJson : "[]",
+                        hasDocuments ? finalSourceChunkIdsJson : "[]", sessionId);
                 }
                 log.error("RAG 聊天流式错误: sessionId={}", sessionId, e);
             })
             .doOnCancel(() -> {
                 if (finalized.compareAndSet(false, true)) {
                     persistQuietly(messageId, fullContent.toString(), MessageStatus.CLIENT_DISCONNECTED,
-                        hasDocuments ? finalSourcesJson : "[]", sessionId);
+                        hasDocuments ? finalSourcesJson : "[]",
+                        hasDocuments ? finalSourceChunkIdsJson : "[]", sessionId);
                     log.info("RAG 聊天流式取消: sessionId={}, messageId={}", sessionId, messageId);
                 }
             });
@@ -215,9 +229,9 @@ public class RagChatController {
      * 终止态（模型失败 / 客户端断开）持久化，异常只记录不外抛，避免在 Reactor 终止回调里抛出。
      */
     private void persistQuietly(Long messageId, String content, MessageStatus status,
-                                String sourcesJson, Long sessionId) {
+                                String sourcesJson, String sourceChunkIds, Long sessionId) {
         try {
-            sessionService.completeStreamMessage(messageId, content, status, sourcesJson);
+            sessionService.completeStreamMessage(messageId, content, status, sourcesJson, sourceChunkIds);
         } catch (Exception ex) {
             log.error("RAG 流式终止态持久化失败: sessionId={}, messageId={}, status={}",
                 sessionId, messageId, status, ex);

@@ -139,7 +139,7 @@ class CaseRegressionRunServiceTest {
     lenient().when(embeddingMetadataResolver.resolveModelName()).thenReturn("test-embedding-model");
 
     // 检索默认返回空；各用例按需覆盖
-    lenient().when(queryService.retrieveAndMerge(any(), any(), any(), anyInt(), anyDouble()))
+    lenient().when(queryService.retrieveAndMerge(any(), any(), any(), anyInt(), anyDouble(), any()))
       .thenReturn(List.of());
 
     // Mapper：由实体真实构造 DTO，验证读回组装
@@ -204,7 +204,7 @@ class CaseRegressionRunServiceTest {
   }
 
   private void givenRetrieval(String query, Document... docs) {
-    when(queryService.retrieveAndMerge(eq(query), any(), any(), anyInt(), anyDouble()))
+    when(queryService.retrieveAndMerge(eq(query), any(), any(), anyInt(), anyDouble(), any()))
       .thenReturn(List.of(docs));
   }
 
@@ -351,7 +351,7 @@ class CaseRegressionRunServiceTest {
       givenCases(caseEntity(10L, "异常案例", "auth", "prod", null),
         caseEntity(20L, "正常案例", "billing", "prod", null));
 
-      when(queryService.retrieveAndMerge(eq("会异常的查询"), any(), any(), anyInt(), anyDouble()))
+      when(queryService.retrieveAndMerge(eq("会异常的查询"), any(), any(), anyInt(), anyDouble(), any()))
         .thenThrow(new RuntimeException("embedding 服务不可用"));
       givenRetrieval("正常查询", doc("ev-2", "执行重启服务"));
 
@@ -404,9 +404,9 @@ class CaseRegressionRunServiceTest {
         .isEqualTo(detail.passed() + detail.failed() + detail.skipped());
 
       // 被跳过的项不应触发检索
-      verify(queryService, never()).retrieveAndMerge(eq("   "), any(), any(), anyInt(), anyDouble());
-      verify(queryService, never()).retrieveAndMerge(eq("有效查询"), any(), any(), anyInt(), anyDouble());
-      verify(queryService, times(1)).retrieveAndMerge(eq("正常查询"), any(), any(), anyInt(), anyDouble());
+      verify(queryService, never()).retrieveAndMerge(eq("   "), any(), any(), anyInt(), anyDouble(), any());
+      verify(queryService, never()).retrieveAndMerge(eq("有效查询"), any(), any(), anyInt(), anyDouble(), any());
+      verify(queryService, times(1)).retrieveAndMerge(eq("正常查询"), any(), any(), anyInt(), anyDouble(), any());
 
       RegressionResultDTO skippedBlankQuery = detail.results().stream()
         .filter(r -> r.itemId().equals(1L)).findFirst().orElseThrow();
@@ -501,7 +501,7 @@ class CaseRegressionRunServiceTest {
 
       service.runRegression(null);
 
-      verify(queryService).retrieveAndMerge(eq("查询"), eq(List.of()), any(), eq(20), eq(0.0));
+      verify(queryService).retrieveAndMerge(eq("查询"), eq(List.of()), any(), eq(20), eq(0.0), any());
     }
 
     @Test
@@ -513,7 +513,7 @@ class CaseRegressionRunServiceTest {
 
       service.runRegression(0);
 
-      verify(queryService).retrieveAndMerge(eq("查询"), eq(List.of()), any(), eq(20), eq(0.0));
+      verify(queryService).retrieveAndMerge(eq("查询"), eq(List.of()), any(), eq(20), eq(0.0), any());
     }
 
     @Test
@@ -525,7 +525,7 @@ class CaseRegressionRunServiceTest {
 
       service.runRegression(500);
 
-      verify(queryService).retrieveAndMerge(eq("查询"), eq(List.of()), any(), eq(200), eq(0.0));
+      verify(queryService).retrieveAndMerge(eq("查询"), eq(List.of()), any(), eq(200), eq(0.0), any());
     }
 
     @Test
@@ -537,7 +537,7 @@ class CaseRegressionRunServiceTest {
 
       service.runRegression(8);
 
-      verify(queryService).retrieveAndMerge(eq("查询"), eq(List.of()), any(), eq(8), eq(0.0));
+      verify(queryService).retrieveAndMerge(eq("查询"), eq(List.of()), any(), eq(8), eq(0.0), any());
     }
 
     @Test
@@ -551,7 +551,7 @@ class CaseRegressionRunServiceTest {
       service.runRegression(5);
 
       ArgumentCaptor<Map<String, String>> captor = ArgumentCaptor.forClass(Map.class);
-      verify(queryService).retrieveAndMerge(eq("查询"), eq(List.of()), captor.capture(), eq(5), eq(0.0));
+      verify(queryService).retrieveAndMerge(eq("查询"), eq(List.of()), captor.capture(), eq(5), eq(0.0), any());
       assertThat(captor.getValue())
         .containsEntry("service", "auth")
         .containsEntry("environment", "prod")

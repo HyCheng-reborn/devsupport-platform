@@ -406,7 +406,7 @@ class CaseRegressionItemServiceTest {
       when(caseRepository.findAllById(List.of(1L))).thenReturn(List.of(caseEntity));
       when(mapper.toItemDTO(any(), anyString(), anyString())).thenAnswer(inv ->
         new RegressionItemDTO(10L, 1L, inv.getArgument(1), inv.getArgument(2),
-          "q", List.of("ev-1"), List.of("kp-1"), "m", 1024, true));
+          "q", List.of("ev-1"), List.of("kp-1"), "m", 1024, true, "SOURCE"));
 
       List<RegressionItemDTO> result = service.listItems();
 
@@ -425,7 +425,7 @@ class CaseRegressionItemServiceTest {
       when(caseRepository.findAllById(List.of(99L))).thenReturn(List.of());
       when(mapper.toItemDTO(any(), anyString(), anyString())).thenAnswer(inv ->
         new RegressionItemDTO(10L, 99L, inv.getArgument(1), inv.getArgument(2),
-          "q", List.of(), List.of(), null, null, true));
+          "q", List.of(), List.of(), null, null, true, "MISSING"));
 
       List<RegressionItemDTO> result = service.listItems();
 

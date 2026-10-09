@@ -1,3 +1,30 @@
+**2026-10-09 -- 阶段 5 案例驱动回归评测 — 数据泄漏修复（来源证据持久化 + 隔离评测）**
+
+**问题**：首切片（ba9ec83）存在数据泄漏，被测案例的向量在搜索集合中，且查询源自案例自身内容，导致案例"自我命中"，10/10 结果只能证明管线可运行，不能证明知识库检索回归有效。
+
+**修复**：
+- 新增来源证据持久化：`rag_chat_messages.source_chunk_ids`、`cases.source_chunk_ids`（V20261011 迁移）
+- `SourceReference` record 新增 `chunkId` 字段，`RagChatSessionService` 在构建来源时调用 `doc.getId()` 填入
+- `CaseDraftService.createDraft()` 从来源消息解析 chunkIds 写入 CaseEntity
+- `CaseRegressionItemService.upsertOnPublish()` 优先使用 `caseEntity.getSourceChunkIds()` 作为 expectedEvidence
+- `CaseRegressionRunService.evaluateItem()` 排除被测案例自身的 CASE 向量
+- 回归项 Entity 新增 `evidenceSource` 字段（"SOURCE"/"MISSING"/"SELF"）
+
+**旧案例处理**：
+- 旧案例（ba9ec83 之前发布）无来源 KB chunk ID，标记为 evidenceSource = "SELF" 或 "MISSING"
+- 评测时不伪造证据，明确标记为不可评测或仅供参考
+
+**测试**：
+- 5/5 隔离集成测试通过（CaseRegressionIsolationIntegrationTest）
+- 55/55 evalregression 测试通过
+- 覆盖：被测案例自身向量必须被排除、原始 KB gold chunk 命中时通过、无来源 KB gold 时明确标记、废弃案例不再参与回归、旧案例兼容性
+
+**迁移影响**：
+- V20261011：`rag_chat_messages` 和 `cases` 表新增 `source_chunk_ids TEXT` 列
+- 旧数据自动标记为 SELF/MISSING，无需手动迁移
+
+**主要文件**：`V20261011__add_source_chunk_ids.sql`、`SourceReference.java`、`RagChatMessageEntity.java`、`CaseEntity.java`、`CaseRegressionItemEntity.java`、`RagChatSessionService.java`、`CaseDraftService.java`、`CaseRegressionItemService.java`、`CaseRegressionRunService.java`、`KnowledgeBaseQueryService.java`、`CaseRegressionMapper.java`、`CaseRegressionIsolationIntegrationTest.java`
+
 **2026-10-09 -- Stage 5 首切片：案例驱动的回归评测（确定性版）— 后端模块 + 迁移 + 生命周期联动 + 前端面板/徽标 + 测试 + 真实运行时/浏览器验证**
 - 后端新增 `interview.guide.modules.evalregression`：3 实体（CaseRegressionItemEntity/RunEntity/ResultEntity）+ `RegressionRunStatus` + 6 record DTO + 3 repository + 4 服务（RegressionJsonCodec/EmbeddingMetadataResolver/CaseRegressionItemService/CaseRegressionRunService）+ `CaseRegressionController` + MapStruct `CaseRegressionMapper`
 - Flyway `V20261010`：case_regression_items/runs/results 三表（case_id REFERENCES cases(id)；item_id 刻意不加 FK，容忍回归项变动后历史结果留存；删冗余索引）

@@ -516,7 +516,7 @@ public class KnowledgeBaseQueryService {
     }
 
     /**
-     * 执行"知识库检索 + 案例检索 + 合并"的真实链路，供集成测试直接验证合并行为。
+     * 执行“知识库检索 + 案例检索 + 合并”的真实链路，供集成测试直接验证合并行为。
      * 与 {@link #retrieveRelevantDocs} 的区别：跳过 query rewrite 与动态参数解析，
      * 由调用方显式指定 topK / minScore，其余检索与合并逻辑与生产路径完全一致。
      * // visible for testing
@@ -531,10 +531,30 @@ public class KnowledgeBaseQueryService {
     public List<Document> retrieveAndMerge(String query, List<Long> knowledgeBaseIds,
                                            Map<String, String> caseContextFilter,
                                            int topK, double minScore) {
+        return retrieveAndMerge(query, knowledgeBaseIds, caseContextFilter, topK, minScore, List.of());
+    }
+    
+    /**
+     * 执行“知识库检索 + 案例检索 + 合并”的真实链路，支持排除指定案例 ID。
+     * <p>
+     * 用于回归评测时排除被测案例自身的 CASE 向量，避免“自我命中”的数据泄漏。
+     *
+     * @param query             检索关键词
+     * @param knowledgeBaseIds  知识库 ID 列表
+     * @param caseContextFilter 案例检索上下文过滤（service/environment/affected_versions）
+     * @param topK              合并后返回的最大文档数
+     * @param minScore          相似度阈值
+     * @param excludeCaseIds    需排除的案例 ID 列表（被测案例自身）
+     * @return KB 优先、案例补充的合并结果
+     */
+    public List<Document> retrieveAndMerge(String query, List<Long> knowledgeBaseIds,
+                                           Map<String, String> caseContextFilter,
+                                           int topK, double minScore,
+                                           List<Long> excludeCaseIds) {
         List<Document> kbDocs = vectorService.similaritySearch(
             query, knowledgeBaseIds, topK, minScore);
         List<Document> caseDocs = vectorService.searchCaseVectors(
-            query, caseContextFilter, List.of(), Math.max(topK / 2, 2), minScore);
+            query, caseContextFilter, excludeCaseIds, Math.max(topK / 2, 2), minScore);
         return mergeResults(kbDocs, caseDocs, topK);
     }
 

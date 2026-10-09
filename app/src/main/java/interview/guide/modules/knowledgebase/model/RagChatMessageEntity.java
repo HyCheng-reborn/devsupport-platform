@@ -74,6 +74,13 @@ public class RagChatMessageEntity {
     private String sourcesJson;
 
     /**
+     * 来源 chunk ID 列表（JSON array of UUID strings），冗余存储便于案例草稿继承。
+     * 在 completeStreamMessage 时从 SourceReference 列表提取非 null 的 chunkId 写入。
+     */
+    @Column(columnDefinition = "TEXT", name = "source_chunk_ids")
+    private String sourceChunkIds;
+
+    /**
      * 消息完成状态
      */
     @Enumerated(EnumType.STRING)

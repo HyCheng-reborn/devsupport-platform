@@ -59,6 +59,7 @@ public class CaseDraftService {
       .status(CaseStatus.DRAFT)
       .sourceSessionId(sessionId)
       .sourceMessageId(messageId)
+      .sourceChunkIds(message.getSourceChunkIds())
       .active(false)
       .build();
 

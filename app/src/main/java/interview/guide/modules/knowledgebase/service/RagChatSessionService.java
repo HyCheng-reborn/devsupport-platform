@@ -222,9 +222,11 @@ public class RagChatSessionService {
      * @param content AI回答内容
      * @param status 消息完成状态
      * @param sourcesJson 来源信息JSON（可为null）
+     * @param sourceChunkIds 来源 chunk ID 列表 JSON（可为null）
      */
     @Transactional
-    public void completeStreamMessage(Long messageId, String content, MessageStatus status, String sourcesJson) {
+    public void completeStreamMessage(Long messageId, String content, MessageStatus status,
+                                      String sourcesJson, String sourceChunkIds) {
         RagChatMessageEntity message = messageRepository.findById(messageId)
             .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "消息不存在"));
 
@@ -232,6 +234,7 @@ public class RagChatSessionService {
         message.setCompleted(true);
         message.setStatus(status);
         message.setSourcesJson(sourcesJson);
+        message.setSourceChunkIds(sourceChunkIds);
         messageRepository.save(message);
 
         log.info("完成流式消息: messageId={}, contentLength={}, status={}", messageId, content.length(), status);
@@ -339,6 +342,7 @@ public class RagChatSessionService {
         String snippet = text != null && text.length() > 200 ? text.substring(0, 200) + "..." : text;
         Double score = doc.getScore();
         String sectionTitle = extractSectionTitle(text);
+        String chunkId = doc.getId();
 
         if ("CASE".equals(sourceType)) {
             // 案例来源
@@ -351,7 +355,7 @@ public class RagChatSessionService {
             return new SourceReference(
                 null, caseTitle, snippet, score, service, environment,
                 null, null, null, sectionTitle,
-                "CASE", caseId, caseTitle
+                "CASE", caseId, caseTitle, chunkId
             );
         }
 
@@ -368,7 +372,7 @@ public class RagChatSessionService {
         return new SourceReference(
             kbId, docName, snippet, score, service, environment,
             versionLabel, versionNo, documentKey, sectionTitle,
-            "KB", null, null
+            "KB", null, null, chunkId
         );
     }
 

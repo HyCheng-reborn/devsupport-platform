@@ -41,12 +41,16 @@ public class CaseRegressionItemService {
 
   /**
    * 案例审核发布成功后，创建 / 更新其回归项。
+   * <p>
+   * 期望证据优先使用案例继承自来源会话的原始 KB chunk ID（{@code caseEntity.sourceChunkIds}），
+   * 而非案例自身向量化的 chunk ID，以避免“自我命中”的数据泄漏。
+   * 若 sourceChunkIds 为 null 或空，标记为 MISSING（不可评测）。
    *
    * @param caseEntity       已发布案例
-   * @param expectedEvidence 案例向量 chunk 的证据 ID 列表（向量化后取得）
+   * @param selfEvidenceIds  案例自身向量化的 chunk ID 列表（向量化后取得），仅作为兜底
    */
   @Transactional
-  public void upsertOnPublish(CaseEntity caseEntity, List<String> expectedEvidence) {
+  public void upsertOnPublish(CaseEntity caseEntity, List<String> selfEvidenceIds) {
     if (caseEntity == null || caseEntity.getId() == null) {
       log.warn("回归项发布跳过：案例为空或缺少 ID");
       return;
@@ -54,9 +58,27 @@ public class CaseRegressionItemService {
 
     String query = buildQuery(caseEntity);
     List<String> keyPoints = extractKeyPoints(caseEntity);
-    List<String> evidence = expectedEvidence != null ? expectedEvidence : List.of();
     String model = embeddingMetadataResolver.resolveModelName();
     int dimension = embeddingMetadataResolver.resolveDimension();
+
+    // 解析来源 chunk IDs
+    List<String> sourceChunkIds = jsonCodec.toStringList(caseEntity.getSourceChunkIds());
+    List<String> evidence;
+    String evidenceSource;
+
+    if (sourceChunkIds != null && !sourceChunkIds.isEmpty()) {
+      // 优先使用原始 KB chunk ID（来源会话）
+      evidence = sourceChunkIds;
+      evidenceSource = "SOURCE";
+    } else if (selfEvidenceIds != null && !selfEvidenceIds.isEmpty()) {
+      // 兜底：旧案例没有来源 chunk IDs，使用自身向量化 chunk ID，标记为 SELF
+      evidence = selfEvidenceIds;
+      evidenceSource = "SELF";
+    } else {
+      // 完全没有证据
+      evidence = List.of();
+      evidenceSource = "MISSING";
+    }
 
     CaseRegressionItemEntity item = itemRepository.findByCaseId(caseEntity.getId())
       .orElseGet(() -> CaseRegressionItemEntity.builder().caseId(caseEntity.getId()).build());
@@ -67,11 +89,12 @@ public class CaseRegressionItemService {
     item.setKeyPoints(jsonCodec.toJson(keyPoints));
     item.setEmbeddingModel(model);
     item.setEmbeddingDimension(dimension);
+    item.setEvidenceSource(evidenceSource);
     item.setActive(true);
     itemRepository.save(item);
 
-    log.info("回归项已发布: caseId={}, itemId={}, evidenceCount={}, keyPointCount={}, embeddingModel={}",
-      caseEntity.getId(), item.getId(), evidence.size(), keyPoints.size(), model);
+    log.info("回归项已发布: caseId={}, itemId={}, evidenceCount={}, evidenceSource={}, keyPointCount={}, embeddingModel={}",
+      caseEntity.getId(), item.getId(), evidence.size(), evidenceSource, keyPoints.size(), model);
   }
 
   /**

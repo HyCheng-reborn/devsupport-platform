@@ -126,7 +126,7 @@ class RagChatControllerTest {
       // 持久化以 COMPLETED 且保留来源写入
       verify(sessionService, times(1))
           .completeStreamMessage(eq(MESSAGE_ID), eq("项目的后端端口是 8080"),
-              eq(MessageStatus.COMPLETED), anyString());
+              eq(MessageStatus.COMPLETED), anyString(), any());
     }
 
     @Test
@@ -153,7 +153,7 @@ class RagChatControllerTest {
             ArgumentCaptor<String> captured = ArgumentCaptor.forClass(String.class);
             verify(sessionService, times(1)).completeStreamMessage(
                 eq(MESSAGE_ID), eq("项目的后端端口是 8080"),
-                eq(MessageStatus.COMPLETED), captured.capture());
+                eq(MessageStatus.COMPLETED), captured.capture(), any());
             assertThat(captured.getValue()).contains("README.md");
             persistedAtSources.set(true);
             return e.data() != null && e.data().contains("README.md");
@@ -164,7 +164,7 @@ class RagChatControllerTest {
             }
             // 在收到 done 的瞬间再次确认持久化先于事件完成
             verify(sessionService, times(1)).completeStreamMessage(
-                anyLong(), anyString(), eq(MessageStatus.COMPLETED), anyString());
+                anyLong(), anyString(), eq(MessageStatus.COMPLETED), anyString(), any());
             persistedAtDone.set(true);
             return e.data().contains("COMPLETED");
           })
@@ -199,7 +199,7 @@ class RagChatControllerTest {
             ArgumentCaptor<String> captured = ArgumentCaptor.forClass(String.class);
             verify(sessionService, times(1)).completeStreamMessage(
                 eq(MESSAGE_ID), eq("项目的后端端口是 8080"),
-                eq(MessageStatus.COMPLETED), captured.capture());
+                eq(MessageStatus.COMPLETED), captured.capture(), any());
             // 持久化的 sourcesJson 含标签值与字段名
             assertThat(captured.getValue())
                 .contains("\"service\"").contains("支付网关")
@@ -246,7 +246,7 @@ class RagChatControllerTest {
       ArgumentCaptor<MessageStatus> statusCap = ArgumentCaptor.forClass(MessageStatus.class);
       ArgumentCaptor<String> sourcesCap = ArgumentCaptor.forClass(String.class);
       verify(sessionService).completeStreamMessage(
-          eq(MESSAGE_ID), eq(answer), statusCap.capture(), sourcesCap.capture());
+          eq(MESSAGE_ID), eq(answer), statusCap.capture(), sourcesCap.capture(), any());
       assertThat(statusCap.getValue()).isEqualTo(MessageStatus.COMPLETED);
       assertThat(sourcesCap.getValue()).contains("README.md").isNotEqualTo("[]");
 
@@ -284,7 +284,7 @@ class RagChatControllerTest {
       ArgumentCaptor<MessageStatus> statusCap = ArgumentCaptor.forClass(MessageStatus.class);
       ArgumentCaptor<String> sourcesCap = ArgumentCaptor.forClass(String.class);
       verify(sessionService).completeStreamMessage(
-          eq(MESSAGE_ID), eq(refusal), statusCap.capture(), sourcesCap.capture());
+          eq(MESSAGE_ID), eq(refusal), statusCap.capture(), sourcesCap.capture(), any());
       assertThat(statusCap.getValue()).isEqualTo(MessageStatus.NO_RESULTS);
       assertThat(sourcesCap.getValue()).isEqualTo("[]");
 
@@ -321,7 +321,7 @@ class RagChatControllerTest {
       ArgumentCaptor<MessageStatus> statusCap = ArgumentCaptor.forClass(MessageStatus.class);
       ArgumentCaptor<String> sourcesCap = ArgumentCaptor.forClass(String.class);
       verify(sessionService).completeStreamMessage(
-          eq(MESSAGE_ID), eq(refusal), statusCap.capture(), sourcesCap.capture());
+          eq(MESSAGE_ID), eq(refusal), statusCap.capture(), sourcesCap.capture(), any());
       assertThat(statusCap.getValue()).isEqualTo(MessageStatus.NO_RESULTS);
       assertThat(sourcesCap.getValue()).isEqualTo("[]");
 
@@ -342,7 +342,7 @@ class RagChatControllerTest {
       when(sessionService.buildSourceReferences(anyList())).thenReturn(oneSource());
       when(queryService.resolveFinalStatus(anyString(), any())).thenReturn(MessageStatus.COMPLETED);
       doThrow(new RuntimeException("DB down"))
-          .when(sessionService).completeStreamMessage(anyLong(), anyString(), any(), anyString());
+          .when(sessionService).completeStreamMessage(anyLong(), anyString(), any(), anyString(), any());
 
       StepVerifier.create(controller.sendMessageStream(SESSION_ID, request()))
           .expectNextMatches(e -> "data".equals(e.event()))
@@ -352,7 +352,7 @@ class RagChatControllerTest {
 
       // 单次护栏：失败的写入不会被 doOnError 二次覆盖为 MODEL_FAILED
       verify(sessionService, times(1))
-          .completeStreamMessage(anyLong(), anyString(), any(), anyString());
+          .completeStreamMessage(anyLong(), anyString(), any(), anyString(), any());
     }
   }
 
@@ -377,7 +377,7 @@ class RagChatControllerTest {
 
     // 无依据的拒答不保存来源：持久化与 sources 事件均为空数组
     verify(sessionService, times(1))
-        .completeStreamMessage(eq(MESSAGE_ID), eq(refusal), eq(MessageStatus.NO_RESULTS), eq("[]"));
+        .completeStreamMessage(eq(MESSAGE_ID), eq(refusal), eq(MessageStatus.NO_RESULTS), eq("[]"), any());
 
     ServerSentEvent<String> sources = events.get(1);
     assertThat(sources.event()).isEqualTo("sources");
@@ -449,7 +449,7 @@ class RagChatControllerTest {
         .verify();
 
     verify(sessionService, times(1))
-        .completeStreamMessage(eq(MESSAGE_ID), anyString(), eq(MessageStatus.MODEL_FAILED), anyString());
+        .completeStreamMessage(eq(MESSAGE_ID), anyString(), eq(MessageStatus.MODEL_FAILED), anyString(), any());
     // 错误路径不应触发最终状态判定（内容流从未正常完成）
     verify(queryService, never()).resolveFinalStatus(anyString(), any());
   }
@@ -472,6 +472,6 @@ class RagChatControllerTest {
 
     verify(sessionService, times(1))
         .completeStreamMessage(eq(MESSAGE_ID), eq("已输出的部分"),
-            eq(MessageStatus.CLIENT_DISCONNECTED), anyString());
+            eq(MessageStatus.CLIENT_DISCONNECTED), anyString(), any());
   }
 }

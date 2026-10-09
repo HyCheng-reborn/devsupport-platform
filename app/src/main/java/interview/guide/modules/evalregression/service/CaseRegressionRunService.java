@@ -171,12 +171,24 @@ public class CaseRegressionRunService {
     if (expected.isEmpty()) {
       return ItemOutcome.skipped(item.getId(), "回归项无期望证据，已跳过");
     }
+    // evidenceSource = MISSING 表示无来源证据，不可评测
+    if ("MISSING".equals(item.getEvidenceSource())) {
+      return ItemOutcome.skipped(item.getId(), "回归项标记为 MISSING（无来源证据），已跳过");
+    }
 
     try {
       // 复用生产检索路径：KB（全局）+ 案例（按案例 service/environment/version 过滤）合并
       Map<String, String> caseContextFilter = buildCaseContextFilter(caseEntity);
+
+      // 评测隔离：当证据来源为 SOURCE 时，排除被测案例自身的 CASE 向量，
+      // 避免“自我命中”的数据泄漏；SELF 证据不排除（兑底旧数据）。
+      List<Long> excludeCaseIds = List.of();
+      if ("SOURCE".equals(item.getEvidenceSource()) && caseEntity != null && caseEntity.getId() != null) {
+        excludeCaseIds = List.of(caseEntity.getId());
+      }
+
       List<Document> docs = queryService.retrieveAndMerge(
-        item.getQuery(), List.of(), caseContextFilter, topK, MIN_SCORE);
+        item.getQuery(), List.of(), caseContextFilter, topK, MIN_SCORE, excludeCaseIds);
 
       List<String> retrievedIds = docs.stream()
         .map(Document::getId)

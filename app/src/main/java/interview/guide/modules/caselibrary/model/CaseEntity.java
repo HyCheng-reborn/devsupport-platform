@@ -69,6 +69,13 @@ public class CaseEntity {
   @Column(name = "source_message_id")
   private Long sourceMessageId;
 
+  /**
+   * 来源消息的原始 KB chunk ID 列表（JSON array of UUID strings），
+   * 从 RagChatMessageEntity.sourceChunkIds 继承，用于回归评测的期望证据。
+   */
+  @Column(name = "source_chunk_ids", columnDefinition = "TEXT")
+  private String sourceChunkIds;
+
   @Column(nullable = false)
   @Builder.Default
   private Boolean active = false;
