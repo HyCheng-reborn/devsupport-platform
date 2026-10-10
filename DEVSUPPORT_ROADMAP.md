@@ -59,7 +59,7 @@ Resume、Interview、VoiceInterview、InterviewSchedule 属于原上游项目遗
 | 阶段 3：排查会话闭环 | 实现中（结构化回答骨架 + 来源章节定位 + 版本冲突提示 + INSUFFICIENT_INFO 拒答细化；源码+自动化完成，真实付费模型端到端验证待授权（挂起）） | Prompt 定义 8 段结构化回答骨架；`SourceReference` 新增 `sectionTitle` 从文档 heading 提取；`MessageStatus` 新增 `INSUFFICIENT_INFO` 拒答细化；前端来源面板显示文档名>章节标题；前端多版本来源时显示冲突提示条；前端 INSUFFICIENT_INFO 展示追问式提示；后端测试：骨架 SSE、INSUFFICIENT_INFO 判定、sectionTitle 提取；前端测试：sectionTitle 映射、insufficient 模式、冲突提示 E2E。全量后端 **650 tests / 637 passed / 10 failed（Voice Redis 遗留）/ 3 skipped**，DevSupport 相关全绿 | 结构化回答骨架已定义但 Prompt 调优未受控实验；真实付费模型端到端未验证 |
 | 阶段 4：案例库审核发布 | 已完成（源码实现+自动化验证已完成，真实付费模型端到端未验证） | DB 迁移 `V20261008`+`V20261009`；CaseStatus 枚举；CaseDraftService/CaseReviewService/CaseLifecycleService；CaseLibraryController 8 端点；前端案例列表+详情+生成按钮；案例检索接入（approve 向量化、deprecate 删向量、检索合并）；范围过滤（service/environment/affected_versions 精确匹配，无上下文不全局召回）；废弃一致性（两阶段事务 + vectorCleanupPending + fail-closed + retryVectorCleanup）；X-Operator 审计标签（非身份认证）；后端 22 单测 + 20 集成测试（含真实删除失败路径、KB/案例合并走 retrieveAndMerge、affected_versions 匹配/不匹配）；前端 3 单测 + 5 E2E。集成测试 20/20 PASS（commit `353b8a8`）。全量后端 **682 tests / 669 passed / 10 failed（Voice Redis 遗留）/ 3 skipped**，DevSupport 相关全绿 | 案例范围仅支持 service/environment + affected_versions 精确匹配；project 维度暂不参与过滤（字段可空无一致性保证，延期）；affected_versions 语义对齐依赖人工维护 |
 | 阶段 5：可评测检索优化 | 案例驱动回归评测确定性首版已实现并完成数据泄漏修复（来源证据持久化 + 隔离评测），离线验证通过；Hybrid/RRF/Rerank 未开始（需付费对照授权）；既有 P1-C 真实评测已完成 | 新增 `interview.guide.modules.evalregression` 模块（3 实体 + `RegressionRunStatus` + 6 record DTO + 3 repository + 4 服务 + `CaseRegressionController` + MapStruct `CaseRegressionMapper`）+ Flyway `V20261010` 三表（case_regression_items/runs/results）+ ErrorCode 13001/13002/13003 + 案例生命周期联动（approve→`upsertOnPublish`、deprecate→`deactivateOnDeprecate`）+ `/api/eval/regression/*` 端点；前端 `CaseRegressionPanel` + `EvalResultsPage` 回归区块 + `CaseDetailPage` 已纳入回归徽标。测试：后端定点 evalregression 单测 46 + 集成 4、caselibrary 单测 22 + 集成 20 = 92 全绿；前端 build exit 0、单测 regression 7/7、Playwright case-regression 10/10 + case-library 5/5；真实运行时离线闭环（bootRun + docker compose 真实 PG/pgvector+Redis+RustFS + 真实 Flyway + OpenAI SDK HTTP embedding 打到本地确定性桩 + 真实 pgvector 检索 + REST + 落库 + Vite）publish→生成回归项→运行通过→废弃→排除 走通，9 次 embedding 全命中 127.0.0.1、零付费；浏览器真实数据契约走查通过。全量后端 **741 tests / 728 passed / 10 failed（全为 `VoiceInterviewIntegrationTest` 连本机 Redis:6379 遗留，非本次）/ 3 skipped**，DevSupport 主线 343 全绿，V20261010 已在 Testcontainers pgvector/pg16 真实应用成功。P1-C L1 两次真实评测（baseline Hit@5=93.75%, MRR@5=77.81%; heading-aware MRR@5=0.8542）付费外部验证通过（heading-aware 非受控单变量 A/B，不可宣称因果提升） | **真实付费 embedding（DashScope text-embedding-v3）下语义检索质量/排序/top-K 精度未验证**（确定性常量向量使相似度并列，仅证明管线正确 + 自身证据可召回 + 判定/落库/废弃排除逻辑正确）；聊天 assistant 消息→createDraft 离线闭环未验证（需 LLM，未付费跑）；全量后端非全绿（10 个 Voice Redis 遗留失败保留）；H1/L4（approve() @Transactional 内调 EmbeddingModel 外部 HTTP，改动前既存技术债、本次仅延续，建议移出事务或改 Redis Stream 异步）；M1（回归复用全局 KB retrieveAndMerge，kbIds 传空→KB 分支不带过滤，已用默认 topK 5→20 提升 + 上限钳制 200 缓解挤出假失败）；M3（要点被物理切分到不相邻 chunk 仍可能假失败，空白归一只解决 \n 拼接）；L1（无 FAILED 终态，13003 暂未使用）；L3（逐项结果未快照 expectedEvidence，UI 经实时 items 反查，案例重发布产生新 Document UUID 会使历史高亮漂移，但 passed 布尔已落库、结论不受影响）；project 维度案例过滤延期（schema 级缺口，另立切片） |
-| 阶段 6：可靠性与部署 | 未开始 | demo profile 模式已在 Resume 验证 | Compose 全栈未实测 |
+| 阶段 6：可靠性与部署 | 已完成（**主流程联调通过**；冷启动未验证；浏览器自动化验收） | **自动化定点**：demo profile 扩展到 RAG/向量化（`DemoChatModel` + `DemoEmbeddingModel`，`DemoProfileIntegrationTest` 8/8）；Redis Stream 崩溃重启恢复（`RedisStreamRestartRecoveryIntegrationTest` 5/5，`AbstractStreamConsumer.pendingIdleTimeoutMs()` 可覆写，commit `9c20c0c`）。**交付物**：Docker Compose `createbuckets` init container 自动建桶；`docs/demo/` 5 个脱敏故障场景 + 演示路径 README；`README.md` 重写（架构图/技术栈/快速开始/Demo 路径/边界声明）。**浏览器实测（2026-10-10，HEAD `04d4275`）**：真实浏览器交互（非 mock）+ demo profile + Vite dev + 真实 PostgreSQL/Redis/RustFS——上传 runbook→向量化 COMPLETED→创建会话提问→SSE 流式 Demo 回答（含 `[Demo 模板响应 — 非真实 AI 生成]` 标识 + “检索快照来源面板”）→生成案例草稿→审核发布→自动纳入回归评测→运行回归 全链路走通，无 JS 错误、无失败网络请求、零付费 API 调用；测试数据已清理（案例废弃 + 会话删除 + 文档删除） | 浏览器窗口隐藏（`visibilityState=hidden`）无法截图，改由 JS 事件派发 + DataTransfer 文件注入 + 后端 API 交叉验证；冷启动未验证（从现有环境启动，复用容器/数据库）；真实付费 embedding 语义质量、`docker-compose.yml`（MinIO 非 RustFS）全栈部署未实测 |
 
 ---
 
@@ -185,6 +185,25 @@ Resume、Interview、VoiceInterview、InterviewSchedule 属于原上游项目遗
 - **工作范围**：把 demo profile 模式（当前只覆盖 Resume）扩展到 RAG 问答与向量化；检查 Redis Stream 的 ACK、幂等、重试、失败状态与重启恢复；Docker Compose 一键启动依赖并给出 bucket 初始化；准备脱敏样例资料与 3–5 个演示故障；更新 README（架构图、技术栈、启动方式、演示路径、数据流、安全配置和限制）。
 - **预期交付物**：可复制启动的开发/演示环境、可复现演示数据、架构图、清晰 README、测试与演示证据。
 - **验收标准**：新人 clone 后 30 分钟内能跑通完整 Demo；不依赖隐藏手工步骤；没有泄露凭据；demo 与真实 AI 能力的边界明确。
+- **阶段 6 实现完成记录（自动化定点 + API 冒烟，commit `e85ff54`→`04d4275`）**：
+  - **Demo profile 扩展到 RAG/向量化**：新增 `DemoChatModel`（@Profile("demo")，关键词匹配返回预定义排查建议模板，支持 call/stream）+ `DemoEmbeddingModel`（内容 hash 生成确定性 1024 维向量）；`LlmEmbeddingConfig`/`LlmProviderBootstrapService` 加 `@Profile("!demo")`；`LlmProviderRegistry` 注入 Environment，demo 模式返回 Demo 实现。`DemoProfileIntegrationTest` **8/8** 通过。
+  - **Redis Stream 重启恢复**：新增 `RedisStreamRestartRecoveryIntegrationTest` **5/5** 通过（消费者崩溃重启后 pending 消息被 autoClaim 恢复、批量回收、idle 认领、`pendingIdleTimeoutMs()` 可覆写）；`AbstractStreamConsumer` 新增 `protected long pendingIdleTimeoutMs()`（commit `9c20c0c`）。
+  - **Docker Compose 一键启动**：`docker-compose.dev.yml` 新增 `createbuckets` init container（`minio/mc`，依赖 rustfs 健康检查），`up -d` 后 `interview-guide` bucket 自动创建，YAML 语法校验通过。
+  - **脱敏样例资料**：`docs/demo/` 5 个故障场景（连接池耗尽/Redis OOM/S3 上传超时/SSL 证书过期/JVM 堆外 OOM Kill）+ 演示路径 README。
+  - **README 重写**：架构图（Mermaid）+ 技术栈 + 快速开始（Demo profile / 完整部署）+ Demo 演示路径 + 项目结构 + demo 与真实 AI 能力边界声明 + 已验证/未验证事项。
+  - **前轮 API 冒烟**：Demo 来源展示标识（`ragStreamStatus` + 来源面板“检索快照”提示）等经后端 API 交叉验证。
+- **阶段 6 最终浏览器验收记录（2026-10-10，证据补核与结论校准）**：
+  - **验收方式**：真实服务联调的浏览器自动化（非人工走查）。浏览器窗口隐藏（`visibilityState=hidden`），由自动化脚本派发事件并注入文件，通过 JS 事件 + 后端 API 数据交叉确认。
+  - **验证层级**：本轮**浏览器自动化**（端到端真实服务联调）> 前轮 **API 冒烟** > **自动化定点测试**（`DemoProfileIntegrationTest` 8/8、`RedisStreamRestartRecoveryIntegrationTest` 5/5）。三层互补，不混用。
+  - **覆盖的完整流程**：上传 runbook → 向量化完成（COMPLETED）→ 创建排查会话 → 提问 → SSE 流式 Demo 回答（含 Demo 标识 + 检索快照来源面板）→ 生成案例草稿 → 手动编辑案例元数据 → 审核发布 → 自动纳入回归评测 → 运行回归。
+  - **清理数据归属**：case ID=1、session ID=2、document ID=2 均带唯一标记 `acceptance-test-20261010`，由数据库残留记录确认确为本轮创建。归属由唯一标记确认，非由审计日志独立交叉验证。
+  - **回归评测说明**：回归管线端到端执行成功（触发→证据检索→要点判定→历史记录），证据 ID 全部命中。
+  - **未验证边界**：
+    - ⏳ 从干净环境（新 clone + 全新 Docker 卷）的冷启动（本轮从现有运行环境启动，复用已运行的 Docker 容器和数据库）
+    - ⏳ 真实付费 embedding（DashScope）下语义检索质量/排序
+    - ⏳ 前端 UI 视觉渲染（浏览器窗口隐藏，无截图证据）
+    - ⏳ `docker-compose.yml` 全栈部署（MinIO 非 RustFS）未实测
+  - **结论**：Stage 6 主流程联调通过。冷启动未验证。
 
 ---
 
@@ -207,7 +226,7 @@ Resume、Interview、VoiceInterview、InterviewSchedule 属于原上游项目遗
 
 ## 6. 当前唯一的下一步
 
-**阶段 5 首切片「案例驱动的回归评测（确定性版）」已完成（2026-10-09，离线验证通过）。** 下一步二选一，均需用户/审查确认后再启动，不擅自扩大范围：
+**阶段 6「可靠性、部署与简历级交付」主流程联调通过（浏览器自动化验收，冷启动未验证）；阶段 5 首切片「案例驱动的回归评测（确定性版）」已完成（2026-10-09，离线验证通过）。** 下一步二选一，均需用户/审查确认后再启动，不擅自扩大范围：
 
 - **阶段 5 主体：Hybrid Retrieval（向量 + BM25）/ RRF 融合 / Reranker 对照实验**——受 §8.3「未授权不跑付费 LLM/Embedding」门槛约束，需单独付费对照授权后方可执行；回归评测确定性框架已就绪，可作为检索策略变更前后对比的载体。
 - **补齐 project 维度案例过滤**——schema 级缺口（cases/KB 的 project 字段可空且无一致性保证），需迁移 + 实体 + 元数据 + 过滤四处联动，另立切片。

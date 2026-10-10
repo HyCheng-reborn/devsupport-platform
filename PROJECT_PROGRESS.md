@@ -3,7 +3,7 @@
 > 本项目（远程仓库 `HyCheng-reborn/devsupport-platform`，本地目录名仍为 `interview-guide`）的进度事实源。
 > **跨机器 remote 别名映射（读文档前先对齐，避免 `origin` 误读）**：本机 `devsupport` = `HyCheng-reborn/devsupport-platform`（推送目标），本机 `origin` = `Snailclimb/interview-guide`（上游，**勿推**）；另一台验证机（批次 C/D 补验）的 `origin` = `HyCheng-reborn/devsupport-platform`，故其文档/提交记录里的「push 到 `origin/master`」等同于本机的「push 到 `devsupport/master`」。判断实际目标仓库一律以 remote URL 为准，不要只看别名。
 > 新会话接手时先读本文件，再读「交接区」列出的文件。
-> 最近更新：**2026-10-09 KB-only 检索彻底排除 CASE 分支完成 — `retrieveAndMerge(requireKbOnly=true)` 跳过整个 CASE 分支 + 9/9 隔离集成测试通过（新增 2 个 CASE 向量排除测试）；回归评测现在是严格的 KB-only 回归，不会合并任何 CASE 向量**。前一轮：来源证据隔离修复（SELF/MISSING/NULL 跳过 + KB-only 检索 + V20261012 迁移 + 7/7 隔离 + 57/57 evalregression）。
+> 最近更新：**2026-10-10 Stage 6 主流程联调通过（浏览器自动化验收）；冷启动未验证 — 真实服务联调的浏览器自动化（非人工走查），后端 demo profile + 前端 Vite dev + 真实 PostgreSQL/Redis/RustFS：上传文档→向量化→创建会话提问→SSE 流式 Demo 回答→生成案例草稿→审核发布→回归管线端到端执行成功，证据 ID 全部命中；浏览器窗口隐藏无法截图，改由 JS 事件派发 + 后端 API 交叉确认；清理数据归属由唯一标记 acceptance-test-20261010 确认**。前一轮：阶段 6 可靠性交付（Demo profile 扩展 RAG/向量化 `DemoProfileIntegrationTest` 8/8 + Redis Stream 重启恢复 `RedisStreamRestartRecoveryIntegrationTest` 5/5 + Docker Compose 自动建桶 + docs/demo + README 重写）；再前一轮：阶段 5 KB-only 检索彻底排除 CASE 分支。
 
 ## 0. 维护规则
 
@@ -30,6 +30,20 @@
 - **P1-C**（当前阶段）：真实 pgvector + 真实 Embedding 的 **L1 向量检索组件基线**，明确不含查询改写、动态 topK/阈值（这三项生产里都开着，见 §3.4）。
 
 ## 2. 已完成且有证据
+
+- **DevSupport 阶段 6：可靠性、部署与简历级交付（实现 commit `e85ff54`→`04d4275`；浏览器自动化验收 2026-10-10，证据补核与结论校准）** — 状态 `真实环境已验证（主流程联调通过；浏览器自动化验收；冷启动未验证；真实付费 embedding 语义质量与 docker-compose.yml 全栈部署未验证）`。
+  - **验证层级（高→低，不混用）**：**浏览器自动化**（本轮，端到端真实服务联调）> **API 冒烟**（前轮，后端接口交叉验证）> **自动化定点测试**（`DemoProfileIntegrationTest` 8/8、`RedisStreamRestartRecoveryIntegrationTest` 5/5）。
+  - **浏览器自动化验收（2026-10-10）**：真实服务联调的浏览器自动化（非人工走查）。浏览器窗口隐藏（`visibilityState=hidden`），由自动化脚本派发事件并注入文件，通过 JS 事件 + 后端 API 数据交叉确认。覆盖流程：上传文档 → 向量化完成 → 创建排查会话提问 → SSE 流式 Demo 回答（含 Demo 标识 + 检索快照来源面板）→ 生成案例草稿 → 手动编辑案例元数据 → 审核发布 → 自动纳入回归评测 → 运行回归。
+  - **清理数据归属**：case ID=1、session ID=2、document ID=2 均带唯一标记 `acceptance-test-20261010`，由数据库残留记录确认确为本轮创建。归属由唯一标记确认，非由审计日志独立交叉验证。
+  - **回归评测**：回归管线端到端执行成功（触发→证据检索→要点判定→历史记录），证据 ID 全部命中。
+  - **实现交付物（自动化定点验证）**：Demo profile 扩展到 RAG/向量化（新增 `DemoChatModel` + `DemoEmbeddingModel`；`LlmEmbeddingConfig`/`LlmProviderBootstrapService` 加 `@Profile("!demo")`；`LlmProviderRegistry` 注入 Environment 分支），`DemoProfileIntegrationTest` **8/8**；Redis Stream 重启恢复 `RedisStreamRestartRecoveryIntegrationTest` **5/5** + `AbstractStreamConsumer.pendingIdleTimeoutMs()` 可覆写（commit `9c20c0c`）；Docker Compose `createbuckets` init container 自动建桶（YAML 校验通过）；`docs/demo/` 5 个脱敏故障场景 + 演示路径 README；`README.md` 重写（架构图/技术栈/快速开始/Demo 路径/边界声明）。
+  - **未验证边界**：
+    - ⏳ 从干净环境（新 clone + 全新 Docker 卷）的冷启动（本轮从现有运行环境启动，复用已运行的 Docker 容器和数据库）
+    - ⏳ 真实付费 embedding（DashScope text-embedding-v3）下语义检索质量/排序
+    - ⏳ 前端 UI 视觉渲染（浏览器窗口隐藏，无截图证据）
+    - ⏳ `docker-compose.yml` 全栈部署（MinIO 非 RustFS）未实测
+  - **结论**：Stage 6 主流程联调通过。冷启动未验证。
+  - **Git 状态**：本轮校准文档（`DEVSUPPORT_ROADMAP.md`/`PROJECT_PROGRESS.md`/`CHANGES.md`），提交并推送到 review 分支；未改 `.env`、未调用付费 API。阶段 6 代码已在前序 commit `e85ff54`→`04d4275` 提交。
 
 - **DevSupport 阶段 5 首切片：案例驱动的回归评测（确定性版）+ 数据泄漏修复（2026-10-09）** — 状态 `离线通过（源码实现+自动化+数据泄漏修复+真实运行时离线闭环验证已完成，真实付费 embedding 语义质量未验证）`。
   - **后端模块**：新增 `interview.guide.modules.evalregression`——3 实体（CaseRegressionItemEntity/RunEntity/ResultEntity）+ `RegressionRunStatus` + 6 record DTO（RegressionItemDTO/RegressionResultDTO/RegressionRunDetailDTO/RegressionRunRequest/RegressionRunSummaryDTO/TopKSnapshotEntry）+ 3 repository + 4 服务（RegressionJsonCodec/EmbeddingMetadataResolver/CaseRegressionItemService/CaseRegressionRunService）+ `CaseRegressionController` + MapStruct `CaseRegressionMapper`。
