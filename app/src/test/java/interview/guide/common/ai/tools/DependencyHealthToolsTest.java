@@ -1,7 +1,6 @@
 package interview.guide.common.ai.tools;
 
 import interview.guide.common.config.StorageConfigProperties;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -11,6 +10,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.redisson.api.RBucket;
 import org.redisson.api.RedissonClient;
+import org.springframework.ai.chat.model.ToolContext;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.HeadBucketRequest;
 import software.amazon.awssdk.services.s3.model.HeadBucketResponse;
@@ -18,7 +18,11 @@ import software.amazon.awssdk.services.s3.model.HeadBucketResponse;
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -28,6 +32,7 @@ import static org.mockito.Mockito.when;
 /**
  * DependencyHealthTools 单元测试 — 每个测试对应一个实际风险。
  * 使用 Mockito mock DataSource / RedissonClient / S3Client，不调用真实基础设施。
+ * 验证 ToolContext 请求隔离、执行上限和并发安全。
  */
 @DisplayName("依赖健康检查工具测试")
 @ExtendWith(MockitoExtension.class)
@@ -48,12 +53,11 @@ class DependencyHealthToolsTest {
     tools = new DependencyHealthTools(dataSource, redissonClient, s3Client, storageConfig, testExecutor);
   }
 
-  @AfterEach
-  void tearDown() {
-    tools.clearRecorder();
-  }
-
   // ========== 辅助方法 ==========
+
+  private ToolContext toolContextWith(ToolInvocationRecorder recorder) {
+    return new ToolContext(Map.of(DependencyHealthTools.RECORDER_KEY, recorder));
+  }
 
   private void mockPostgresqlOk() throws Exception {
     Connection conn = mock(Connection.class);
@@ -99,7 +103,7 @@ class DependencyHealthToolsTest {
       mockRedisOk();
       mockS3Ok();
 
-      Map<String, Object> result = tools.checkDependencyHealth();
+      Map<String, Object> result = tools.checkDependencyHealth(null);
 
       assertThat(result).containsKeys("postgresql", "redis", "objectStorage");
       assertThat(getStatus(result, "postgresql")).isEqualTo("OK");
@@ -121,7 +125,7 @@ class DependencyHealthToolsTest {
       mockRedisOk();
       mockS3Ok();
 
-      Map<String, Object> result = tools.checkDependencyHealth();
+      Map<String, Object> result = tools.checkDependencyHealth(null);
 
       assertThat(getStatus(result, "postgresql")).isEqualTo("UNREACHABLE");
       assertThat(getStatus(result, "redis")).isEqualTo("OK");
@@ -135,7 +139,7 @@ class DependencyHealthToolsTest {
       mockRedisFail();
       mockS3Ok();
 
-      Map<String, Object> result = tools.checkDependencyHealth();
+      Map<String, Object> result = tools.checkDependencyHealth(null);
 
       assertThat(getStatus(result, "postgresql")).isEqualTo("OK");
       assertThat(getStatus(result, "redis")).isEqualTo("UNREACHABLE");
@@ -149,7 +153,7 @@ class DependencyHealthToolsTest {
       mockRedisOk();
       mockS3Fail();
 
-      Map<String, Object> result = tools.checkDependencyHealth();
+      Map<String, Object> result = tools.checkDependencyHealth(null);
 
       assertThat(getStatus(result, "postgresql")).isEqualTo("OK");
       assertThat(getStatus(result, "redis")).isEqualTo("OK");
@@ -170,7 +174,7 @@ class DependencyHealthToolsTest {
       mockRedisOk();
       mockS3Ok();
 
-      Map<String, Object> result = tools.checkDependencyHealth();
+      Map<String, Object> result = tools.checkDependencyHealth(null);
 
       assertThat(result.keySet()).containsExactlyInAnyOrder("postgresql", "redis", "objectStorage");
     }
@@ -182,7 +186,7 @@ class DependencyHealthToolsTest {
       mockRedisFail();
       mockS3Fail();
 
-      Map<String, Object> result = tools.checkDependencyHealth();
+      Map<String, Object> result = tools.checkDependencyHealth(null);
 
       String resultStr = result.toString();
       assertThat(resultStr).doesNotContain("Connection refused");
@@ -193,56 +197,85 @@ class DependencyHealthToolsTest {
     }
   }
 
-  // ========== 调用次数限制 ==========
+  // ========== 执行上限（tryAcquireSlot 前置检查） ==========
 
   @Nested
-  @DisplayName("调用次数限制")
+  @DisplayName("执行上限")
   class InvocationLimit {
 
     @Test
-    @DisplayName("通过 ToolInvocationRecorder 验证超过 3 次调用时记录器中 LIMIT_EXCEEDED")
-    void limitExceededAfterThreeCalls() throws Exception {
+    @DisplayName("前 3 次调用正常执行探测，第 4 次跳过探测返回 SKIPPED")
+    void fourthCallSkipsProbe() throws Exception {
       mockPostgresqlOk();
       mockRedisOk();
       mockS3Ok();
 
       ToolInvocationRecorder recorder = new ToolInvocationRecorder();
-      tools.setRecorder(recorder);
+      ToolContext ctx = toolContextWith(recorder);
 
-      // 前 3 次正常记录
-      tools.checkDependencyHealth();
-      tools.checkDependencyHealth();
-      tools.checkDependencyHealth();
+      // 前 3 次正常执行
+      tools.checkDependencyHealth(ctx);
+      tools.checkDependencyHealth(ctx);
+      tools.checkDependencyHealth(ctx);
 
       assertThat(recorder.getRecords()).hasSize(3);
-      assertThat(recorder.hasReachedLimit()).isTrue();
+      assertThat(recorder.getRecords()).allMatch(r -> "SUCCESS".equals(r.status()));
 
-      // 第 4 次：记录器已满，产生 LIMIT_EXCEEDED 记录
-      tools.checkDependencyHealth();
+      // 第 4 次：跳过实际探测，返回 SKIPPED
+      Map<String, Object> result = tools.checkDependencyHealth(ctx);
 
-      // LIMIT_EXCEEDED 记录不受 MAX_INVOCATIONS 限制，始终被记录
+      assertThat(getStatus(result, "postgresql")).isEqualTo("SKIPPED");
+      assertThat(getStatus(result, "redis")).isEqualTo("SKIPPED");
+      assertThat(getStatus(result, "objectStorage")).isEqualTo("SKIPPED");
+
+      // 记录器中有 LIMIT_EXCEEDED 记录
       assertThat(recorder.getRecords()).hasSize(4);
       assertThat(recorder.getRecords().getLast().status()).isEqualTo("LIMIT_EXCEEDED");
     }
-  }
-
-  // ========== AtomicReference recorder 集成 ==========
-
-  @Nested
-  @DisplayName("AtomicReference recorder 集成")
-  class AtomicReferenceRecorder {
 
     @Test
-    @DisplayName("设置 recorder 后调用工具，recorder 中有记录")
-    void recorderHasRecordsWhenSet() throws Exception {
+    @DisplayName("超限时不触碰真实依赖（通过 mock 验证）")
+    void limitExceededDoesNotTouchDependencies() throws Exception {
       mockPostgresqlOk();
       mockRedisOk();
       mockS3Ok();
 
       ToolInvocationRecorder recorder = new ToolInvocationRecorder();
-      tools.setRecorder(recorder);
+      ToolContext ctx = toolContextWith(recorder);
 
-      tools.checkDependencyHealth();
+      // 用尽 3 次额度
+      for (int i = 0; i < 3; i++) {
+        tools.checkDependencyHealth(ctx);
+      }
+
+      // 重置 mock 计数，验证后续调用不触碰依赖
+      org.mockito.Mockito.clearInvocations(dataSource, redissonClient, s3Client);
+
+      // 第 4 次应跳过
+      tools.checkDependencyHealth(ctx);
+
+      // 验证没有新的依赖调用
+      org.mockito.Mockito.verifyNoMoreInteractions(dataSource, redissonClient, s3Client);
+    }
+  }
+
+  // ========== ToolContext 请求隔离 ==========
+
+  @Nested
+  @DisplayName("ToolContext 请求隔离")
+  class ToolContextIsolation {
+
+    @Test
+    @DisplayName("通过 ToolContext 传递 recorder，工具调用后有记录")
+    void recorderFromToolContextHasRecords() throws Exception {
+      mockPostgresqlOk();
+      mockRedisOk();
+      mockS3Ok();
+
+      ToolInvocationRecorder recorder = new ToolInvocationRecorder();
+      ToolContext ctx = toolContextWith(recorder);
+
+      tools.checkDependencyHealth(ctx);
 
       assertThat(recorder.getRecords()).hasSize(1);
       ToolCallRecord record = recorder.getRecords().getFirst();
@@ -254,19 +287,77 @@ class DependencyHealthToolsTest {
     }
 
     @Test
-    @DisplayName("不设置 recorder 时调用不报错")
-    void noRecorderDoesNotThrow() throws Exception {
+    @DisplayName("null ToolContext 时工具正常执行但不记录")
+    void nullToolContextDoesNotThrow() throws Exception {
       mockPostgresqlOk();
       mockRedisOk();
       mockS3Ok();
 
-      // 不设置 recorder
-      tools.clearRecorder();
+      Map<String, Object> result = tools.checkDependencyHealth(null);
 
-      Map<String, Object> result = tools.checkDependencyHealth();
-
-      // 工具正常返回结果
       assertThat(result).containsKeys("postgresql", "redis", "objectStorage");
+    }
+
+    @Test
+    @DisplayName("ToolContext 不含 recorder 时工具正常执行但不记录")
+    void toolContextWithoutRecorderDoesNotThrow() throws Exception {
+      mockPostgresqlOk();
+      mockRedisOk();
+      mockS3Ok();
+
+      ToolContext emptyCtx = new ToolContext(Map.of());
+      Map<String, Object> result = tools.checkDependencyHealth(emptyCtx);
+
+      assertThat(result).containsKeys("postgresql", "redis", "objectStorage");
+    }
+
+    @Test
+    @DisplayName("两个并发请求使用不同 recorder，记录不串线")
+    void concurrentRequestsWithDifferentRecorders() throws Exception {
+      mockPostgresqlOk();
+      mockRedisOk();
+      mockS3Ok();
+
+      ToolInvocationRecorder recorder1 = new ToolInvocationRecorder();
+      ToolInvocationRecorder recorder2 = new ToolInvocationRecorder();
+      ToolContext ctx1 = toolContextWith(recorder1);
+      ToolContext ctx2 = toolContextWith(recorder2);
+
+      ExecutorService executor = Executors.newFixedThreadPool(2);
+      CountDownLatch latch = new CountDownLatch(2);
+      CountDownLatch startLatch = new CountDownLatch(1);
+
+      executor.submit(() -> {
+        try {
+          startLatch.await();
+          tools.checkDependencyHealth(ctx1);
+          tools.checkDependencyHealth(ctx1);
+        } catch (Exception e) {
+          e.printStackTrace();
+        } finally {
+          latch.countDown();
+        }
+      });
+
+      executor.submit(() -> {
+        try {
+          startLatch.await();
+          tools.checkDependencyHealth(ctx2);
+        } catch (Exception e) {
+          e.printStackTrace();
+        } finally {
+          latch.countDown();
+        }
+      });
+
+      // 同时释放两个线程
+      startLatch.countDown();
+      assertThat(latch.await(5, TimeUnit.SECONDS)).isTrue();
+      executor.shutdown();
+
+      // 验证 recorder1 有 2 条记录，recorder2 有 1 条记录，不串线
+      assertThat(recorder1.getRecords()).hasSize(2);
+      assertThat(recorder2.getRecords()).hasSize(1);
     }
   }
 
@@ -285,7 +376,7 @@ class DependencyHealthToolsTest {
       mockPostgresqlOk();
       mockRedisOk();
 
-      Map<String, Object> result = toolsWithoutS3.checkDependencyHealth();
+      Map<String, Object> result = toolsWithoutS3.checkDependencyHealth(null);
 
       assertThat(getStatus(result, "postgresql")).isEqualTo("OK");
       assertThat(getStatus(result, "redis")).isEqualTo("OK");

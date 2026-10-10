@@ -26,6 +26,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.document.Document;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -263,9 +264,12 @@ public class RagChatSessionService {
      * <p>
      * 从会话关联的知识库中提取 service/environment 上下文，传递给案例检索实现范围隔离。
      *
+     * @param sessionId 会话 ID
+     * @param question 用户问题
+     * @param toolContext Spring AI 工具上下文，用于传递 per-request recorder（可为 null）
      * @return 检索结果（包含流式响应和来源文档）
      */
-    public RetrievalResult getStreamAnswer(Long sessionId, String question) {
+    public RetrievalResult getStreamAnswer(Long sessionId, String question, ToolContext toolContext) {
         RagChatSessionEntity session = sessionRepository.findByIdWithKnowledgeBases(sessionId)
             .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "会话不存在"));
 
@@ -286,7 +290,7 @@ public class RagChatSessionService {
         }
 
         log.info("加载历史上下文: sessionId={}, historySize={}", sessionId, history.size());
-        return queryService.answerQuestionStream(kbIds, question, history, service, environment, affectedVersions);
+        return queryService.answerQuestionStream(kbIds, question, history, service, environment, affectedVersions, toolContext);
     }
 
     /** Markdown 标题匹配：# 、 ## 或 ### 开头的行 */

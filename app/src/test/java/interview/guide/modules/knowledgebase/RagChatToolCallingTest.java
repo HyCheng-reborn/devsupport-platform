@@ -9,7 +9,6 @@ import interview.guide.modules.knowledgebase.model.RetrievalResult;
 import interview.guide.modules.knowledgebase.model.SourceReference;
 import interview.guide.modules.knowledgebase.service.KnowledgeBaseQueryService;
 import interview.guide.modules.knowledgebase.service.RagChatSessionService;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -18,6 +17,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.document.Document;
 import org.springframework.http.codec.ServerSentEvent;
 import reactor.core.publisher.Flux;
@@ -59,11 +59,6 @@ class RagChatToolCallingTest {
         sessionService, queryService, llmProviderRegistry, objectMapper, dependencyHealthTools);
   }
 
-  @AfterEach
-  void tearDown() {
-    dependencyHealthTools.clearRecorder();
-  }
-
   // ========== 辅助方法 ==========
 
   private Document doc() {
@@ -91,7 +86,7 @@ class RagChatToolCallingTest {
       String question = "检查依赖健康状态";
       when(llmProviderRegistry.isDemoProfileActive()).thenReturn(true);
       when(sessionService.prepareStreamMessage(SESSION_ID, question)).thenReturn(MESSAGE_ID);
-      when(sessionService.getStreamAnswer(SESSION_ID, question))
+      when(sessionService.getStreamAnswer(eq(SESSION_ID), eq(question), any(ToolContext.class)))
           .thenReturn(resultWith(Flux.just("所有组件正常"), List.of(doc())));
       when(sessionService.buildSourceReferences(anyList())).thenReturn(oneSource());
       when(queryService.resolveFinalStatus(anyString(), any())).thenReturn(MessageStatus.COMPLETED);
@@ -124,7 +119,7 @@ class RagChatToolCallingTest {
       String question = "系统依赖状态如何";
       when(llmProviderRegistry.isDemoProfileActive()).thenReturn(true);
       when(sessionService.prepareStreamMessage(SESSION_ID, question)).thenReturn(MESSAGE_ID);
-      when(sessionService.getStreamAnswer(SESSION_ID, question))
+      when(sessionService.getStreamAnswer(eq(SESSION_ID), eq(question), any(ToolContext.class)))
           .thenReturn(resultWith(Flux.just("所有组件正常"), List.of(doc())));
       when(sessionService.buildSourceReferences(anyList())).thenReturn(oneSource());
       when(queryService.resolveFinalStatus(anyString(), any())).thenReturn(MessageStatus.COMPLETED);
@@ -152,7 +147,7 @@ class RagChatToolCallingTest {
       String question = "检查依赖健康状态";
       when(llmProviderRegistry.isDemoProfileActive()).thenReturn(false);
       when(sessionService.prepareStreamMessage(SESSION_ID, question)).thenReturn(MESSAGE_ID);
-      when(sessionService.getStreamAnswer(SESSION_ID, question))
+      when(sessionService.getStreamAnswer(eq(SESSION_ID), eq(question), any(ToolContext.class)))
           .thenReturn(resultWith(Flux.just("回答内容"), List.of(doc())));
       when(sessionService.buildSourceReferences(anyList())).thenReturn(oneSource());
       when(queryService.resolveFinalStatus(anyString(), any())).thenReturn(MessageStatus.COMPLETED);
@@ -174,7 +169,7 @@ class RagChatToolCallingTest {
       String question = "项目端口是多少";
       when(llmProviderRegistry.isDemoProfileActive()).thenReturn(true);
       when(sessionService.prepareStreamMessage(SESSION_ID, question)).thenReturn(MESSAGE_ID);
-      when(sessionService.getStreamAnswer(SESSION_ID, question))
+      when(sessionService.getStreamAnswer(eq(SESSION_ID), eq(question), any(ToolContext.class)))
           .thenReturn(resultWith(Flux.just("端口是8080"), List.of(doc())));
       when(sessionService.buildSourceReferences(anyList())).thenReturn(oneSource());
       when(queryService.resolveFinalStatus(anyString(), any())).thenReturn(MessageStatus.COMPLETED);
@@ -203,7 +198,7 @@ class RagChatToolCallingTest {
       String question = "健康检查";
       when(llmProviderRegistry.isDemoProfileActive()).thenReturn(true);
       when(sessionService.prepareStreamMessage(SESSION_ID, question)).thenReturn(MESSAGE_ID);
-      when(sessionService.getStreamAnswer(SESSION_ID, question))
+      when(sessionService.getStreamAnswer(eq(SESSION_ID), eq(question), any(ToolContext.class)))
           .thenReturn(resultWith(Flux.just("回答"), List.of(doc())));
       when(sessionService.buildSourceReferences(anyList())).thenReturn(oneSource());
       when(queryService.resolveFinalStatus(anyString(), any())).thenReturn(MessageStatus.COMPLETED);
@@ -234,7 +229,7 @@ class RagChatToolCallingTest {
       String question = "项目端口是多少";
       when(llmProviderRegistry.isDemoProfileActive()).thenReturn(false);
       when(sessionService.prepareStreamMessage(SESSION_ID, question)).thenReturn(MESSAGE_ID);
-      when(sessionService.getStreamAnswer(SESSION_ID, question))
+      when(sessionService.getStreamAnswer(eq(SESSION_ID), eq(question), any(ToolContext.class)))
           .thenReturn(resultWith(Flux.just("端口是8080"), List.of(doc())));
       when(sessionService.buildSourceReferences(anyList())).thenReturn(oneSource());
       when(queryService.resolveFinalStatus(anyString(), any())).thenReturn(MessageStatus.COMPLETED);

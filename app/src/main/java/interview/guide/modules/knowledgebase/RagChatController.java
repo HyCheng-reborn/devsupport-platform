@@ -23,6 +23,7 @@ import jakarta.validation.Valid;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -143,9 +144,9 @@ public class RagChatController {
         // 1. 准备消息（保存用户消息，创建 AI 消息占位）
         Long messageId = sessionService.prepareStreamMessage(sessionId, request.question());
 
-        // 2. 创建工具调用记录器并通过 AtomicReference 绑定到 DependencyHealthTools
+        // 2. 创建 per-request 工具调用记录器，通过 ToolContext 实现请求隔离
         ToolInvocationRecorder recorder = new ToolInvocationRecorder();
-        dependencyHealthTools.setRecorder(recorder);
+        ToolContext toolContext = new ToolContext(Map.of(DependencyHealthTools.RECORDER_KEY, recorder));
 
         // Demo 模式下检测健康检查关键词，构造模拟 tool_result
         boolean isDemo = llmProviderRegistry.isDemoProfileActive();
@@ -161,8 +162,8 @@ public class RagChatController {
             recorder.record(demoToolCalls.getFirst());
         }
 
-        // 3. 获取检索结果（包含流式响应和来源文档）
-        RetrievalResult result = sessionService.getStreamAnswer(sessionId, request.question());
+        // 3. 获取检索结果（包含流式响应和来源文档），传递 ToolContext
+        RetrievalResult result = sessionService.getStreamAnswer(sessionId, request.question(), toolContext);
 
         // 3. 构建来源列表（来源组装与数据库查询责任归入会话 Service）
         List<SourceReference> sources = sessionService.buildSourceReferences(result.sourceDocuments());
@@ -281,8 +282,8 @@ public class RagChatController {
                 }
             })
             .doFinally(signal -> {
-                dependencyHealthTools.clearRecorder();
-                log.debug("清理 ToolInvocationRecorder, signal={}", signal);
+                // ToolContext 方案无需清理，每个请求创建独立实例
+                log.debug("请求完成，signal={}", signal);
             });
     }
 

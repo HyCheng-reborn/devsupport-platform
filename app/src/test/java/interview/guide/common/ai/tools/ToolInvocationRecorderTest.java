@@ -149,6 +149,66 @@ class ToolInvocationRecorderTest {
     }
   }
 
+  // ========== tryAcquireSlot ==========
+
+  @Nested
+  @DisplayName("执行额度领取")
+  class TryAcquireSlot {
+
+    @Test
+    @DisplayName("前 3 次返回 true，第 4 次返回 false")
+    void firstThreeReturnTrueFourthReturnsFalse() {
+      assertThat(recorder.tryAcquireSlot()).isTrue();
+      assertThat(recorder.tryAcquireSlot()).isTrue();
+      assertThat(recorder.tryAcquireSlot()).isTrue();
+      assertThat(recorder.tryAcquireSlot()).isFalse();
+    }
+
+    @Test
+    @DisplayName("getExecutedCount 反映实际调用次数")
+    void getExecutedCountReflectsActualCalls() {
+      assertThat(recorder.getExecutedCount()).isZero();
+      recorder.tryAcquireSlot();
+      assertThat(recorder.getExecutedCount()).isEqualTo(1);
+      recorder.tryAcquireSlot();
+      assertThat(recorder.getExecutedCount()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("并发调用下不超过 MAX_INVOCATIONS")
+    void concurrentCallsDoNotExceedMax() throws Exception {
+      int threadCount = 10;
+      ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+      CountDownLatch latch = new CountDownLatch(threadCount);
+      CountDownLatch startLatch = new CountDownLatch(1);
+
+      java.util.concurrent.atomic.AtomicInteger successCount = new java.util.concurrent.atomic.AtomicInteger(0);
+
+      for (int i = 0; i < threadCount; i++) {
+        executor.submit(() -> {
+          try {
+            startLatch.await();
+            if (recorder.tryAcquireSlot()) {
+              successCount.incrementAndGet();
+            }
+          } catch (Exception e) {
+            e.printStackTrace();
+          } finally {
+            latch.countDown();
+          }
+        });
+      }
+
+      startLatch.countDown();
+      assertThat(latch.await(5, TimeUnit.SECONDS)).isTrue();
+      executor.shutdown();
+
+      // 成功领取的次数不应超过 MAX_INVOCATIONS
+      assertThat(successCount.get()).isEqualTo(ToolInvocationRecorder.MAX_INVOCATIONS);
+      assertThat(recorder.getExecutedCount()).isEqualTo(threadCount);
+    }
+  }
+
   // ========== reset ==========
 
   @Nested
@@ -156,16 +216,18 @@ class ToolInvocationRecorderTest {
   class Reset {
 
     @Test
-    @DisplayName("reset 后 records 为空")
-    void resetClearsRecords() {
+    @DisplayName("reset 后 records 为空且 executedCount 重置")
+    void resetClearsRecordsAndCount() {
       recorder.record(sampleRecord("t1", "SUCCESS"));
-      recorder.record(sampleRecord("t2", "SUCCESS"));
+      recorder.tryAcquireSlot();
       assertThat(recorder.getRecords()).isNotEmpty();
+      assertThat(recorder.getExecutedCount()).isEqualTo(1);
 
       recorder.reset();
 
       assertThat(recorder.getRecords()).isEmpty();
       assertThat(recorder.hasReachedLimit()).isFalse();
+      assertThat(recorder.getExecutedCount()).isZero();
     }
   }
 

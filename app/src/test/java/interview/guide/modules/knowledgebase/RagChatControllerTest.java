@@ -20,6 +20,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.document.Document;
 import org.springframework.core.io.DefaultResourceLoader;
 import org.springframework.http.codec.ServerSentEvent;
@@ -106,7 +107,7 @@ class RagChatControllerTest {
     void doneEmittedAfterSuccessfulPersistence() {
       List<Document> docs = List.of(doc());
       when(sessionService.prepareStreamMessage(SESSION_ID, QUESTION)).thenReturn(MESSAGE_ID);
-      when(sessionService.getStreamAnswer(SESSION_ID, QUESTION))
+      when(sessionService.getStreamAnswer(eq(SESSION_ID), eq(QUESTION), any(ToolContext.class)))
           .thenReturn(resultWith(Flux.just("项目的后端端口", "是 8080"), docs));
       when(sessionService.buildSourceReferences(anyList())).thenReturn(oneSource());
       when(queryService.resolveFinalStatus("项目的后端端口是 8080", docs))
@@ -139,7 +140,7 @@ class RagChatControllerTest {
     void persistenceVerifiedAtMomentSourcesAndDoneArrive() {
       List<Document> docs = List.of(doc());
       when(sessionService.prepareStreamMessage(SESSION_ID, QUESTION)).thenReturn(MESSAGE_ID);
-      when(sessionService.getStreamAnswer(SESSION_ID, QUESTION))
+      when(sessionService.getStreamAnswer(eq(SESSION_ID), eq(QUESTION), any(ToolContext.class)))
           .thenReturn(resultWith(Flux.just("项目的后端端口是 8080"), docs));
       when(sessionService.buildSourceReferences(anyList())).thenReturn(oneSource());
       when(queryService.resolveFinalStatus("项目的后端端口是 8080", docs))
@@ -184,7 +185,7 @@ class RagChatControllerTest {
     void sourceTagsAppearInSourcesEventAndPersistedJson() {
       List<Document> docs = List.of(doc());
       when(sessionService.prepareStreamMessage(SESSION_ID, QUESTION)).thenReturn(MESSAGE_ID);
-      when(sessionService.getStreamAnswer(SESSION_ID, QUESTION))
+      when(sessionService.getStreamAnswer(eq(SESSION_ID), eq(QUESTION), any(ToolContext.class)))
           .thenReturn(resultWith(Flux.just("项目的后端端口是 8080"), docs));
       // oneSource() 携带提问时刻标签：service=支付网关、environment=生产
       when(sessionService.buildSourceReferences(anyList())).thenReturn(oneSource());
@@ -241,7 +242,7 @@ class RagChatControllerTest {
       String answer = "找不到配置文件时，请先检查工作目录及挂载路径，"
           + "并将配置放在应用指定的位置，随后重新启动服务。";
       when(sessionService.prepareStreamMessage(SESSION_ID, QUESTION)).thenReturn(MESSAGE_ID);
-      when(sessionService.getStreamAnswer(SESSION_ID, QUESTION))
+      when(sessionService.getStreamAnswer(eq(SESSION_ID), eq(QUESTION), any(ToolContext.class)))
           .thenReturn(resultWith(Flux.just(answer), docs));
       when(sessionService.buildSourceReferences(anyList())).thenReturn(oneSource());
 
@@ -279,7 +280,7 @@ class RagChatControllerTest {
       // 非固定模板、但明确“无法根据现有资料回答”，有文档时也应判为拒答并清空来源。
       String refusal = "无法根据现有资料回答您的问题，请补充更具体的关键词。";
       when(sessionService.prepareStreamMessage(SESSION_ID, QUESTION)).thenReturn(MESSAGE_ID);
-      when(sessionService.getStreamAnswer(SESSION_ID, QUESTION))
+      when(sessionService.getStreamAnswer(eq(SESSION_ID), eq(QUESTION), any(ToolContext.class)))
           .thenReturn(resultWith(Flux.just(refusal), docs));
       when(sessionService.buildSourceReferences(anyList())).thenReturn(oneSource());
 
@@ -316,7 +317,7 @@ class RagChatControllerTest {
       List<Document> docs = List.of(doc());
       String refusal = "抱歉，无法根据“部署说明”回答您的问题，请补充资料。";
       when(sessionService.prepareStreamMessage(SESSION_ID, QUESTION)).thenReturn(MESSAGE_ID);
-      when(sessionService.getStreamAnswer(SESSION_ID, QUESTION))
+      when(sessionService.getStreamAnswer(eq(SESSION_ID), eq(QUESTION), any(ToolContext.class)))
           .thenReturn(resultWith(Flux.just(refusal), docs));
       when(sessionService.buildSourceReferences(anyList())).thenReturn(oneSource());
 
@@ -342,7 +343,7 @@ class RagChatControllerTest {
     void persistenceFailureDoesNotAnnounceSuccess() {
       List<Document> docs = List.of(doc());
       when(sessionService.prepareStreamMessage(SESSION_ID, QUESTION)).thenReturn(MESSAGE_ID);
-      when(sessionService.getStreamAnswer(SESSION_ID, QUESTION))
+      when(sessionService.getStreamAnswer(eq(SESSION_ID), eq(QUESTION), any(ToolContext.class)))
           .thenReturn(resultWith(Flux.just("部分回答"), docs));
       when(sessionService.buildSourceReferences(anyList())).thenReturn(oneSource());
       when(queryService.resolveFinalStatus(anyString(), any())).thenReturn(MessageStatus.COMPLETED);
@@ -369,10 +370,10 @@ class RagChatControllerTest {
     List<Document> docs = List.of(doc());
     String refusal = "抱歉，在选定的知识库中未检索到相关信息。";
     when(sessionService.prepareStreamMessage(SESSION_ID, QUESTION)).thenReturn(MESSAGE_ID);
-    when(sessionService.getStreamAnswer(SESSION_ID, QUESTION))
+    when(sessionService.getStreamAnswer(eq(SESSION_ID), eq(QUESTION), any(ToolContext.class)))
         .thenReturn(resultWith(Flux.just(refusal), docs));
     when(sessionService.buildSourceReferences(anyList())).thenReturn(oneSource());
-    // 真实判定逻辑在 Service 层测试；此处按"文档存在但拒答"契约桩为 NO_RESULTS
+    // 真实判定逻辑在 Service 层测试；此处按“文档存在但拒答”契约桩为 NO_RESULTS
     when(queryService.resolveFinalStatus(refusal, docs)).thenReturn(MessageStatus.NO_RESULTS);
 
     List<ServerSentEvent<String>> events =
@@ -408,7 +409,7 @@ class RagChatControllerTest {
         + "## 缺失信息\n"
         + "无";
     when(sessionService.prepareStreamMessage(SESSION_ID, QUESTION)).thenReturn(MESSAGE_ID);
-    when(sessionService.getStreamAnswer(SESSION_ID, QUESTION))
+    when(sessionService.getStreamAnswer(eq(SESSION_ID), eq(QUESTION), any(ToolContext.class)))
         .thenReturn(resultWith(Flux.just(skeletonAnswer), docs));
     when(sessionService.buildSourceReferences(anyList())).thenReturn(oneSource());
     // "## 缺失信息\n无" 是空占位，不构成 INSUFFICIENT_INFO；有实质排查步骤应为 COMPLETED
@@ -445,7 +446,7 @@ class RagChatControllerTest {
   void modelErrorPersistsModelFailedOnce() {
     List<Document> docs = List.of(doc());
     when(sessionService.prepareStreamMessage(SESSION_ID, QUESTION)).thenReturn(MESSAGE_ID);
-    when(sessionService.getStreamAnswer(SESSION_ID, QUESTION))
+    when(sessionService.getStreamAnswer(eq(SESSION_ID), eq(QUESTION), any(ToolContext.class)))
         .thenReturn(resultWith(Flux.error(new RuntimeException("LLM服务不可用")), docs));
     when(sessionService.buildSourceReferences(anyList())).thenReturn(oneSource());
 
@@ -466,7 +467,7 @@ class RagChatControllerTest {
   void cancelPersistsClientDisconnectedOnce() {
     List<Document> docs = List.of(doc());
     when(sessionService.prepareStreamMessage(SESSION_ID, QUESTION)).thenReturn(MESSAGE_ID);
-    when(sessionService.getStreamAnswer(SESSION_ID, QUESTION))
+    when(sessionService.getStreamAnswer(eq(SESSION_ID), eq(QUESTION), any(ToolContext.class)))
         .thenReturn(resultWith(Flux.just("已输出的部分").concatWith(Flux.never()), docs));
     when(sessionService.buildSourceReferences(anyList())).thenReturn(oneSource());
 

@@ -14,6 +14,7 @@ import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.PromptTemplate;
+import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.document.Document;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.stereotype.Service;
@@ -272,11 +273,11 @@ public class KnowledgeBaseQueryService {
     public RetrievalResult answerQuestionStream(List<Long> knowledgeBaseIds, String question,
                                                 List<Message> history,
                                                 String service, String environment) {
-        return answerQuestionStream(knowledgeBaseIds, question, history, service, environment, null);
+        return answerQuestionStream(knowledgeBaseIds, question, history, service, environment, null, null);
     }
 
     /**
-     * 流式查询知识库（SSE，支持多轮上下文 + 案例检索范围隔离 + 版本过滤）
+     * 流式查询知识库（SSE，支持多轮上下文 + 案例检索范围隔离 + 版本过滤 + 工具上下文）
      *
      * @param knowledgeBaseIds 知识库ID列表
      * @param question 用户问题
@@ -284,12 +285,14 @@ public class KnowledgeBaseQueryService {
      * @param service 会话关联的服务标签（可为 null）
      * @param environment 会话关联的环境标签（可为 null）
      * @param affectedVersions 版本标签（可为 null）
+     * @param toolContext Spring AI 工具上下文，用于传递 per-request recorder（可为 null）
      * @return 检索结果（包含流式响应和来源文档）
      */
     public RetrievalResult answerQuestionStream(List<Long> knowledgeBaseIds, String question,
                                                 List<Message> history,
                                                 String service, String environment,
-                                                String affectedVersions) {
+                                                String affectedVersions,
+                                                ToolContext toolContext) {
         log.info("收到知识库流式提问: kbIds={}, question={}, historySize={}", knowledgeBaseIds, question,
                 history != null ? history.size() : 0);
         if (knowledgeBaseIds == null || knowledgeBaseIds.isEmpty() || normalizeQuestion(question).isBlank()) {
@@ -321,10 +324,13 @@ public class KnowledgeBaseQueryService {
             String systemPrompt = buildSystemPrompt();
             String userPrompt = buildUserPrompt(context, question);
 
-            // 5. 流式调用（带历史上下文）+ 探测窗口归一化
+            // 5. 流式调用（带历史上下文 + 工具上下文）+ 探测窗口归一化
             var promptSpec = getChatClient().prompt().system(systemPrompt);
             if (!effectiveHistory.isEmpty()) {
                 promptSpec = promptSpec.messages(effectiveHistory);
+            }
+            if (toolContext != null) {
+                promptSpec = promptSpec.toolContext(toolContext.getContext());
             }
             Flux<String> responseFlux = promptSpec
                     .user(userPrompt)

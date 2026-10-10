@@ -2,12 +2,13 @@ package interview.guide.common.ai.tools;
 
 import interview.guide.common.config.StorageConfigProperties;
 import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RedissonClient;
+import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.HeadBucketRequest;
-import org.redisson.api.RedissonClient;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -18,13 +19,16 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * 基础设施依赖健康检查工具。
  * <p>白名单组件：postgresql、redis、objectStorage。
  * 每个组件独立探测，一个失败不影响其他。
  * 不返回原始异常/堆栈，错误时只返回 UNREACHABLE 状态。</p>
+ * <p>请求隔离通过 Spring AI {@link ToolContext} 实现：
+ * 每个 SSE 请求创建独立的 {@link ToolInvocationRecorder}，
+ * 通过 {@code chatClient.prompt().toolContext(...)} 传递，
+ * 框架自动注入到 @Tool 方法参数，并发请求不串写。</p>
  */
 @Component
 @Slf4j
@@ -39,18 +43,16 @@ public class DependencyHealthTools {
   public static final List<String> HEALTH_KEYWORDS = List.of(
       "健康", "依赖", "状态", "dependency", "health", "组件");
 
+  /**
+   * ToolContext 中 recorder 的 key
+   */
+  public static final String RECORDER_KEY = "toolInvocationRecorder";
+
   private final DataSource dataSource;
   private final RedissonClient redissonClient;
   private final S3Client s3Client;
   private final StorageConfigProperties storageConfig;
   private final Executor toolExecutor;
-
-  /**
-   * Per-request 记录器，通过 AtomicReference 传递。
-   * 在 SSE 流开始时由 Controller 设置，流结束时清理。
-   * 使用 AtomicReference 替代 ThreadLocal，避免 Reactor 异步链中线程不一致问题。
-   */
-  private final AtomicReference<ToolInvocationRecorder> currentRecorder = new AtomicReference<>();
 
   public DependencyHealthTools(DataSource dataSource,
                                RedissonClient redissonClient,
@@ -64,19 +66,32 @@ public class DependencyHealthTools {
     this.toolExecutor = toolExecutor;
   }
 
-  public void setRecorder(ToolInvocationRecorder recorder) {
-    currentRecorder.set(recorder);
-  }
-
-  public void clearRecorder() {
-    currentRecorder.set(null);
-  }
-
   @Tool(description = "检查基础设施依赖（PostgreSQL、Redis、对象存储）的健康状态。"
       + "返回每个组件的连接状态，用于排查基础设施故障。")
-  public Map<String, Object> checkDependencyHealth() {
+  public Map<String, Object> checkDependencyHealth(ToolContext toolContext) {
     long startTime = System.currentTimeMillis();
     log.info("[DependencyHealthTools] 开始健康检查");
+
+    // 从 ToolContext 提取 per-request recorder（可能为 null）
+    ToolInvocationRecorder recorder = extractRecorder(toolContext);
+
+    // 执行上限检查：在探测之前检查，超限不执行实际探测
+    if (recorder != null && !recorder.tryAcquireSlot()) {
+      long durationMs = System.currentTimeMillis() - startTime;
+      Map<String, Object> skippedResult = new LinkedHashMap<>();
+      skippedResult.put("postgresql", Map.of("status", "SKIPPED"));
+      skippedResult.put("redis", Map.of("status", "SKIPPED"));
+      skippedResult.put("objectStorage", Map.of("status", "SKIPPED"));
+
+      recorder.record(new ToolCallRecord(
+          "checkDependencyHealth", "LIMIT_EXCEEDED",
+          Map.of("message", "已达单次请求最大调用次数上限，跳过实际探测"),
+          durationMs, Instant.now().toString(), false
+      ));
+
+      log.info("[DependencyHealthTools] 已达调用上限，跳过探测");
+      return skippedResult;
+    }
 
     Map<String, Object> result = new LinkedHashMap<>();
     result.put("postgresql", probeWithTimeout("postgresql", this::probePostgresql));
@@ -86,24 +101,27 @@ public class DependencyHealthTools {
     long durationMs = System.currentTimeMillis() - startTime;
 
     // 记录本次调用
-    ToolInvocationRecorder recorder = currentRecorder.get();
     if (recorder != null) {
-      if (recorder.hasReachedLimit()) {
-        recorder.record(new ToolCallRecord(
-            "checkDependencyHealth", "LIMIT_EXCEEDED",
-            Map.of("message", "已达单次请求最大调用次数上限"),
-            durationMs, Instant.now().toString(), false
-        ));
-      } else {
-        recorder.record(new ToolCallRecord(
-            "checkDependencyHealth", "SUCCESS",
-            flattenResult(result), durationMs, Instant.now().toString(), false
-        ));
-      }
+      recorder.record(new ToolCallRecord(
+          "checkDependencyHealth", "SUCCESS",
+          flattenResult(result), durationMs, Instant.now().toString(), false
+      ));
     }
 
     log.info("[DependencyHealthTools] 健康检查完成，耗时 {}ms", durationMs);
     return result;
+  }
+
+  /**
+   * 从 ToolContext 中提取 recorder。
+   * toolContext 为 null 或不包含 recorder 时返回 null，工具仍正常执行但不记录。
+   */
+  private ToolInvocationRecorder extractRecorder(ToolContext toolContext) {
+    if (toolContext == null) {
+      return null;
+    }
+    Object obj = toolContext.getContext().get(RECORDER_KEY);
+    return obj instanceof ToolInvocationRecorder r ? r : null;
   }
 
   private Map<String, Object> probeWithTimeout(String componentName, ProbeAction action) {
@@ -119,6 +137,7 @@ public class DependencyHealthTools {
 
   private Map<String, Object> probePostgresql() {
     try (Connection conn = dataSource.getConnection()) {
+      // isValid(3) 有 3 秒有界超时 ✓
       boolean valid = conn.isValid(3);
       return valid
           ? Map.of("status", "OK", "detail", "连接正常")
@@ -132,8 +151,8 @@ public class DependencyHealthTools {
   private Map<String, Object> probeRedis() {
     try {
       // 使用最轻量的方式：检查一个 key 是否存在
+      // Redisson isExists 底层有连接超时配置 ✓
       redissonClient.getBucket("__health_check__").isExists();
-      // isExists 本身不抛异常即表示连接正常，key 是否存在不重要
       return Map.of("status", "OK", "detail", "连接正常");
     } catch (Exception e) {
       log.warn("[DependencyHealthTools] Redis 探测异常: {}", e.getMessage());
@@ -147,6 +166,7 @@ public class DependencyHealthTools {
     }
     try {
       String bucket = storageConfig.getBucket();
+      // S3Client headBucket 使用 SDK 默认 API 调用超时配置 ✓
       s3Client.headBucket(HeadBucketRequest.builder().bucket(bucket).build());
       return Map.of("status", "OK", "detail", "连接正常");
     } catch (Exception e) {
