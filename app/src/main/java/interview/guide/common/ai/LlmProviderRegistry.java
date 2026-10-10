@@ -1,6 +1,7 @@
 package interview.guide.common.ai;
 
 import com.openai.client.OpenAIClient;
+import interview.guide.common.ai.tools.DependencyHealthTools;
 import interview.guide.common.config.LlmProviderProperties;
 import interview.guide.common.config.LlmProviderProperties.AdvisorConfig;
 import interview.guide.common.config.LlmProviderProperties.ProviderConfig;
@@ -59,6 +60,7 @@ public class LlmProviderRegistry {
     private final ToolCallingManager toolCallingManager;
     private final ObservationRegistry observationRegistry;
     private final ToolCallback interviewSkillsToolCallback;
+    private final DependencyHealthTools dependencyHealthTools;
     private final Environment environment;
     private final boolean demoProfileActive;
     private static final Map<String, String> RECOMMENDED_EMBEDDING_MODELS = Map.of(
@@ -78,6 +80,7 @@ public class LlmProviderRegistry {
             @Autowired(required = false) ToolCallingManager toolCallingManager,
             @Autowired(required = false) ObservationRegistry observationRegistry,
             @Autowired(required = false) @Qualifier("interviewSkillsToolCallback") ToolCallback interviewSkillsToolCallback,
+            DependencyHealthTools dependencyHealthTools,
             Environment environment) {
         this.properties = properties;
         this.providerRepository = providerRepository;
@@ -86,6 +89,7 @@ public class LlmProviderRegistry {
         this.toolCallingManager = toolCallingManager;
         this.observationRegistry = observationRegistry;
         this.interviewSkillsToolCallback = interviewSkillsToolCallback;
+        this.dependencyHealthTools = dependencyHealthTools;
         this.environment = environment;
         this.demoProfileActive = environment != null && Arrays.asList(environment.getActiveProfiles()).contains("demo");
     }
@@ -95,8 +99,9 @@ public class LlmProviderRegistry {
             ToolCallingManager toolCallingManager,
             ObservationRegistry observationRegistry,
             ToolCallback interviewSkillsToolCallback,
+            DependencyHealthTools dependencyHealthTools,
             Environment environment) {
-        this(properties, null, null, null, toolCallingManager, observationRegistry, interviewSkillsToolCallback, environment);
+        this(properties, null, null, null, toolCallingManager, observationRegistry, interviewSkillsToolCallback, dependencyHealthTools, environment);
     }
 
     /**
@@ -188,8 +193,15 @@ public class LlmProviderRegistry {
         OpenAiChatModel chatModel = getChatModel(providerId);
 
         ChatClient.Builder builder = ChatClient.builder(chatModel);
+        List<Object> tools = new ArrayList<>();
         if (interviewSkillsToolCallback != null) {
-            builder.defaultTools(interviewSkillsToolCallback);
+            tools.add(interviewSkillsToolCallback);
+        }
+        if (dependencyHealthTools != null) {
+            tools.add(dependencyHealthTools);
+        }
+        if (!tools.isEmpty()) {
+            builder.defaultTools(tools.toArray());
         }
         List<Advisor> advisors = buildDefaultAdvisors(providerId);
         if (!advisors.isEmpty()) {
@@ -460,6 +472,13 @@ public class LlmProviderRegistry {
             || lower.startsWith("moonshot")
             || lower.startsWith("qwen")
             || lower.startsWith("ernie");
+    }
+
+    /**
+     * 是否处于 Demo 模式
+     */
+    public boolean isDemoProfileActive() {
+        return demoProfileActive;
     }
 
     private record ProviderSnapshot(

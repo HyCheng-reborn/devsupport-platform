@@ -1,3 +1,39 @@
+### AI Agent 只读 Tool-use 第一个纵向切片 — check_dependency_health（2026-10-10）
+
+**新增能力**：通过 Spring AI Function Calling 提供只读依赖健康检查工具，AI Agent 在 RAG 对话中可主动调用工具探测基础设施状态。
+
+**新增**：
+- `DependencyHealthTools`：Spring AI `@Tool` 注解，白名单探测 PostgreSQL（`isValid(3)`）、Redis（`isExists()`）、对象存储（`headBucket`）
+- `ToolInvocationRecorder`：per-request 工具调用记录器，`CopyOnWriteArrayList` + `synchronized`，上限 3 次
+- `ToolCallRecord`：工具调用元信息 record（toolName/status/result/durationMs/timestamp/demo）
+- SSE 新增 `tool_result` 事件类型，事件顺序：`data` → `tool_result` → `sources` → `done`
+- `rag_chat_messages` 表新增 `tool_calls_json` 列（Flyway V20261013），nullable 向后兼容
+- 前端工具结果面板 UI（`ChatSessionDetailPage.tsx`），展示工具名、状态徽章、脱敏结果，区分 KB 引用与工具结果
+- `ragStreamStatus.ts` 新增 `tool_result` 事件解析逻辑
+- Demo profile 模拟工具调用路径（`DemoChatModel` 关键词匹配后标记 `demo: true`）
+- `LlmProviderRegistry` 注入 `DependencyHealthTools`，demo/真实模式均注册工具
+
+**安全边界**：
+- 白名单组件：仅 postgresql、redis、objectStorage
+- 单次探测超时 5 秒（`CompletableFuture.orTimeout`），每轮最大 3 次调用
+- 不返回原始异常/堆栈，错误时只返回 `UNREACHABLE` 状态
+- 不执行 shell/SQL，不读取配置值或密钥
+- 显式使用 `@Qualifier("taskExecutor")` 线程池，不使用 `Executors.newXxx`
+
+**向后兼容**：
+- 旧前端忽略 `tool_result` SSE 事件（`EventSource` 只处理已知事件类型）
+- `tool_calls_json` 列 nullable，旧消息不受影响
+- `LlmProviderRegistry` 构造器新增 `DependencyHealthTools` 参数，相关测试已同步更新
+
+**定点测试**：
+- `DependencyHealthToolsTest`：工具成功/超时/白名单/脱敏
+- `ToolInvocationRecorderTest`：上限/线程安全/LIMIT_EXCEEDED 不受限
+- `RagChatToolCallingTest`：SSE 兼容/旧消息兼容
+- `RagChatControllerTest`：更新以适配新事件流
+- `LlmProviderRegistryPathIntegrationTest` / `LlmProviderRegistryTest`：构造器参数同步
+
+---
+
 ### Stage 6 文档口径最后校准 — 浏览器自动化描述/回归 0/1 如实记录/冷启动拆分/测试数字核对/归属证据（2026-10-10）
 
 **验收方式**：真实服务联调的浏览器自动化（非 mock — 后端/数据库/RustFS 均为真实 Docker 容器，但浏览器窗口隐藏，由自动化脚本派发事件）。

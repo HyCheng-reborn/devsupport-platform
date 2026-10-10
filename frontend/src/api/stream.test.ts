@@ -215,3 +215,94 @@ test('ragChat：跨块 CRLF 拆分的 done 不再误回退 MODEL_FAILED', async 
 
   assert.deepEqual(status, ['COMPLETED'], 'done 必须被识别，不能因分块丢失而回退失败');
 });
+
+// ========== tool_result 事件解析 ==========
+
+interface ToolRecorder extends Recorder {
+  toolResults: string[];
+}
+
+function runSseWithTool(chunks: (string | Uint8Array)[], options: Record<string, unknown>): Promise<ToolRecorder> {
+  const rec: ToolRecorder = {
+    messages: [], sources: [], done: [], completes: 0, errors: [], toolResults: [],
+  };
+  const restore = withFetch(chunks);
+  return streamSse({
+    url: '/api/rag-chat/sessions/1/messages/stream',
+    init: {},
+    onMessage: (c) => rec.messages.push(c),
+    onSources: (d) => rec.sources.push(d),
+    onDone: (s) => rec.done.push(s),
+    onToolResult: (d) => rec.toolResults.push(d),
+    onComplete: () => { rec.completes += 1; },
+    onError: (e) => rec.errors.push(e),
+    ...options,
+  }).then(
+    () => { restore(); return rec; },
+    (e) => { restore(); rec.errors.push(e as Error); return rec; },
+  );
+}
+
+test('tool_result 事件解析：SSE 包含 event: tool_result 时 onToolResult 回调被调用', async () => {
+  const toolPayload = JSON.stringify({
+    toolName: 'checkDependencyHealth', status: 'SUCCESS',
+    result: { postgresql: { status: 'OK' } }, durationMs: 42, demo: true,
+  });
+  const chunks = [
+    'event:data\ndata:回答内容\n\n',
+    `event:tool_result\ndata:${toolPayload}\n\n`,
+    'event:sources\ndata:[]\n\n',
+    'event:done\ndata:{"status":"COMPLETED"}\n\n',
+  ];
+  const rec = await runSseWithTool(chunks, EVENT);
+
+  assert.equal(rec.toolResults.length, 1, 'onToolResult 应恰好触发一次');
+  const parsed = JSON.parse(rec.toolResults[0]);
+  assert.equal(parsed.toolName, 'checkDependencyHealth');
+  assert.equal(parsed.demo, true);
+  assert.equal(rec.errors.length, 0);
+  assertNoControlLeak(rec.messages);
+});
+
+test('混合事件序列：data → tool_result → sources → done 各回调按序触发', async () => {
+  const toolPayload = JSON.stringify({
+    toolName: 'checkDependencyHealth', status: 'SUCCESS',
+    result: {}, durationMs: 10, demo: false,
+  });
+  const chunks = [
+    'event:data\ndata:第一部分\n\n',
+    'event:data\ndata:第二部分\n\n',
+    `event:tool_result\ndata:${toolPayload}\n\n`,
+    'event:sources\ndata:[{"kbId":1}]\n\n',
+    'event:done\ndata:{"status":"COMPLETED"}\n\n',
+  ];
+  const rec = await runSseWithTool(chunks, EVENT);
+
+  // data 事件
+  assert.deepEqual(rec.messages, ['第一部分', '第二部分']);
+  // tool_result 事件
+  assert.equal(rec.toolResults.length, 1);
+  // sources 事件
+  assert.equal(rec.sources.length, 1);
+  assert.equal(rec.sources[0], '[{"kbId":1}]');
+  // done 事件
+  assert.deepEqual(rec.done, ['{"status":"COMPLETED"}']);
+  assert.equal(rec.completes, 1);
+  assert.equal(rec.errors.length, 0);
+  assertNoControlLeak(rec.messages);
+});
+
+test('无 tool_result 的向后兼容：data → sources → done 时 onToolResult 未被调用', async () => {
+  const chunks = [
+    'event:data\ndata:普通回答\n\n',
+    'event:sources\ndata:[]\n\n',
+    'event:done\ndata:{"status":"COMPLETED"}\n\n',
+  ];
+  const rec = await runSseWithTool(chunks, EVENT);
+
+  assert.deepEqual(rec.messages, ['普通回答']);
+  assert.equal(rec.toolResults.length, 0, '无 tool_result 事件时 onToolResult 不应被调用');
+  assert.equal(rec.sources.length, 1);
+  assert.deepEqual(rec.done, ['{"status":"COMPLETED"}']);
+  assert.equal(rec.errors.length, 0);
+});

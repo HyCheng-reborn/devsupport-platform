@@ -6,6 +6,9 @@ import {
   selectSourcesForStatus,
   sourcesDisplayMode,
   sourcesHeaderLabel,
+  toolStatusLabel,
+  toolStatusColor,
+  componentStatusColor,
 } from './ragStreamStatus.ts';
 
 test('parseDoneStatus 解析服务端确认的五种最终状态（含 INSUFFICIENT_INFO）', () => {
@@ -94,4 +97,37 @@ test('sourcesHeaderLabel: 真实回答保持原有 grounded / degraded 文案', 
     sourcesHeaderLabel(null, { grounded: false, degradedLabel: 'D：' }),
     'D：',
   );
+});
+
+// ========== 工具调用结果展示辅助 ==========
+
+test('toolStatusLabel 映射四种工具调用状态', () => {
+  assert.equal(toolStatusLabel('SUCCESS'), '成功');
+  assert.equal(toolStatusLabel('TIMEOUT'), '超时');
+  assert.equal(toolStatusLabel('ERROR'), '失败');
+  assert.equal(toolStatusLabel('LIMIT_EXCEEDED'), '超出限制');
+});
+
+test('toolStatusColor 为不同状态返回不同颜色类名', () => {
+  const success = toolStatusColor('SUCCESS');
+  const timeout = toolStatusColor('TIMEOUT');
+  const error = toolStatusColor('ERROR');
+  const limit = toolStatusColor('LIMIT_EXCEEDED');
+
+  // 成功用 emerald，失败/超时用 red，超限用 orange
+  assert.ok(success.includes('emerald'));
+  assert.ok(timeout.includes('red'));
+  assert.ok(error.includes('red'));
+  assert.ok(limit.includes('orange'));
+  // 每个状态的颜色类名互不相同
+  const colors = new Set([success, timeout, error, limit]);
+  assert.equal(colors.size, 3, 'TIMEOUT 和 ERROR 共享颜色，其余各自独立');
+});
+
+test('componentStatusColor 根据组件状态值返回对应颜色', () => {
+  assert.ok(componentStatusColor('OK').includes('emerald'));
+  assert.ok(componentStatusColor('UP').includes('emerald'));
+  assert.ok(componentStatusColor('UNREACHABLE').includes('red'));
+  assert.ok(componentStatusColor('DEGRADED').includes('orange'));
+  assert.ok(componentStatusColor('unknown').includes('slate'));
 });

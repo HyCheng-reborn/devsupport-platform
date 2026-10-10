@@ -33,6 +33,14 @@ export interface SourceReference {
   sectionTitle?: string | null;
 }
 
+export interface ToolCallResult {
+  toolName: string;
+  status: 'SUCCESS' | 'TIMEOUT' | 'ERROR' | 'LIMIT_EXCEEDED';
+  result: Record<string, string>;
+  durationMs: number;
+  demo: boolean;
+}
+
 export type { MessageStatus };
 
 export interface RagChatMessage {
@@ -40,6 +48,7 @@ export interface RagChatMessage {
   type: 'user' | 'assistant';
   content: string;
   sourcesJson?: string;
+  toolCallsJson?: string;
   status?: MessageStatus;
   createdAt: string;
 }
@@ -140,7 +149,8 @@ export const ragChatApi = {
     onMessage: (chunk: string) => void,
     onSources: (sourcesJson: string) => void,
     onComplete: (status?: MessageStatus) => void,
-    onError: (error: Error) => void
+    onError: (error: Error) => void,
+    onToolResult?: (toolCall: ToolCallResult) => void
   ): Promise<void> {
     let finalized = false;
     return streamSse({
@@ -152,6 +162,15 @@ export const ragChatApi = {
       },
       onMessage,
       onSources: (data) => onSources(data),
+      onToolResult: (data) => {
+        if (!onToolResult) return;
+        try {
+          const parsed = JSON.parse(data) as ToolCallResult;
+          onToolResult(parsed);
+        } catch {
+          // 忽略解析失败
+        }
+      },
       onDone: (rawStatus) => {
         if (finalized) return;
         finalized = true;

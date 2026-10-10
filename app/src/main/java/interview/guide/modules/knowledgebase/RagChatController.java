@@ -1,5 +1,9 @@
 package interview.guide.modules.knowledgebase;
 
+import interview.guide.common.ai.LlmProviderRegistry;
+import interview.guide.common.ai.tools.DependencyHealthTools;
+import interview.guide.common.ai.tools.ToolCallRecord;
+import interview.guide.common.ai.tools.ToolInvocationRecorder;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
 import interview.guide.common.result.Result;
@@ -31,7 +35,10 @@ import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
 import tools.jackson.databind.ObjectMapper;
 
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -45,7 +52,9 @@ public class RagChatController {
 
     private final RagChatSessionService sessionService;
     private final KnowledgeBaseQueryService queryService;
+    private final LlmProviderRegistry llmProviderRegistry;
     private final ObjectMapper objectMapper;
+    private final DependencyHealthTools dependencyHealthTools;
 
     /**
      * 创建新会话
@@ -134,7 +143,25 @@ public class RagChatController {
         // 1. 准备消息（保存用户消息，创建 AI 消息占位）
         Long messageId = sessionService.prepareStreamMessage(sessionId, request.question());
 
-        // 2. 获取检索结果（包含流式响应和来源文档）
+        // 2. 创建工具调用记录器并通过 AtomicReference 绑定到 DependencyHealthTools
+        ToolInvocationRecorder recorder = new ToolInvocationRecorder();
+        dependencyHealthTools.setRecorder(recorder);
+
+        // Demo 模式下检测健康检查关键词，构造模拟 tool_result
+        boolean isDemo = llmProviderRegistry.isDemoProfileActive();
+        List<ToolCallRecord> demoToolCalls = List.of();
+        if (isDemo && containsHealthKeyword(request.question())) {
+            demoToolCalls = List.of(new ToolCallRecord(
+                "checkDependencyHealth", "SUCCESS",
+                Map.of("postgresql", "OK",
+                       "redis", "OK",
+                       "objectStorage", "OK"),
+                0, Instant.now().toString(), true
+            ));
+            recorder.record(demoToolCalls.getFirst());
+        }
+
+        // 3. 获取检索结果（包含流式响应和来源文档）
         RetrievalResult result = sessionService.getStreamAnswer(sessionId, request.question());
 
         // 3. 构建来源列表（来源组装与数据库查询责任归入会话 Service）
@@ -174,6 +201,22 @@ public class RagChatController {
                 .data(chunk.replace("\n", "\\n").replace("\r", "\\r"))
                 .build())
             .concatWith(Flux.defer(() -> {
+                // 发出 tool_result 事件（真实工具调用或 Demo 模拟）
+                List<ToolCallRecord> toolRecords = recorder.getRecords();
+                List<ServerSentEvent<String>> toolEvents = new ArrayList<>();
+                for (ToolCallRecord record : toolRecords) {
+                    try {
+                        toolEvents.add(ServerSentEvent.<String>builder()
+                            .event("tool_result")
+                            .data(objectMapper.writeValueAsString(record))
+                            .build());
+                    } catch (Exception e) {
+                        log.warn("序列化工具调用记录失败: {}", e.getMessage());
+                    }
+                }
+                return Flux.fromIterable(toolEvents);
+            }))
+            .concatWith(Flux.defer(() -> {
                 // 依据实际检索与实际输出确定最终状态，而非请求时的检索条数
                 MessageStatus finalStatus = queryService.resolveFinalStatus(
                     fullContent.toString(), result.sourceDocuments());
@@ -185,11 +228,22 @@ public class RagChatController {
                     return Flux.empty();
                 }
                 try {
+                    // 序列化器工具调用记录
+                    List<ToolCallRecord> toolRecords = recorder.getRecords();
+                    String toolCallsJson = "[]";
+                    if (!toolRecords.isEmpty()) {
+                        try {
+                            toolCallsJson = objectMapper.writeValueAsString(toolRecords);
+                        } catch (Exception e) {
+                            log.warn("序列化工具调用记录失败: {}", e.getMessage());
+                        }
+                    }
+
                     // 无依据的拒答不保存来源 chunk IDs
                     String persistedChunkIds = finalStatus == MessageStatus.NO_RESULTS
                         ? "[]" : finalSourceChunkIdsJson;
                     sessionService.completeStreamMessage(
-                        messageId, fullContent.toString(), finalStatus, persistedSourcesJson, persistedChunkIds);
+                        messageId, fullContent.toString(), finalStatus, persistedSourcesJson, persistedChunkIds, toolCallsJson);
                 } catch (Exception e) {
                     log.error("RAG 流式回答持久化失败，不向客户端宣告成功: sessionId={}, messageId={}",
                         sessionId, messageId, e);
@@ -212,7 +266,8 @@ public class RagChatController {
                 if (finalized.compareAndSet(false, true)) {
                     persistQuietly(messageId, fullContent.toString(), MessageStatus.MODEL_FAILED,
                         hasDocuments ? finalSourcesJson : "[]",
-                        hasDocuments ? finalSourceChunkIdsJson : "[]", sessionId);
+                        hasDocuments ? finalSourceChunkIdsJson : "[]",
+                        serializeToolCalls(recorder), sessionId);
                 }
                 log.error("RAG 聊天流式错误: sessionId={}", sessionId, e);
             })
@@ -220,9 +275,14 @@ public class RagChatController {
                 if (finalized.compareAndSet(false, true)) {
                     persistQuietly(messageId, fullContent.toString(), MessageStatus.CLIENT_DISCONNECTED,
                         hasDocuments ? finalSourcesJson : "[]",
-                        hasDocuments ? finalSourceChunkIdsJson : "[]", sessionId);
+                        hasDocuments ? finalSourceChunkIdsJson : "[]",
+                        serializeToolCalls(recorder), sessionId);
                     log.info("RAG 聊天流式取消: sessionId={}, messageId={}", sessionId, messageId);
                 }
+            })
+            .doFinally(signal -> {
+                dependencyHealthTools.clearRecorder();
+                log.debug("清理 ToolInvocationRecorder, signal={}", signal);
             });
     }
 
@@ -230,12 +290,34 @@ public class RagChatController {
      * 终止态（模型失败 / 客户端断开）持久化，异常只记录不外抛，避免在 Reactor 终止回调里抛出。
      */
     private void persistQuietly(Long messageId, String content, MessageStatus status,
-                                String sourcesJson, String sourceChunkIds, Long sessionId) {
+                                String sourcesJson, String sourceChunkIds,
+                                String toolCallsJson, Long sessionId) {
         try {
-            sessionService.completeStreamMessage(messageId, content, status, sourcesJson, sourceChunkIds);
+            sessionService.completeStreamMessage(messageId, content, status, sourcesJson, sourceChunkIds, toolCallsJson);
         } catch (Exception ex) {
             log.error("RAG 流式终止态持久化失败: sessionId={}, messageId={}, status={}",
                 sessionId, messageId, status, ex);
         }
+    }
+
+    private String serializeToolCalls(ToolInvocationRecorder recorder) {
+        List<ToolCallRecord> records = recorder.getRecords();
+        if (records.isEmpty()) {
+            return "[]";
+        }
+        try {
+            return objectMapper.writeValueAsString(records);
+        } catch (Exception e) {
+            log.warn("序列化工具调用记录失败: {}", e.getMessage());
+            return "[]";
+        }
+    }
+
+    private boolean containsHealthKeyword(String question) {
+        if (question == null || question.isBlank()) {
+            return false;
+        }
+        String lower = question.toLowerCase();
+        return DependencyHealthTools.HEALTH_KEYWORDS.stream().anyMatch(lower::contains);
     }
 }

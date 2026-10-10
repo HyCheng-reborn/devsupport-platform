@@ -11,14 +11,23 @@ import {
   Loader2,
   MessageSquare,
   FileText,
+  Wrench,
 } from 'lucide-react';
 import {
   ragChatApi,
   type RagChatSessionDetail,
   type SourceReference,
   type MessageStatus,
+  type ToolCallResult,
 } from '../api/ragChat';
-import { selectSourcesForStatus, sourcesDisplayMode, sourcesHeaderLabel } from '../api/ragStreamStatus';
+import {
+  selectSourcesForStatus,
+  sourcesDisplayMode,
+  sourcesHeaderLabel,
+  toolStatusLabel,
+  toolStatusColor,
+  componentStatusColor,
+} from '../api/ragStreamStatus';
 import { toSourceTagView } from '../utils/sourceDisplay';
 import CodeBlock from '../components/CodeBlock';
 import { ROUTES } from '../constants/routes';
@@ -31,6 +40,7 @@ interface Message {
   timestamp: Date;
   sources?: SourceReference[];
   status?: MessageStatus;
+  toolCalls?: ToolCallResult[];
 }
 
 export default function ChatSessionDetailPage() {
@@ -67,6 +77,15 @@ export default function ChatSessionDetailPage() {
             ? (() => {
                 try {
                   return JSON.parse(m.sourcesJson) as SourceReference[];
+                } catch {
+                  return undefined;
+                }
+              })()
+            : undefined,
+          toolCalls: m.toolCallsJson
+            ? (() => {
+                try {
+                  return JSON.parse(m.toolCallsJson) as ToolCallResult[];
                 } catch {
                   return undefined;
                 }
@@ -123,6 +142,7 @@ export default function ChatSessionDetailPage() {
 
     let fullContent = '';
     let currentSources: SourceReference[] = [];
+    let currentToolCalls: ToolCallResult[] = [];
 
     const updateAssistantMessage = (content: string) => {
       setMessages((prev) => {
@@ -161,7 +181,7 @@ export default function ChatSessionDetailPage() {
           setMessages((prev) =>
             prev.map((m) =>
               m.id === assistantMsgId
-                ? { ...m, content: fullContent, sources: sourcesForMessage, status: finalStatus }
+                ? { ...m, content: fullContent, sources: sourcesForMessage, status: finalStatus, toolCalls: currentToolCalls.length > 0 ? currentToolCalls : undefined }
                 : m,
             ),
           );
@@ -178,11 +198,26 @@ export default function ChatSessionDetailPage() {
                     content: fullContent || error.message,
                     sources: currentSources,
                     status: 'MODEL_FAILED' as MessageStatus,
+                    toolCalls: currentToolCalls.length > 0 ? currentToolCalls : undefined,
                   }
                 : m,
             ),
           );
           setSending(false);
+        },
+        (toolCall: ToolCallResult) => {
+          currentToolCalls.push(toolCall);
+          setMessages((prev) => {
+            const newMessages = [...prev];
+            const lastIndex = newMessages.length - 1;
+            if (lastIndex >= 0 && newMessages[lastIndex].type === 'assistant' && newMessages[lastIndex].id === assistantMsgId) {
+              newMessages[lastIndex] = {
+                ...newMessages[lastIndex],
+                toolCalls: [...(newMessages[lastIndex].toolCalls || []), toolCall],
+              };
+            }
+            return newMessages;
+          });
         },
       );
     } catch (err) {
@@ -380,6 +415,58 @@ export default function ChatSessionDetailPage() {
                         {sending && _index === messages.length - 1 && (
                           <span className="inline-block w-0.5 h-5 bg-primary-500 ml-1 animate-pulse" />
                         )}
+                        {msg.toolCalls && msg.toolCalls.length > 0 && (() => {
+                          const hasDemo = msg.toolCalls.some((tc) => tc.demo);
+                          return (
+                            <div className="mt-3 border border-slate-200 dark:border-slate-600 rounded-lg overflow-hidden">
+                              <div className={`flex items-center gap-2 px-3 py-2 text-xs font-medium ${
+                                hasDemo
+                                  ? 'bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-700/50'
+                                  : 'bg-slate-50 dark:bg-slate-700/50 border-b border-slate-200 dark:border-slate-600'
+                              }`}>
+                                <Wrench className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
+                                <span className="text-slate-600 dark:text-slate-300">
+                                  {hasDemo ? '工具调用结果（Demo 模拟）' : '工具调用结果'}
+                                </span>
+                              </div>
+                              {hasDemo && (
+                                <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-700/50">
+                                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+                                  <span className="text-xs text-amber-700 dark:text-amber-400">
+                                    Demo 模拟数据，非真实探测
+                                  </span>
+                                </div>
+                              )}
+                              <div className="divide-y divide-slate-100 dark:divide-slate-700">
+                                {msg.toolCalls.map((tc, tcIdx) => (
+                                  <div key={tcIdx} className="px-3 py-2">
+                                    <div className="flex items-center gap-2 mb-1.5">
+                                      <span className="text-xs font-medium text-slate-700 dark:text-slate-200">
+                                        {tc.toolName}
+                                      </span>
+                                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${toolStatusColor(tc.status)}`}>
+                                        {toolStatusLabel(tc.status)}
+                                      </span>
+                                      <span className="text-[10px] text-slate-400 dark:text-slate-500">
+                                        {tc.durationMs}ms
+                                      </span>
+                                    </div>
+                                    {Object.keys(tc.result).length > 0 && (
+                                      <div className="space-y-0.5">
+                                        {Object.entries(tc.result).map(([key, value]) => (
+                                          <div key={key} className="flex items-center gap-1.5 text-[11px]">
+                                            <span className="text-slate-500 dark:text-slate-400">{key}:</span>
+                                            <span className={componentStatusColor(value)}>{value}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })()}
                         {msg.sources && msg.sources.length > 0 && (() => {
                           const mode = sourcesDisplayMode(msg.status);
                           if (mode !== 'grounded' && mode !== 'degraded') return null;

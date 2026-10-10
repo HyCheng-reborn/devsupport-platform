@@ -1,5 +1,6 @@
 package interview.guide.common.ai;
 
+import interview.guide.common.ai.tools.DependencyHealthTools;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.model.ChatModel;
@@ -39,6 +40,7 @@ public class DemoChatModel implements ChatModel {
   private static final Set<String> KEYWORD_REDIS = Set.of("redis", "缓存", "cache", "stream");
   private static final Set<String> KEYWORD_LLM = Set.of("llm", "ai", "模型", "chat", "embedding", "向量");
   private static final Set<String> KEYWORD_CONFIG = Set.of("配置", "config", "yml", "yaml", "环境变量", "env");
+  private static final Set<String> KEYWORD_HEALTH = Set.copyOf(DependencyHealthTools.HEALTH_KEYWORDS);
 
   @Override
   public ChatResponse call(Prompt prompt) {
@@ -108,6 +110,9 @@ public class DemoChatModel implements ChatModel {
     }
     if (containsAny(lowerQuestion, KEYWORD_CONFIG)) {
       return getConfigResponse();
+    }
+    if (containsAny(lowerQuestion, KEYWORD_HEALTH)) {
+      return getHealthResponse();
     }
 
     return getDefaultResponse();
@@ -261,6 +266,20 @@ public class DemoChatModel implements ChatModel {
         - `SERVER_PORT`: 后端端口（默认 8080）
 
         更多配置说明请参考 `SETUP_API_KEYS.md` 文档。
+
+        （以上内容为演示模板，仅用于展示流程与数据链路。）""";
+  }
+
+  private String getHealthResponse() {
+    return DEMO_MARKER + "\n\n" + """
+        以下为预定义演示模板（按关键词「健康检查」匹配返回），本回答为演示用途，并非由检索证据动态生成。
+
+        根据依赖健康检查结果：
+        - PostgreSQL: 正常运行
+        - Redis: 正常运行
+        - 对象存储: 正常连接
+
+        所有基础设施组件状态良好。如需进一步排查，请描述具体的错误现象。
 
         （以上内容为演示模板，仅用于展示流程与数据链路。）""";
   }

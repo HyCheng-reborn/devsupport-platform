@@ -227,6 +227,23 @@ public class RagChatSessionService {
     @Transactional
     public void completeStreamMessage(Long messageId, String content, MessageStatus status,
                                       String sourcesJson, String sourceChunkIds) {
+        completeStreamMessage(messageId, content, status, sourcesJson, sourceChunkIds, "[]");
+    }
+
+    /**
+     * 流式响应完成后更新消息（含工具调用记录）
+     *
+     * @param messageId 消息ID
+     * @param content AI回答内容
+     * @param status 消息完成状态
+     * @param sourcesJson 来源信息JSON（可为null）
+     * @param sourceChunkIds 来源 chunk ID 列表 JSON（可为null）
+     * @param toolCallsJson 工具调用记录 JSON（可为null）
+     */
+    @Transactional
+    public void completeStreamMessage(Long messageId, String content, MessageStatus status,
+                                      String sourcesJson, String sourceChunkIds,
+                                      String toolCallsJson) {
         RagChatMessageEntity message = messageRepository.findById(messageId)
             .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "消息不存在"));
 
@@ -235,6 +252,7 @@ public class RagChatSessionService {
         message.setStatus(status);
         message.setSourcesJson(sourcesJson);
         message.setSourceChunkIds(sourceChunkIds);
+        message.setToolCallsJson(toolCallsJson);
         messageRepository.save(message);
 
         log.info("完成流式消息: messageId={}, contentLength={}, status={}", messageId, content.length(), status);

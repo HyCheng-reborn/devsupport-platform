@@ -95,6 +95,7 @@ public class RagChatDTO {
         String content,
         String sourcesJson,  // 来源信息JSON
         String status,       // 消息完成状态
+        String toolCallsJson, // 工具调用记录JSON
         LocalDateTime createdAt
     ) {}
 }

@@ -96,3 +96,59 @@ export function selectSourcesForStatus<T>(sources: T[] | undefined, status: Mess
   }
   return sources ?? [];
 }
+
+// ========== 工具调用结果展示辅助 ==========
+
+export type ToolCallStatus = 'SUCCESS' | 'TIMEOUT' | 'ERROR' | 'LIMIT_EXCEEDED';
+
+/**
+ * 工具调用状态文本映射
+ */
+export function toolStatusLabel(status: ToolCallStatus): string {
+  switch (status) {
+    case 'SUCCESS':
+      return '成功';
+    case 'TIMEOUT':
+      return '超时';
+    case 'ERROR':
+      return '失败';
+    case 'LIMIT_EXCEEDED':
+      return '超出限制';
+    default:
+      return status;
+  }
+}
+
+/**
+ * 工具调用状态颜色映射（TailwindCSS 类名）
+ */
+export function toolStatusColor(status: ToolCallStatus): string {
+  switch (status) {
+    case 'SUCCESS':
+      return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400';
+    case 'TIMEOUT':
+    case 'ERROR':
+      return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
+    case 'LIMIT_EXCEEDED':
+      return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400';
+    default:
+      return 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300';
+  }
+}
+
+/**
+ * 组件状态值颜色映射（用于 key-value 列表中的状态值着色）
+ */
+export function componentStatusColor(value: string): string {
+  const upper = value.toUpperCase();
+  if (upper === 'UP' || upper === 'HEALTHY' || upper === 'OK') {
+    return 'text-emerald-600 dark:text-emerald-400';
+  }
+  if (upper === 'UNREACHABLE' || upper === 'DOWN' || upper === 'FAILED') {
+    return 'text-red-600 dark:text-red-400';
+  }
+  if (upper === 'DEGRADED' || upper === 'SLOW' || upper === 'WARNING') {
+    return 'text-orange-600 dark:text-orange-400';
+  }
+  return 'text-slate-600 dark:text-slate-400';
+}

@@ -14,6 +14,7 @@ interface StreamSseOptions {
   dataJoiner?: string;
   onSources?: (data: string) => void;
   onDone?: (status?: string) => void;
+  onToolResult?: (data: string) => void;
 }
 
 function toApiUrl(url: string): string {
@@ -213,6 +214,10 @@ function processEventBlock(block: string, options: StreamSseOptions): void {
 
   if (eventName === 'sources') {
     options.onSources?.(content);
+    return;
+  }
+  if (eventName === 'tool_result') {
+    options.onToolResult?.(content);
     return;
   }
   if (eventName === 'done') {

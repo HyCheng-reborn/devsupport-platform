@@ -251,7 +251,7 @@ class LlmProviderRegistryTest {
         ApiKeyEncryptionService mockEncryption = mock(ApiKeyEncryptionService.class);
         LlmProviderRegistry dbRegistry = new LlmProviderRegistry(
             properties, mockRepo, null, mockEncryption,
-            toolCallingManager, observationRegistry, null, null);
+            toolCallingManager, observationRegistry, null, null, null);
 
         String providerId = "disabled-provider";
         LlmProviderEntity entity = LlmProviderEntity.builder()

@@ -81,6 +81,12 @@ public class RagChatMessageEntity {
     private String sourceChunkIds;
 
     /**
+     * 工具调用记录 JSON（存储 ToolCallRecord 列表）
+     */
+    @Column(columnDefinition = "TEXT", name = "tool_calls_json")
+    private String toolCallsJson;
+
+    /**
      * 消息完成状态
      */
     @Enumerated(EnumType.STRING)
