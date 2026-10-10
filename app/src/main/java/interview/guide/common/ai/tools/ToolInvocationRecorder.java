@@ -37,12 +37,16 @@ public class ToolInvocationRecorder {
 
   /**
    * 记录一次工具调用。
-   * LIMIT_EXCEEDED 状态不受 MAX_INVOCATIONS 限制，确保超限标记始终被记录。
+   * LIMIT_EXCEEDED 状态最多追加 1 条，防止模型反复请求时记录无限增长。
    * 使用 synchronized 保证 check-then-add 的原子性。
    */
   public synchronized void record(ToolCallRecord record) {
     if ("LIMIT_EXCEEDED".equals(record.status())) {
-      records.add(record);
+      boolean hasLimitRecord = records.stream()
+          .anyMatch(r -> "LIMIT_EXCEEDED".equals(r.status()));
+      if (!hasLimitRecord) {
+        records.add(record);
+      }
     } else if (records.size() < MAX_INVOCATIONS) {
       records.add(record);
     }

@@ -233,6 +233,7 @@ class RagChatControllerTest {
       KnowledgeBaseQueryService realQueryService = new KnowledgeBaseQueryService(
           mock(LlmProviderRegistry.class), mock(KnowledgeBaseVectorService.class),
           mock(KnowledgeBaseListService.class), mock(KnowledgeBaseCountService.class),
+          mock(DependencyHealthTools.class),
           props, new DefaultResourceLoader());
       RagChatController realController =
           new RagChatController(sessionService, realQueryService, llmProviderRegistry, objectMapper, dependencyHealthTools);
@@ -272,6 +273,7 @@ class RagChatControllerTest {
       KnowledgeBaseQueryService realQueryService = new KnowledgeBaseQueryService(
           mock(LlmProviderRegistry.class), mock(KnowledgeBaseVectorService.class),
           mock(KnowledgeBaseListService.class), mock(KnowledgeBaseCountService.class),
+          mock(DependencyHealthTools.class),
           props, new DefaultResourceLoader());
       RagChatController realController =
           new RagChatController(sessionService, realQueryService, llmProviderRegistry, objectMapper, dependencyHealthTools);
@@ -310,6 +312,7 @@ class RagChatControllerTest {
       KnowledgeBaseQueryService realQueryService = new KnowledgeBaseQueryService(
           mock(LlmProviderRegistry.class), mock(KnowledgeBaseVectorService.class),
           mock(KnowledgeBaseListService.class), mock(KnowledgeBaseCountService.class),
+          mock(DependencyHealthTools.class),
           props, new DefaultResourceLoader());
       RagChatController realController =
           new RagChatController(sessionService, realQueryService, llmProviderRegistry, objectMapper, dependencyHealthTools);

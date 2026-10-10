@@ -1,6 +1,7 @@
 package interview.guide.modules.knowledgebase.service;
 
 import interview.guide.common.ai.LlmProviderRegistry;
+import interview.guide.common.ai.tools.DependencyHealthTools;
 import interview.guide.modules.knowledgebase.model.MessageStatus;
 import interview.guide.modules.knowledgebase.model.RetrievalResult;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,6 +44,8 @@ class KnowledgeBaseQueryServiceTest {
   private KnowledgeBaseListService listService;
   @Mock
   private KnowledgeBaseCountService countService;
+  @Mock
+  private DependencyHealthTools dependencyHealthTools;
 
   private KnowledgeBaseQueryService queryService;
 
@@ -57,6 +60,7 @@ class KnowledgeBaseQueryServiceTest {
         vectorService,
         listService,
         countService,
+        dependencyHealthTools,
         properties,
         new DefaultResourceLoader()
     );
@@ -105,6 +109,8 @@ class KnowledgeBaseQueryServiceTest {
     lenient().when(requestSpec.system(anyString())).thenReturn(requestSpec);
     lenient().when(requestSpec.user(anyString())).thenReturn(requestSpec);
     lenient().when(requestSpec.messages(anyList())).thenReturn(requestSpec);
+    lenient().when(requestSpec.tools(any())).thenReturn(requestSpec);
+    lenient().when(requestSpec.toolContext(anyMap())).thenReturn(requestSpec);
     when(requestSpec.stream()).thenReturn(streamSpec);
     when(streamSpec.content()).thenReturn(contentFlux);
   }

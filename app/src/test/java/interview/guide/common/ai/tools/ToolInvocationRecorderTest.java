@@ -132,20 +132,24 @@ class ToolInvocationRecorderTest {
     }
 
     @Test
-    @DisplayName("LIMIT_EXCEEDED 状态不受 MAX_INVOCATIONS 限制，始终被记录")
-    void limitExceededAlwaysRecorded() {
+    @DisplayName("LIMIT_EXCEEDED 状态最多追加 1 条，重复的 LIMIT_EXCEEDED 记录被忽略")
+    void limitExceededRecordedOnlyOnce() {
       // 先填满 3 条正常记录
       for (int i = 0; i < 3; i++) {
         recorder.record(sampleRecord("tool" + i, "SUCCESS"));
       }
       assertThat(recorder.getRecords()).hasSize(3);
 
-      // LIMIT_EXCEEDED 记录应被接受，即使已达上限
+      // 第 1 条 LIMIT_EXCEEDED 应被接受
       ToolCallRecord limitRecord = sampleRecord("checkDependencyHealth", "LIMIT_EXCEEDED");
       recorder.record(limitRecord);
-
       assertThat(recorder.getRecords()).hasSize(4);
       assertThat(recorder.getRecords().getLast().status()).isEqualTo("LIMIT_EXCEEDED");
+
+      // 第 2 条 LIMIT_EXCEEDED 应被忽略（已有 1 条）
+      ToolCallRecord limitRecord2 = sampleRecord("checkDependencyHealth", "LIMIT_EXCEEDED");
+      recorder.record(limitRecord2);
+      assertThat(recorder.getRecords()).hasSize(4);
     }
   }
 

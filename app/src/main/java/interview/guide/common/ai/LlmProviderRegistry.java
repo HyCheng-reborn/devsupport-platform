@@ -197,9 +197,7 @@ public class LlmProviderRegistry {
         if (interviewSkillsToolCallback != null) {
             tools.add(interviewSkillsToolCallback);
         }
-        if (dependencyHealthTools != null) {
-            tools.add(dependencyHealthTools);
-        }
+        // DependencyHealthTools 不在全局 defaultTools 注册，仅在 RAG Chat 请求级注册
         if (!tools.isEmpty()) {
             builder.defaultTools(tools.toArray());
         }
