@@ -330,15 +330,17 @@ public class KnowledgeBaseQueryService {
 
             // 5. 流式调用（带历史上下文 + 工具上下文）+ 探测窗口归一化
             //    DependencyHealthTools 在请求级注册，仅 RAG Chat 路径可触发依赖探测
+            //    Fail closed: 只有 ToolContext 携带有效 recorder 时才注册工具，
+            //    无 ToolContext 或无 recorder 时工具对模型不可用
             var promptSpec = getChatClient().prompt().system(systemPrompt);
             if (!effectiveHistory.isEmpty()) {
                 promptSpec = promptSpec.messages(effectiveHistory);
             }
-            if (dependencyHealthTools != null) {
-                promptSpec = promptSpec.tools(dependencyHealthTools);
-            }
-            if (toolContext != null) {
-                promptSpec = promptSpec.toolContext(toolContext.getContext());
+            boolean hasValidRecorder = toolContext != null
+                && toolContext.getContext().containsKey(DependencyHealthTools.RECORDER_KEY);
+            if (dependencyHealthTools != null && hasValidRecorder) {
+                promptSpec = promptSpec.tools(dependencyHealthTools)
+                    .toolContext(toolContext.getContext());
             }
             Flux<String> responseFlux = promptSpec
                     .user(userPrompt)

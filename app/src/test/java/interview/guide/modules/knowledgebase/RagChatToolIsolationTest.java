@@ -33,19 +33,21 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
- * Spring AI ToolContext 传递机制验证测试
+ * DependencyHealthTools 工具方法级单元测试
  *
- * <p>验证 {@code prompt.toolContext → @Tool ToolContext → ToolInvocationRecorder}
- * 的请求级隔离正确性。不使用付费 API，通过 mock 基础设施验证工具调用链路。
+ * <p>验证 {@link DependencyHealthTools#checkDependencyHealth(ToolContext)} 的请求级隔离正确性。
+ * 本测试直接调用工具方法，不经过 Spring AI 的工具分发链路；
+ * Spring AI 框架的 ToolContext 注入由 {@code MethodToolCallback.buildMethodArguments} 保证。
  *
  * <p>核心验证点：
  * <ul>
+ *   <li>无 ToolContext 或无 recorder 时 fail closed，拒绝执行探测</li>
  *   <li>每个请求的 recorder 独立，并发请求不串写</li>
  *   <li>DependencyHealthTools 从正确的 ToolContext 获取 recorder</li>
  *   <li>recorder 记录的元信息（toolName、status、durationMs、timestamp）完整</li>
  * </ul>
  */
-@DisplayName("Spring AI ToolContext 传递机制验证")
+@DisplayName("DependencyHealthTools 工具方法级单元测试")
 @ExtendWith(MockitoExtension.class)
 class RagChatToolIsolationTest {
 
@@ -133,6 +135,50 @@ class RagChatToolIsolationTest {
           .allMatch(r -> "checkDependencyHealth".equals(r.toolName()));
       assertThat(recorder2.getRecords())
           .allMatch(r -> "checkDependencyHealth".equals(r.toolName()));
+    }
+  }
+
+  // ========== Fail closed: 无 recorder 时拒绝执行探测 ==========
+
+  @Nested
+  @DisplayName("Fail closed: 无 recorder 时拒绝执行探测")
+  class FailClosed {
+
+    @Test
+    @DisplayName("null ToolContext 时返回错误指示，不执行任何探测")
+    void nullToolContextReturnsError() throws Exception {
+      Map<String, Object> result = tools.checkDependencyHealth(null);
+
+      assertThat(result).containsKey("error");
+      assertThat(result.get("error")).isEqualTo("tool_unavailable");
+      assertThat(result.get("reason")).isEqualTo("no_recorder_in_context");
+      // 所有组件状态为 SKIPPED，未执行真实探测
+      assertThat(result).containsEntry("postgresql", Map.of("status", "SKIPPED"));
+      assertThat(result).containsEntry("redis", Map.of("status", "SKIPPED"));
+      assertThat(result).containsEntry("objectStorage", Map.of("status", "SKIPPED"));
+    }
+
+    @Test
+    @DisplayName("ToolContext 不含 recorder 时返回错误指示，不执行任何探测")
+    void toolContextWithoutRecorderReturnsError() throws Exception {
+      ToolContext emptyContext = new ToolContext(Map.of());
+
+      Map<String, Object> result = tools.checkDependencyHealth(emptyContext);
+
+      assertThat(result).containsKey("error");
+      assertThat(result.get("error")).isEqualTo("tool_unavailable");
+      assertThat(result).containsEntry("postgresql", Map.of("status", "SKIPPED"));
+    }
+
+    @Test
+    @DisplayName("ToolContext 中 recorder 类型错误时返回错误指示，不执行任何探测")
+    void toolContextWithWrongTypeRecorderReturnsError() throws Exception {
+      ToolContext wrongContext = new ToolContext(Map.of(DependencyHealthTools.RECORDER_KEY, "not_a_recorder"));
+
+      Map<String, Object> result = tools.checkDependencyHealth(wrongContext);
+
+      assertThat(result).containsKey("error");
+      assertThat(result.get("error")).isEqualTo("tool_unavailable");
     }
   }
 

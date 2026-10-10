@@ -72,11 +72,23 @@ public class DependencyHealthTools {
     long startTime = System.currentTimeMillis();
     log.info("[DependencyHealthTools] 开始健康检查");
 
-    // 从 ToolContext 提取 per-request recorder（可能为 null）
+    // 从 ToolContext 提取 per-request recorder
     ToolInvocationRecorder recorder = extractRecorder(toolContext);
 
+    // Fail closed: 无有效 recorder 时拒绝执行探测，防止工具被无上下文地调用
+    if (recorder == null) {
+      log.warn("[DependencyHealthTools] 无有效 recorder，拒绝执行探测 (fail closed)");
+      Map<String, Object> errorResult = new LinkedHashMap<>();
+      errorResult.put("error", "tool_unavailable");
+      errorResult.put("reason", "no_recorder_in_context");
+      errorResult.put("postgresql", Map.of("status", "SKIPPED"));
+      errorResult.put("redis", Map.of("status", "SKIPPED"));
+      errorResult.put("objectStorage", Map.of("status", "SKIPPED"));
+      return errorResult;
+    }
+
     // 执行上限检查：在探测之前检查，超限不执行实际探测
-    if (recorder != null && !recorder.tryAcquireSlot()) {
+    if (!recorder.tryAcquireSlot()) {
       long durationMs = System.currentTimeMillis() - startTime;
       Map<String, Object> skippedResult = new LinkedHashMap<>();
       skippedResult.put("postgresql", Map.of("status", "SKIPPED"));
@@ -100,13 +112,11 @@ public class DependencyHealthTools {
 
     long durationMs = System.currentTimeMillis() - startTime;
 
-    // 记录本次调用
-    if (recorder != null) {
-      recorder.record(new ToolCallRecord(
-          "checkDependencyHealth", "SUCCESS",
-          flattenResult(result), durationMs, Instant.now().toString(), false
-      ));
-    }
+    // 记录本次调用（recorder 在此处必然非 null，已在上方 fail closed）
+    recorder.record(new ToolCallRecord(
+        "checkDependencyHealth", "SUCCESS",
+        flattenResult(result), durationMs, Instant.now().toString(), false
+    ));
 
     log.info("[DependencyHealthTools] 健康检查完成，耗时 {}ms", durationMs);
     return result;
@@ -114,7 +124,7 @@ public class DependencyHealthTools {
 
   /**
    * 从 ToolContext 中提取 recorder。
-   * toolContext 为 null 或不包含 recorder 时返回 null，工具仍正常执行但不记录。
+   * toolContext 为 null 或不包含 recorder 时返回 null，触发 fail closed 拒绝执行探测。
    */
   private ToolInvocationRecorder extractRecorder(ToolContext toolContext) {
     if (toolContext == null) {

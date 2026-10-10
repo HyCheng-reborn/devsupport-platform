@@ -103,7 +103,8 @@ class DependencyHealthToolsTest {
       mockRedisOk();
       mockS3Ok();
 
-      Map<String, Object> result = tools.checkDependencyHealth(null);
+      ToolInvocationRecorder recorder = new ToolInvocationRecorder();
+      Map<String, Object> result = tools.checkDependencyHealth(toolContextWith(recorder));
 
       assertThat(result).containsKeys("postgresql", "redis", "objectStorage");
       assertThat(getStatus(result, "postgresql")).isEqualTo("OK");
@@ -125,7 +126,8 @@ class DependencyHealthToolsTest {
       mockRedisOk();
       mockS3Ok();
 
-      Map<String, Object> result = tools.checkDependencyHealth(null);
+      ToolInvocationRecorder recorder = new ToolInvocationRecorder();
+      Map<String, Object> result = tools.checkDependencyHealth(toolContextWith(recorder));
 
       assertThat(getStatus(result, "postgresql")).isEqualTo("UNREACHABLE");
       assertThat(getStatus(result, "redis")).isEqualTo("OK");
@@ -139,7 +141,8 @@ class DependencyHealthToolsTest {
       mockRedisFail();
       mockS3Ok();
 
-      Map<String, Object> result = tools.checkDependencyHealth(null);
+      ToolInvocationRecorder recorder = new ToolInvocationRecorder();
+      Map<String, Object> result = tools.checkDependencyHealth(toolContextWith(recorder));
 
       assertThat(getStatus(result, "postgresql")).isEqualTo("OK");
       assertThat(getStatus(result, "redis")).isEqualTo("UNREACHABLE");
@@ -153,7 +156,8 @@ class DependencyHealthToolsTest {
       mockRedisOk();
       mockS3Fail();
 
-      Map<String, Object> result = tools.checkDependencyHealth(null);
+      ToolInvocationRecorder recorder = new ToolInvocationRecorder();
+      Map<String, Object> result = tools.checkDependencyHealth(toolContextWith(recorder));
 
       assertThat(getStatus(result, "postgresql")).isEqualTo("OK");
       assertThat(getStatus(result, "redis")).isEqualTo("OK");
@@ -174,7 +178,8 @@ class DependencyHealthToolsTest {
       mockRedisOk();
       mockS3Ok();
 
-      Map<String, Object> result = tools.checkDependencyHealth(null);
+      ToolInvocationRecorder recorder = new ToolInvocationRecorder();
+      Map<String, Object> result = tools.checkDependencyHealth(toolContextWith(recorder));
 
       assertThat(result.keySet()).containsExactlyInAnyOrder("postgresql", "redis", "objectStorage");
     }
@@ -186,7 +191,8 @@ class DependencyHealthToolsTest {
       mockRedisFail();
       mockS3Fail();
 
-      Map<String, Object> result = tools.checkDependencyHealth(null);
+      ToolInvocationRecorder recorder = new ToolInvocationRecorder();
+      Map<String, Object> result = tools.checkDependencyHealth(toolContextWith(recorder));
 
       String resultStr = result.toString();
       assertThat(resultStr).doesNotContain("Connection refused");
@@ -287,31 +293,6 @@ class DependencyHealthToolsTest {
     }
 
     @Test
-    @DisplayName("null ToolContext 时工具正常执行但不记录")
-    void nullToolContextDoesNotThrow() throws Exception {
-      mockPostgresqlOk();
-      mockRedisOk();
-      mockS3Ok();
-
-      Map<String, Object> result = tools.checkDependencyHealth(null);
-
-      assertThat(result).containsKeys("postgresql", "redis", "objectStorage");
-    }
-
-    @Test
-    @DisplayName("ToolContext 不含 recorder 时工具正常执行但不记录")
-    void toolContextWithoutRecorderDoesNotThrow() throws Exception {
-      mockPostgresqlOk();
-      mockRedisOk();
-      mockS3Ok();
-
-      ToolContext emptyCtx = new ToolContext(Map.of());
-      Map<String, Object> result = tools.checkDependencyHealth(emptyCtx);
-
-      assertThat(result).containsKeys("postgresql", "redis", "objectStorage");
-    }
-
-    @Test
     @DisplayName("两个并发请求使用不同 recorder，记录不串线")
     void concurrentRequestsWithDifferentRecorders() throws Exception {
       mockPostgresqlOk();
@@ -361,6 +342,46 @@ class DependencyHealthToolsTest {
     }
   }
 
+  // ========== Fail closed: 无 recorder 时拒绝执行探测 ==========
+
+  @Nested
+  @DisplayName("Fail closed: 无 recorder 时拒绝执行探测")
+  class FailClosed {
+
+    @Test
+    @DisplayName("null ToolContext 时返回错误指示，不执行任何探测")
+    void nullToolContextReturnsError() throws Exception {
+      Map<String, Object> result = tools.checkDependencyHealth(null);
+
+      assertThat(result).containsKey("error");
+      assertThat(result.get("error")).isEqualTo("tool_unavailable");
+      assertThat(result.get("reason")).isEqualTo("no_recorder_in_context");
+      assertThat(getStatus(result, "postgresql")).isEqualTo("SKIPPED");
+      assertThat(getStatus(result, "redis")).isEqualTo("SKIPPED");
+      assertThat(getStatus(result, "objectStorage")).isEqualTo("SKIPPED");
+    }
+
+    @Test
+    @DisplayName("ToolContext 不含 recorder 时返回错误指示，不执行任何探测")
+    void toolContextWithoutRecorderReturnsError() throws Exception {
+      ToolContext emptyCtx = new ToolContext(Map.of());
+      Map<String, Object> result = tools.checkDependencyHealth(emptyCtx);
+
+      assertThat(result).containsKey("error");
+      assertThat(result.get("error")).isEqualTo("tool_unavailable");
+      assertThat(getStatus(result, "postgresql")).isEqualTo("SKIPPED");
+    }
+
+    @Test
+    @DisplayName("null ToolContext 时不触碰任何依赖")
+    void nullToolContextDoesNotTouchDependencies() throws Exception {
+      Map<String, Object> result = tools.checkDependencyHealth(null);
+
+      assertThat(result).containsKey("error");
+      org.mockito.Mockito.verifyNoInteractions(dataSource, redissonClient, s3Client);
+    }
+  }
+
   // ========== S3 客户端未配置 ==========
 
   @Nested
@@ -376,7 +397,8 @@ class DependencyHealthToolsTest {
       mockPostgresqlOk();
       mockRedisOk();
 
-      Map<String, Object> result = toolsWithoutS3.checkDependencyHealth(null);
+      ToolInvocationRecorder recorder = new ToolInvocationRecorder();
+      Map<String, Object> result = toolsWithoutS3.checkDependencyHealth(toolContextWith(recorder));
 
       assertThat(getStatus(result, "postgresql")).isEqualTo("OK");
       assertThat(getStatus(result, "redis")).isEqualTo("OK");
