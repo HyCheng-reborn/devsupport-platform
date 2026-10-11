@@ -38,16 +38,18 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.atLeast;
+import static org.mockito.Mockito.atMost;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
 /**
@@ -270,37 +272,15 @@ class SpringAiToolDispatchTest {
       ToolInvocationRecorder recorder1 = new ToolInvocationRecorder();
       ToolInvocationRecorder recorder2 = new ToolInvocationRecorder();
 
-      CountDownLatch latch = new CountDownLatch(2);
-      CountDownLatch startLatch = new CountDownLatch(1);
-
       ExecutorService executor = Executors.newFixedThreadPool(2);
 
-      // 请求 1
-      executor.submit(() -> {
-        try {
-          startLatch.await();
-          runSingleRequest(recorder1);
-        } catch (Exception e) {
-          e.printStackTrace();
-        } finally {
-          latch.countDown();
-        }
-      });
+      // 使用 Future.get() 传播 checked exception
+      Future<?> future1 = executor.submit(() -> runSingleRequest(recorder1));
+      Future<?> future2 = executor.submit(() -> runSingleRequest(recorder2));
 
-      // 请求 2
-      executor.submit(() -> {
-        try {
-          startLatch.await();
-          runSingleRequest(recorder2);
-        } catch (Exception e) {
-          e.printStackTrace();
-        } finally {
-          latch.countDown();
-        }
-      });
-
-      startLatch.countDown();
-      assertThat(latch.await(10, TimeUnit.SECONDS)).isTrue();
+      // Future.get() 传播异常，不使用 join()
+      future1.get(10, TimeUnit.SECONDS);
+      future2.get(10, TimeUnit.SECONDS);
       executor.shutdown();
 
       // 验证各自 recorder 独立
@@ -405,6 +385,11 @@ class SpringAiToolDispatchTest {
       // 验证：DataSource 只被调用了 3 次（前 3 次探测，后 3 次被 LIMIT 跳过）
       verifyProbesExecuted(3);
 
+      // 精确验证：Redis isExists 只被调用了 3 次
+      org.mockito.Mockito.verify(redissonClient, times(3)).getBucket("__health_check__");
+      // 精确验证：S3 headBucket 只被调用了 3 次
+      org.mockito.Mockito.verify(s3Client, atMost(3)).headBucket(any(HeadBucketRequest.class));
+
       // 最终回答应来自第 maxIterations+1 次模型调用
       assertThat(result).isEqualTo("最终回答");
     }
@@ -450,6 +435,276 @@ class SpringAiToolDispatchTest {
       String responseData = toolResponseMsg.getResponses().getFirst().responseData();
       assertThat(responseData).contains("tool_unavailable");
       assertThat(responseData).contains("no_recorder_in_context");
+    }
+  }
+
+  @Nested
+  @DisplayName("流式工具分发成功路径")
+  class StreamToolDispatchSuccessPath {
+
+    @Test
+    @DisplayName("fake ChatModel.stream() 返回 tool_call → Spring AI 流式分发工具 → 第二次请求包含工具结果 → 最终回答")
+    void streamFullToolDispatchChain() throws Exception {
+      mockAllHealthy();
+
+      AtomicInteger callCount = new AtomicInteger(0);
+      List<Prompt> capturedPrompts = new CopyOnWriteArrayList<>();
+
+      ChatModel fakeModel = createFakeModel(callCount, capturedPrompts, 2, "健康检查完成，所有组件正常");
+
+      ChatClient chatClient = ChatClient.builder(fakeModel).build();
+
+      ToolInvocationRecorder recorder = new ToolInvocationRecorder();
+      ToolContext toolContext = new ToolContext(Map.of(DependencyHealthTools.RECORDER_KEY, recorder));
+
+      // 执行：经过真实 Spring AI 流式工具分发链路
+      String result = chatClient.prompt()
+          .user("检查依赖健康状态")
+          .tools(dependencyHealthTools)
+          .toolContext(toolContext.getContext())
+          .stream()
+          .content()
+          .collectList()
+          .block()
+          .stream()
+          .reduce("", String::concat);
+
+      // 验证 1：fake 模型被调用两次
+      assertThat(callCount.get()).isEqualTo(2);
+
+      // 验证 2：最终回答正确
+      assertThat(result).isEqualTo("健康检查完成，所有组件正常");
+
+      // 验证 3：第二次调用时 Prompt 中包含 ToolResponseMessage
+      assertThat(capturedPrompts).hasSize(2);
+      Prompt secondPrompt = capturedPrompts.get(1);
+      List<Message> secondMessages = secondPrompt.getInstructions();
+      boolean hasToolResponse = secondMessages.stream()
+          .anyMatch(m -> m.getMessageType() == MessageType.TOOL);
+      assertThat(hasToolResponse)
+          .as("第二次模型请求的 Prompt 中应包含 ToolResponseMessage（流式路径）")
+          .isTrue();
+
+      // 验证 4：ToolResponseMessage 中包含工具执行结果
+      ToolResponseMessage toolResponseMsg = secondMessages.stream()
+          .filter(m -> m instanceof ToolResponseMessage)
+          .map(m -> (ToolResponseMessage) m)
+          .findFirst()
+          .orElseThrow();
+      assertThat(toolResponseMsg.getResponses()).isNotEmpty();
+      assertThat(toolResponseMsg.getResponses().getFirst().name()).isEqualTo("checkDependencyHealth");
+      String responseData = toolResponseMsg.getResponses().getFirst().responseData();
+      assertThat(responseData).contains("postgresql");
+
+      // 验证 5：recorder 中有 1 条 SUCCESS 记录且 demo=false
+      assertThat(recorder.getRecords()).hasSize(1);
+      ToolCallRecord record = recorder.getRecords().getFirst();
+      assertThat(record.toolName()).isEqualTo("checkDependencyHealth");
+      assertThat(record.status()).isEqualTo("SUCCESS");
+      assertThat(record.demo()).isFalse();
+
+      // 验证 6：实际探测执行了 1 次
+      verifyProbesExecuted(1);
+    }
+
+    @Test
+    @DisplayName("流式路径工具结果包含三个组件的健康状态")
+    void streamToolResultContainsComponentStatus() throws Exception {
+      mockAllHealthy();
+
+      AtomicInteger callCount = new AtomicInteger(0);
+      List<Prompt> captured = new CopyOnWriteArrayList<>();
+      ChatModel fakeModel = createFakeModel(callCount, captured, 2, "");
+
+      // 覆盖 stream() 使第二次调用返回包含工具结果的文本回答
+      ChatModel streamModel = new ChatModel() {
+        @Override
+        public ChatResponse call(Prompt prompt) {
+          captured.add(prompt);
+          int count = callCount.incrementAndGet();
+          if (count == 1) {
+            return buildToolCallResponse("checkDependencyHealth");
+          } else {
+            String toolResult = prompt.getInstructions().stream()
+                .filter(m -> m instanceof ToolResponseMessage)
+                .map(m -> (ToolResponseMessage) m)
+                .flatMap(m -> m.getResponses().stream())
+                .map(ToolResponseMessage.ToolResponse::responseData)
+                .findFirst()
+                .orElse("");
+            return buildTextResponse("结果: " + toolResult);
+          }
+        }
+
+        @Override
+        public ChatOptions getOptions() {
+          return ToolCallingChatOptions.builder().build();
+        }
+
+        @Override
+        public Flux<ChatResponse> stream(Prompt prompt) {
+          return Flux.just(call(prompt));
+        }
+      };
+
+      ChatClient chatClient = ChatClient.builder(streamModel).build();
+      ToolInvocationRecorder recorder = new ToolInvocationRecorder();
+      ToolContext toolContext = new ToolContext(Map.of(DependencyHealthTools.RECORDER_KEY, recorder));
+
+      String result = chatClient.prompt()
+          .user("检查健康")
+          .tools(dependencyHealthTools)
+          .toolContext(toolContext.getContext())
+          .stream()
+          .content()
+          .collectList()
+          .block()
+          .stream()
+          .reduce("", String::concat);
+
+      // 工具结果应包含三个组件状态
+      assertThat(result).contains("postgresql");
+      assertThat(result).contains("redis");
+      assertThat(result).contains("objectStorage");
+    }
+  }
+
+  @Nested
+  @DisplayName("流式并发隔离")
+  class StreamConcurrentIsolation {
+
+    @Test
+    @DisplayName("两个并发流式请求各自 recorder 独立，不串线")
+    void streamConcurrentRequestsIndependentRecorders() throws Exception {
+      mockAllHealthy();
+
+      ToolInvocationRecorder recorder1 = new ToolInvocationRecorder();
+      ToolInvocationRecorder recorder2 = new ToolInvocationRecorder();
+
+      ExecutorService executor = Executors.newFixedThreadPool(2);
+
+      // 使用 Future.get() 传播 checked exception
+      Future<?> future1 = executor.submit(() -> runStreamSingleRequest(recorder1));
+      Future<?> future2 = executor.submit(() -> runStreamSingleRequest(recorder2));
+
+      // Future.get() 传播异常，不使用 join()
+      future1.get(10, TimeUnit.SECONDS);
+      future2.get(10, TimeUnit.SECONDS);
+      executor.shutdown();
+
+      // 验证各自 recorder 独立
+      assertThat(recorder1.getRecords()).hasSize(1);
+      assertThat(recorder2.getRecords()).hasSize(1);
+      assertThat(recorder1.getRecords().getFirst().status()).isEqualTo("SUCCESS");
+      assertThat(recorder2.getRecords().getFirst().status()).isEqualTo("SUCCESS");
+      assertThat(recorder1.getRecords().getFirst()).isNotSameAs(recorder2.getRecords().getFirst());
+    }
+
+    private void runStreamSingleRequest(ToolInvocationRecorder recorder) {
+      AtomicInteger callCount = new AtomicInteger(0);
+      ChatModel fakeModel = new ChatModel() {
+        @Override
+        public ChatResponse call(Prompt prompt) {
+          int count = callCount.incrementAndGet();
+          if (count == 1) {
+            return buildToolCallResponse("checkDependencyHealth");
+          } else {
+            return buildTextResponse("完成");
+          }
+        }
+
+        @Override
+        public ChatOptions getOptions() {
+          return ToolCallingChatOptions.builder().build();
+        }
+
+        @Override
+        public Flux<ChatResponse> stream(Prompt prompt) {
+          return Flux.just(call(prompt));
+        }
+      };
+
+      ChatClient chatClient = ChatClient.builder(fakeModel).build();
+      ToolContext toolContext = new ToolContext(Map.of(DependencyHealthTools.RECORDER_KEY, recorder));
+
+      // 使用 .stream() 路径
+      chatClient.prompt()
+          .user("检查健康")
+          .tools(dependencyHealthTools)
+          .toolContext(toolContext.getContext())
+          .stream()
+          .content()
+          .collectList()
+          .block();
+    }
+  }
+
+  @Nested
+  @DisplayName("流式超限不探测")
+  class StreamLimitExceeded {
+
+    @Test
+    @DisplayName("流式路径：fake 模型每次返回 tool_call，实际探测不超过 3 次")
+    void streamMaxThreeProbes() throws Exception {
+      mockAllHealthy();
+
+      AtomicInteger callCount = new AtomicInteger(0);
+      int maxIterations = 6;
+
+      ChatModel fakeModel = new ChatModel() {
+        @Override
+        public ChatResponse call(Prompt prompt) {
+          int count = callCount.incrementAndGet();
+          if (count <= maxIterations) {
+            return buildToolCallResponse("checkDependencyHealth");
+          } else {
+            return buildTextResponse("最终回答");
+          }
+        }
+
+        @Override
+        public ChatOptions getOptions() {
+          return ToolCallingChatOptions.builder().build();
+        }
+
+        @Override
+        public Flux<ChatResponse> stream(Prompt prompt) {
+          return Flux.just(call(prompt));
+        }
+      };
+
+      ChatClient chatClient = ChatClient.builder(fakeModel).build();
+      ToolInvocationRecorder recorder = new ToolInvocationRecorder();
+      ToolContext toolContext = new ToolContext(Map.of(DependencyHealthTools.RECORDER_KEY, recorder));
+
+      String result = chatClient.prompt()
+          .user("反复检查健康")
+          .tools(dependencyHealthTools)
+          .toolContext(toolContext.getContext())
+          .stream()
+          .content()
+          .collectList()
+          .block()
+          .stream()
+          .reduce("", String::concat);
+
+      // 验证：tryAcquireSlot 被调用了 maxIterations 次
+      assertThat(recorder.getExecutedCount()).isEqualTo(maxIterations);
+
+      // 验证：recorder 中有 3 条 SUCCESS + 1 条 LIMIT_EXCEEDED
+      assertThat(recorder.getRecords()).hasSize(4);
+      assertThat(recorder.getRecords().subList(0, 3))
+          .allMatch(r -> "SUCCESS".equals(r.status()));
+      assertThat(recorder.getRecords().get(3).status()).isEqualTo("LIMIT_EXCEEDED");
+
+      // 精确验证：DataSource 只被调用了 3 次
+      org.mockito.Mockito.verify(dataSource, times(3)).getConnection();
+      // Redis isExists 被调用了 3 次
+      org.mockito.Mockito.verify(redissonClient, times(3)).getBucket("__health_check__");
+      // S3 headBucket 被调用了 3 次
+      org.mockito.Mockito.verify(s3Client, times(3)).headBucket(any(HeadBucketRequest.class));
+
+      assertThat(result).isEqualTo("最终回答");
     }
   }
 
