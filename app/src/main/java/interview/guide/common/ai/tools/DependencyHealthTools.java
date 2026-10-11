@@ -58,7 +58,7 @@ public class DependencyHealthTools {
                                RedissonClient redissonClient,
                                S3Client s3Client,
                                StorageConfigProperties storageConfig,
-                               @Qualifier("taskExecutor") Executor toolExecutor) {
+                               @Qualifier("applicationTaskExecutor") Executor toolExecutor) {
     this.dataSource = dataSource;
     this.redissonClient = redissonClient;
     this.s3Client = s3Client;
