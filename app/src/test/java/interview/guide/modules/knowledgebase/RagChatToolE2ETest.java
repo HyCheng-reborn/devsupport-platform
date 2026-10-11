@@ -105,8 +105,8 @@ class RagChatToolE2ETest {
 
     @TestConfiguration
     static class TaskExecutorConfig {
-        @Bean(name = "taskExecutor")
-        java.util.concurrent.Executor taskExecutor() {
+        @Bean(name = "applicationTaskExecutor")
+        java.util.concurrent.Executor applicationTaskExecutor() {
             return Runnable::run;
         }
     }

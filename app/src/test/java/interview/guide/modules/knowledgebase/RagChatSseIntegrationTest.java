@@ -60,14 +60,14 @@ import static org.mockito.Mockito.when;
 class RagChatSseIntegrationTest {
 
     /**
-     * RagChatController 依赖 DependencyHealthTools，其构造器需要 {@code @Qualifier("taskExecutor")
+     * RagChatController 依赖 DependencyHealthTools，其构造器需要 {@code @Qualifier("applicationTaskExecutor")
      * Executor}。测试上下文未自动提供该名 bean，故仅在测试配置内补充一个同步执行器，
      * 不修改生产线程池配置（本测试的 ChatClient 为 mock，工具实际不会被执行）。
      */
     @TestConfiguration
     static class TaskExecutorConfig {
-        @Bean(name = "taskExecutor")
-        java.util.concurrent.Executor taskExecutor() {
+        @Bean(name = "applicationTaskExecutor")
+        java.util.concurrent.Executor applicationTaskExecutor() {
             return Runnable::run;
         }
     }
