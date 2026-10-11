@@ -17,6 +17,8 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.test.context.ActiveProfiles;
@@ -38,6 +40,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
@@ -55,6 +58,19 @@ import static org.mockito.Mockito.when;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
 class RagChatSseIntegrationTest {
+
+    /**
+     * RagChatController 依赖 DependencyHealthTools，其构造器需要 {@code @Qualifier("taskExecutor")
+     * Executor}。测试上下文未自动提供该名 bean，故仅在测试配置内补充一个同步执行器，
+     * 不修改生产线程池配置（本测试的 ChatClient 为 mock，工具实际不会被执行）。
+     */
+    @TestConfiguration
+    static class TaskExecutorConfig {
+        @Bean(name = "taskExecutor")
+        java.util.concurrent.Executor taskExecutor() {
+            return Runnable::run;
+        }
+    }
 
     @Container
     static final PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>(
@@ -157,6 +173,10 @@ class RagChatSseIntegrationTest {
         lenient().when(mockRequestSpec.system(anyString())).thenReturn(mockRequestSpec);
         lenient().when(mockRequestSpec.user(anyString())).thenReturn(mockRequestSpec);
         lenient().when(mockRequestSpec.messages(anyList())).thenReturn(mockRequestSpec);
+        // RagChatController 传递有效 recorder 的 ToolContext → QueryService 会注册工具，
+        // mock 链必须返回 requestSpec，否则 .tools(...) 返回 null 导致后续 NPE
+        lenient().when(mockRequestSpec.tools(any())).thenReturn(mockRequestSpec);
+        lenient().when(mockRequestSpec.toolContext(anyMap())).thenReturn(mockRequestSpec);
         when(mockRequestSpec.stream()).thenReturn(mockStreamSpec);
         when(mockStreamSpec.content()).thenReturn(Flux.just(ANSWER_TEXT));
     }
@@ -341,6 +361,9 @@ class RagChatSseIntegrationTest {
         lenient().when(mockRequestSpec.system(anyString())).thenReturn(mockRequestSpec);
         lenient().when(mockRequestSpec.user(anyString())).thenReturn(mockRequestSpec);
         lenient().when(mockRequestSpec.messages(anyList())).thenReturn(mockRequestSpec);
+        // 同 setupChatClientMock：补齐工具注册分支，避免 .tools(...) 返回 null 的 NPE
+        lenient().when(mockRequestSpec.tools(any())).thenReturn(mockRequestSpec);
+        lenient().when(mockRequestSpec.toolContext(anyMap())).thenReturn(mockRequestSpec);
         when(mockRequestSpec.stream()).thenReturn(mockStreamSpec);
         when(mockStreamSpec.content()).thenReturn(Flux.just(answerContent));
     }

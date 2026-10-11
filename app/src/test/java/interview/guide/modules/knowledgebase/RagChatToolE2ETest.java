@@ -27,14 +27,19 @@ import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.reactive.server.FluxExchangeResult;
+import org.springframework.test.web.reactive.server.WebTestClient;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -44,8 +49,10 @@ import reactor.core.publisher.Flux;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.HeadBucketRequest;
 import software.amazon.awssdk.services.s3.model.HeadBucketResponse;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -145,9 +152,6 @@ class RagChatToolE2ETest {
     // ===== 注入真实 Bean =====
 
     @Autowired
-    RagChatController ragChatController;
-
-    @Autowired
     RagChatSessionRepository sessionRepository;
 
     @Autowired
@@ -158,6 +162,16 @@ class RagChatToolE2ETest {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    /** 实际启动的随机端口（RANDOM_PORT 由 Spring Boot 注入 local.server.port）。 */
+    @Value("${local.server.port}")
+    int port;
+
+    /** 基于真实 HTTP 的测试客户端，实际 POST 流式端点、GET 会话详情。 */
+    private WebTestClient webTestClient;
+
+    /** HTTP / SSE 等待的显式超时。 */
+    private static final Duration HTTP_TIMEOUT = Duration.ofSeconds(30);
+
     // ===== 测试数据 =====
 
     private KnowledgeBaseEntity testKb;
@@ -165,6 +179,12 @@ class RagChatToolE2ETest {
 
     @BeforeEach
     void setUpTestData() {
+        // 绑定到真实运行端口的 HTTP 客户端；响应读取设显式超时，避免流式挂起时无限等待
+        webTestClient = WebTestClient.bindToServer()
+            .baseUrl("http://localhost:" + port)
+            .responseTimeout(HTTP_TIMEOUT)
+            .build();
+
         testKb = new KnowledgeBaseEntity();
         testKb.setFileHash("tool-e2e-hash-" + System.nanoTime());
         testKb.setName("Tool E2E 测试知识库");
@@ -271,12 +291,43 @@ class RagChatToolE2ETest {
         return new Document("## 系统配置\n\n系统依赖包括 PostgreSQL、Redis 和对象存储", metadata);
     }
 
+    /**
+     * 通过真实 HTTP 客户端 POST SSE 流式端点，收集全部 Server-Sent 事件。
+     * <p>请求经 RANDOM_PORT 端口的完整 HTTP/SSE 栈：Tomcat 派发 → RagChatController →
+     * SessionService → QueryService → Spring AI 工具分发，而非直接调用 Controller bean。
+     */
     private List<ServerSentEvent<String>> collectEvents(Long sessionId, String question) {
-        Flux<ServerSentEvent<String>> flux =
-            ragChatController.sendMessageStream(sessionId, new SendMessageRequest(question));
-        List<ServerSentEvent<String>> events = flux.collectList().block();
-        assertThat(events).isNotNull();
+        FluxExchangeResult<ServerSentEvent<String>> exchange = webTestClient.post()
+            .uri("/api/rag-chat/sessions/{sessionId}/messages/stream", sessionId)
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue(new SendMessageRequest(question))
+            .accept(MediaType.TEXT_EVENT_STREAM)
+            .exchange()
+            .expectStatus().isOk()
+            .returnResult(new ParameterizedTypeReference<ServerSentEvent<String>>() {});
+
+        List<ServerSentEvent<String>> events = exchange.getResponseBody()
+            .collectList()
+            .block(HTTP_TIMEOUT);
+        assertThat(events).as("SSE 事件应非空且在超时内完成").isNotNull();
+        assertThat(events).isNotEmpty();
         return events;
+    }
+
+    /**
+     * 通过真实 HTTP 客户端 GET 会话详情，返回解析后的 {@code Result<SessionDetailDTO>} JSON 树。
+     */
+    private JsonNode fetchSessionDetailJsonViaHttp(Long sessionId) {
+        byte[] body = webTestClient.get()
+            .uri("/api/rag-chat/sessions/{sessionId}", sessionId)
+            .accept(MediaType.APPLICATION_JSON)
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody()
+            .returnResult()
+            .getResponseBody();
+        assertThat(body).as("会话详情 HTTP 响应体非空").isNotNull();
+        return objectMapper.readTree(body);
     }
 
     // ===== 测试用例 =====
@@ -355,6 +406,8 @@ class RagChatToolE2ETest {
         assertThat(aiMsg.getCompleted()).isTrue();
         assertThat(aiMsg.getStatus()).isEqualTo(MessageStatus.COMPLETED);
         assertThat(aiMsg.getContent()).isNotBlank();
+        // 最终落库回答等于 fake 模型预期文本（无换行，normalizeStreamOutput 透传原文）
+        assertThat(aiMsg.getContent()).as("DB 落库最终回答应等于 fake 模型预期文本").isEqualTo(finalAnswer);
         // Spring AI 2.0.0 ToolContext 正确传播，工具执行结果已录制
         assertThat(aiMsg.getToolCallsJson()).isNotNull().isNotEqualTo("[]");
         ToolCallRecord[] persistedRecords = objectMapper.readValue(
@@ -363,19 +416,45 @@ class RagChatToolE2ETest {
         assertThat(persistedRecords[0].toolName()).isEqualTo("checkDependencyHealth");
         assertThat(persistedRecords[0].status()).isEqualTo("SUCCESS");
         assertThat(persistedRecords[0].demo()).isFalse();
+        ToolCallRecord dbRecord = persistedRecords[0];
 
-        // 8. 会话详情回读验证
-        var detailResult = ragChatController.getSessionDetail(testSession.getId());
-        assertThat(detailResult.getData()).isNotNull();
-        var detailMessages = detailResult.getData().messages();
-        assertThat(detailMessages).hasSizeGreaterThanOrEqualTo(2);
+        // 8. 会话详情回读验证（通过真实 HTTP GET，非直接调用 Controller bean）
+        JsonNode detail = fetchSessionDetailJsonViaHttp(testSession.getId());
+        JsonNode detailMessages = detail.path("data").path("messages");
+        assertThat(detail.path("data").isMissingNode()).as("Result.data 应存在").isFalse();
+        assertThat(detailMessages.isArray()).as("HTTP 回读应含 messages 数组").isTrue();
+        assertThat(detailMessages.size()).as("HTTP 回读至少 2 条消息").isGreaterThanOrEqualTo(2);
 
-        var detailAiMsg = detailMessages.stream()
-            .filter(m -> "assistant".equals(m.type()))
-            .reduce((first, second) -> second)
-            .orElseThrow();
-        assertThat(detailAiMsg.status()).isEqualTo("COMPLETED");
-        assertThat(detailAiMsg.toolCallsJson()).isNotNull().contains("checkDependencyHealth");
+        JsonNode detailAiMsg = null;
+        for (JsonNode m : detailMessages) {
+            if ("assistant".equals(m.path("type").asText())) {
+                detailAiMsg = m; // 取最后一条 assistant
+            }
+        }
+        assertThat(detailAiMsg).as("HTTP 回读应包含 assistant 消息").isNotNull();
+        assertThat(detailAiMsg.path("status").asText()).isEqualTo("COMPLETED");
+        // 最终回答经 HTTP 回读等于 fake 模型预期文本
+        assertThat(detailAiMsg.path("content").asText())
+            .as("HTTP 会话回读的最终回答应等于 fake 模型预期文本")
+            .isEqualTo(finalAnswer);
+        assertThat(detailAiMsg.path("toolCallsJson").asText()).contains("checkDependencyHealth");
+
+        // 8b. 反序列化 HTTP 回读的 toolCallsJson，得到第三条 ToolCallRecord
+        ToolCallRecord[] httpRecords = objectMapper.readValue(
+            detailAiMsg.path("toolCallsJson").asText(), ToolCallRecord[].class);
+        assertThat(httpRecords).hasSize(1);
+        ToolCallRecord httpRecord = httpRecords[0];
+
+        // 8c. 三源一致性：SSE tool_result / DB tool_calls_json / HTTP 会话回读
+        //     工具名、状态、result、demo 四项完全一致
+        assertThat(httpRecord.toolName()).isEqualTo(toolRecord.toolName());
+        assertThat(httpRecord.status()).isEqualTo(toolRecord.status());
+        assertThat(httpRecord.result()).isEqualTo(toolRecord.result());
+        assertThat(httpRecord.demo()).isEqualTo(toolRecord.demo());
+        assertThat(dbRecord.toolName()).isEqualTo(toolRecord.toolName());
+        assertThat(dbRecord.status()).isEqualTo(toolRecord.status());
+        assertThat(dbRecord.result()).isEqualTo(toolRecord.result());
+        assertThat(dbRecord.demo()).isEqualTo(toolRecord.demo());
 
         // 9. 验证 fake ChatModel 被调用了至少 3 次
         //    callCount=1: query rewrite .call()
