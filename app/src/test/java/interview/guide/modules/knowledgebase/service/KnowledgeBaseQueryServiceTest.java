@@ -2,6 +2,7 @@ package interview.guide.modules.knowledgebase.service;
 
 import interview.guide.common.ai.LlmProviderRegistry;
 import interview.guide.common.ai.tools.DependencyHealthTools;
+import interview.guide.common.ai.tools.ToolInvocationRecorder;
 import interview.guide.modules.knowledgebase.model.MessageStatus;
 import interview.guide.modules.knowledgebase.model.RetrievalResult;
 import org.junit.jupiter.api.BeforeEach;
@@ -9,10 +10,12 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.document.Document;
 import org.springframework.core.io.DefaultResourceLoader;
 
@@ -597,6 +600,96 @@ class KnowledgeBaseQueryServiceTest {
       // 有文档且输出表明信息不足 → INSUFFICIENT_INFO
       MessageStatus statusB = queryService.resolveFinalStatus(insufficientContent, insufficientResult.sourceDocuments());
       assertThat(statusB).isEqualTo(MessageStatus.INSUFFICIENT_INFO);
+    }
+  }
+
+  @Nested
+  @DisplayName("answerQuestionStream 条件工具注册测试（fail-closed）")
+  class ConditionalToolRegistrationTests {
+
+    /**
+     * 提供有效检索结果使流程真正走到 prompt 构建分支，并搭建基础 mock 链，
+     * 返回 requestSpec 以便 verify。仅 stub 无 recorder 场景下必然调用的环节
+     * （system/user/stream/content），tools/toolContext 由正例按需再 stub，
+     * 避免严格桩（STRICT_STUBS）对负例产生多余 stubbing。
+     */
+    private ChatClient.ChatClientRequestSpec stubRetrievalAndBaseChain() {
+      List<Document> docs = List.of(createDoc("PostgreSQL 连接池耗尽排查", 1L, 0.8));
+      when(vectorService.similaritySearch(anyString(), anyList(), anyInt(), anyDouble()))
+          .thenReturn(docs);
+
+      ChatClient chatClient = mock(ChatClient.class);
+      ChatClient.ChatClientRequestSpec requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+      ChatClient.StreamResponseSpec streamSpec = mock(ChatClient.StreamResponseSpec.class);
+
+      when(llmProviderRegistry.getDefaultChatClient()).thenReturn(chatClient);
+      when(chatClient.prompt()).thenReturn(requestSpec);
+      when(requestSpec.system(anyString())).thenReturn(requestSpec);
+      when(requestSpec.user(anyString())).thenReturn(requestSpec);
+      when(requestSpec.stream()).thenReturn(streamSpec);
+      when(streamSpec.content()).thenReturn(Flux.just("实质性排查回答"));
+      return requestSpec;
+    }
+
+    @Test
+    @DisplayName("answerQuestionStream_ToolContext为null_不注册工具")
+    void nullToolContext_doesNotRegisterTools() {
+      ChatClient.ChatClientRequestSpec requestSpec = stubRetrievalAndBaseChain();
+
+      queryService.answerQuestionStream(List.of(1L), "连接池耗尽怎么办？",
+          List.of(), null, null, null, null);
+
+      verify(requestSpec, never()).tools(any());
+      verify(requestSpec, never()).toolContext(anyMap());
+    }
+
+    @Test
+    @DisplayName("answerQuestionStream_ToolContext缺少recorder_key_不注册工具")
+    void toolContextMissingRecorderKey_doesNotRegisterTools() {
+      ChatClient.ChatClientRequestSpec requestSpec = stubRetrievalAndBaseChain();
+      ToolContext emptyContext = new ToolContext(Map.of());
+
+      queryService.answerQuestionStream(List.of(1L), "连接池耗尽怎么办？",
+          List.of(), null, null, null, emptyContext);
+
+      verify(requestSpec, never()).tools(any());
+      verify(requestSpec, never()).toolContext(anyMap());
+    }
+
+    @Test
+    @DisplayName("answerQuestionStream_ToolContext中recorder类型错误_不注册工具")
+    void toolContextWrongRecorderType_doesNotRegisterTools() {
+      ChatClient.ChatClientRequestSpec requestSpec = stubRetrievalAndBaseChain();
+      ToolContext wrongContext = new ToolContext(
+          Map.of(DependencyHealthTools.RECORDER_KEY, "not_a_recorder"));
+
+      queryService.answerQuestionStream(List.of(1L), "连接池耗尽怎么办？",
+          List.of(), null, null, null, wrongContext);
+
+      verify(requestSpec, never()).tools(any());
+      verify(requestSpec, never()).toolContext(anyMap());
+    }
+
+    @Test
+    @DisplayName("answerQuestionStream_ToolContext携带有效recorder_注册工具并传入正确context")
+    @SuppressWarnings("unchecked")
+    void toolContextWithValidRecorder_registersToolsWithCorrectContext() {
+      ChatClient.ChatClientRequestSpec requestSpec = stubRetrievalAndBaseChain();
+      ToolInvocationRecorder recorder = new ToolInvocationRecorder();
+      ToolContext toolContext = new ToolContext(
+          Map.of(DependencyHealthTools.RECORDER_KEY, recorder));
+
+      when(requestSpec.tools(dependencyHealthTools)).thenReturn(requestSpec);
+      when(requestSpec.toolContext(anyMap())).thenReturn(requestSpec);
+
+      queryService.answerQuestionStream(List.of(1L), "连接池耗尽怎么办？",
+          List.of(), null, null, null, toolContext);
+
+      verify(requestSpec).tools(dependencyHealthTools);
+      ArgumentCaptor<Map<String, Object>> ctxCaptor = ArgumentCaptor.forClass(Map.class);
+      verify(requestSpec).toolContext(ctxCaptor.capture());
+      assertThat(ctxCaptor.getValue())
+          .containsEntry(DependencyHealthTools.RECORDER_KEY, recorder);
     }
   }
 }

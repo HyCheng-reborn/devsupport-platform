@@ -3,6 +3,7 @@ package interview.guide.modules.knowledgebase.service;
 import interview.guide.common.ai.LlmProviderRegistry;
 import interview.guide.common.ai.PromptSecurityConstants;
 import interview.guide.common.ai.tools.DependencyHealthTools;
+import interview.guide.common.ai.tools.ToolInvocationRecorder;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
 import interview.guide.modules.knowledgebase.model.MessageStatus;
@@ -337,7 +338,8 @@ public class KnowledgeBaseQueryService {
                 promptSpec = promptSpec.messages(effectiveHistory);
             }
             boolean hasValidRecorder = toolContext != null
-                && toolContext.getContext().containsKey(DependencyHealthTools.RECORDER_KEY);
+                && toolContext.getContext().get(DependencyHealthTools.RECORDER_KEY)
+                    instanceof ToolInvocationRecorder;
             if (dependencyHealthTools != null && hasValidRecorder) {
                 promptSpec = promptSpec.tools(dependencyHealthTools)
                     .toolContext(toolContext.getContext());
